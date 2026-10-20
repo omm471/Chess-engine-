@@ -49,6 +49,11 @@ body.theme-purple .dark-notation { color: #e5d8f0; }
 .legal-dot { width: 14px; height: 14px; background: rgba(0, 0, 0, 0.3); border-radius: 50%; position: absolute; z-index: 3; pointer-events: none; }
 .legal-capture { width: 36px; height: 36px; border: 4px solid rgba(0, 0, 0, 0.3); border-radius: 50%; position: absolute; box-sizing: border-box; z-index: 3; pointer-events: none; }
 
+/* MOVE CLASSIFICATION & CHECKMATE BADGES */
+.move-badge { position: absolute; top: -4px; right: -4px; width: 17px; height: 17px; border-radius: 50%; color: #fff; font-size: 9px; font-weight: 900; display: flex; justify-content: center; align-items: center; z-index: 9; border: 1.5px solid #fff; box-shadow: 0 2px 4px rgba(0,0,0,0.5); pointer-events: none; }
+.badge-loser { position: absolute; top: 2px; right: 2px; width: 18px; height: 18px; background: #eb2828; border-radius: 50%; color: #000; font-size: 11px; display: flex; justify-content: center; align-items: center; z-index: 10; border: 1px solid #fff; }
+.badge-winner { position: absolute; bottom: 2px; right: 2px; width: 18px; height: 18px; background: #81b64c; border-radius: 50%; color: #fff; font-size: 11px; display: flex; justify-content: center; align-items: center; z-index: 10; border: 1px solid #fff; }
+
 /* EVAL BAR WITH FLIP SUPPORT */
 .eval-bar-container { width: 16px; height: 320px; background: #262421; margin-right: 6px; border-radius: 4px; border: 1px solid #363431; overflow: hidden; position: relative; font-weight: 900; }
 .eval-fill { width: 100%; height: 50%; background: #fff; position: absolute; bottom: 0; top: auto; transition: height 0.4s ease; z-index: 1; }
