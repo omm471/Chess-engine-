@@ -1,4 +1,4 @@
-import os
+Import os
 import json
 import math
 import random
@@ -6,14 +6,13 @@ import shutil
 import sqlite3
 import subprocess
 import threading
-import time
 import chess
 import chess.engine
 from datetime import datetime
 from flask import Flask, render_template, request, jsonify, send_from_directory
 
 app = Flask(__name__)
-engine_lock = threading.RLock() # Changed to RLock for better thread safety
+engine_lock = threading.Lock()
 
 ENGINES_DIR = os.path.abspath('engines')
 os.makedirs(ENGINES_DIR, exist_ok=True)
@@ -58,8 +57,7 @@ engine_state = {
     "use_nnue": True,
     "last_nps": 0,
     "last_depth": 0,
-    "last_seldepth": 0,
-    "last_nodes": 0 # Added for Live Telemetry
+    "last_seldepth": 0
 }
 
 if os.path.exists(HW_CONFIG_FILE):
@@ -87,25 +85,6 @@ def save_hw_config():
             }, f)
     except Exception:
         pass
-
-# =========================================================
-# ANTI-LAG CPU BREATHER (PERMANENT FIX INJECTED DIRECTLY)
-# =========================================================
-_orig_play = chess.engine.SimpleEngine.play
-_orig_analyse = chess.engine.SimpleEngine.analyse
-
-def _safe_play(self, *args, **kwargs):
-    with engine_lock:
-        time.sleep(0.35) # CPU gets time to render CSS & Audio
-        return _orig_play(self, *args, **kwargs)
-
-def _safe_analyse(self, *args, **kwargs):
-    with engine_lock:
-        return _orig_analyse(self, *args, **kwargs)
-
-chess.engine.SimpleEngine.play = _safe_play
-chess.engine.SimpleEngine.analyse = _safe_analyse
-# =========================================================
 
 def open_any_chess_engine(bin_path):
     try:
@@ -276,21 +255,6 @@ def get_eco_book():
             pass
     return jsonify({"count": 0, "openings": []})
 
-# =========================================================
-# NEW: LIVE TELEMETRY DASHBOARD ENDPOINT
-# =========================================================
-@app.route('/telemetry', methods=['GET'])
-def get_telemetry():
-    return jsonify({
-        "engine": engine_state.get("real_name", "Stockfish"),
-        "nps": engine_state.get("last_nps", 0),
-        "nodes": engine_state.get("last_nodes", 0),
-        "depth": engine_state.get("last_depth", 0),
-        "threads": engine_state.get("threads", 4),
-        "hash": engine_state.get("hash", 256),
-        "protocol": engine_state.get("protocol", "uci").upper()
-    })
-
 @app.route('/ai_move', methods=['POST'])
 def ai_move():
     fen = request.form.get('fen')
@@ -335,13 +299,13 @@ def ai_move():
             eff_time = min(think_time, 0.25) if int(level) <= 1200 else think_time
             mpv = config["multipv"]
 
+            # For high strength (2000+ or Engine vs Engine) or XBoard engines, play pure strongest engine line
             if not is_uci or int(level) >= 2000:
                 if is_uci:
                     info = engine.analyse(board, chess.engine.Limit(time=eff_time, depth=eff_depth))
                     if isinstance(info, list): info = info[0]
                     if "nps" in info: engine_state["last_nps"] = info["nps"]
                     if "depth" in info: engine_state["last_depth"] = info["depth"]
-                    if "nodes" in info: engine_state["last_nodes"] = info["nodes"] # Track nodes
                     if "pv" in info and len(info["pv"]) > 0:
                         chosen_move = info["pv"][0]
                         best_eval_move = chosen_move
@@ -358,7 +322,6 @@ def ai_move():
                     top_info = info[0]
                     if "nps" in top_info: engine_state["last_nps"] = top_info["nps"]
                     if "depth" in top_info: engine_state["last_depth"] = top_info["depth"]
-                    if "nodes" in top_info: engine_state["last_nodes"] = top_info["nodes"]
                     if "pv" in top_info and len(top_info["pv"]) > 0:
                         best_eval_move = top_info["pv"][0]
                     if "score" in top_info:
@@ -376,6 +339,13 @@ def ai_move():
                     res = engine.play(board, chess.engine.Limit(time=eff_time, depth=eff_depth))
                     chosen_move = res.move
 
+            if is_uci:
+                if "Skill Level" in opts:
+                    try: engine.configure({"Skill Level": 20})
+                    except Exception: pass
+                if "UCI_LimitStrength" in opts:
+                    try: engine.configure({"UCI_LimitStrength": False})
+                    except Exception: pass
         except Exception as e:
             print("Engine Play Notice:", e)
             try:
@@ -394,7 +364,6 @@ def ai_move():
             'best_san': best_san,
             'engine': engine_state["real_name"],
             'nps': engine_state["last_nps"],
-            'nodes': engine_state["last_nodes"],
             'depth': engine_state["last_depth"]
         }
         if prev_cp is not None:
@@ -418,6 +387,7 @@ def evaluate_position():
             return jsonify({'score': 50.0, 'text': '0.0', 'cp': 0, 'best_uci': '', 'best_san': '', 'depth': req_depth, 'nps': engine_state["last_nps"], 'engine': engine_state["real_name"]})
 
         with engine_lock:
+            # Always use UCI engine (Stockfish) for evaluation if current engine is XBoard (like Phalanx)
             if req_engine_path or req_engine_preset:
                 ensure_Engine_Loaded(req_engine_path, req_engine_preset)
             if engine_state["protocol"] != "uci":
@@ -428,7 +398,6 @@ def evaluate_position():
         if isinstance(info, list): info = info[0]
         if "nps" in info: engine_state["last_nps"] = info["nps"]
         if "depth" in info: engine_state["last_depth"] = info["depth"]
-        if "nodes" in info: engine_state["last_nodes"] = info["nodes"]
 
         best_uci, best_san = "", ""
         if "pv" in info and len(info["pv"]) > 0:
@@ -440,9 +409,7 @@ def evaluate_position():
         return jsonify({
             'score': score_pct, 'text': text, 'cp': cp_val,
             'best_uci': best_uci, 'best_san': best_san,
-            'nps': engine_state["last_nps"],
-            'nodes': engine_state["last_nodes"],
-            'depth': engine_state["last_depth"],
+            'nps': engine_state["last_nps"], 'depth': engine_state["last_depth"],
             'engine': engine_state["real_name"]
         })
     except Exception:
@@ -466,7 +433,6 @@ def multipv():
         for item in info:
             if "nps" in item: engine_state["last_nps"] = item["nps"]
             if "depth" in item: engine_state["last_depth"] = item["depth"]
-            if "nodes" in item: engine_state["last_nodes"] = item["nodes"]
             if "pv" in item and len(item["pv"]) > 0:
                 move = item["pv"][0]
                 cp_val, win_pct, score_txt = score_to_cp_and_winpct(item["score"].white())
