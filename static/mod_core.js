@@ -3,6 +3,7 @@
    - Fixed Mobile Touch Drag-and-Drop (No DOM destruction during touchstart)
    - Captured Pieces Order: Pawn -> Knight -> Bishop -> Rook -> Queen
    - Seamless Post-Game & History Branching + Winner/Loser King Highlights
+   - Added: Interactive Pawn Promotion Modal (Queen, Knight, Rook, Bishop)
    ============================================================================ */
 
 var game = new Chess();
@@ -289,10 +290,8 @@ function getPieceImageUrl(color, type) {
     return urlTemplate.replace('{piece}', color + type.toUpperCase());
 }
 
-// Non-destructive legal dot updater so DOM nodes are NOT detached during touchstart!
 function updateSelectionAndDotsInPlace() {
-    $('.square').removeClass('selected');
-    $('.legal-dot, .legal-capture').remove();
+    $('.square').removeClass('selected');$('.legal-dot, .legal-capture').remove();
     if (selectedSquare) {
         $(`.square[data-square="${selectedSquare}"]`).addClass('selected');
     }
@@ -374,6 +373,99 @@ function renderBoard() {
 }
 
 // ============================================================================
+// DYNAMIC PROMOTION MODAL HANDLER
+// ============================================================================
+function showPromotionModal(color, onSelect) {
+    let existing = document.getElementById('promotion-choice-modal');
+    if (existing) existing.remove();
+
+    let modal = document.createElement('div');
+    modal.id = 'promotion-choice-modal';
+    modal.style.position = 'fixed';
+    modal.style.inset = '0';
+    modal.style.background = 'rgba(0, 0, 0, 0.78)';
+    modal.style.display = 'flex';
+    modal.style.justifyContent = 'center';
+    modal.style.alignItems = 'center';
+    modal.style.zIndex = '99999';
+
+    let box = document.createElement('div');
+    box.style.background = '#21201d';
+    box.style.border = '2px solid #81b64c';
+    box.style.borderRadius = '10px';
+    box.style.padding = '14px 16px';
+    box.style.boxShadow = '0 10px 30px rgba(0,0,0,0.9)';
+    box.style.textAlign = 'center';
+
+    let title = document.createElement('div');
+    title.innerText = 'Promote Pawn To:';
+    title.style.color = '#fff';
+    title.style.fontSize = '14px';
+    title.style.fontWeight = 'bold';
+    title.style.marginBottom = '12px';
+    box.appendChild(title);
+
+    let row = document.createElement('div');
+    row.style.display = 'flex';
+    row.style.gap = '10px';
+    row.style.justifyContent = 'center';
+
+    const pieces = [
+        { type: 'q', name: 'Queen' },
+        { type: 'n', name: 'Knight' },
+        { type: 'r', name: 'Rook' },
+        { type: 'b', name: 'Bishop' }
+    ];
+
+    pieces.forEach(p => {
+        let btn = document.createElement('div');
+        btn.style.width = '54px';
+        btn.style.height = '54px';
+        btn.style.background = '#161512';
+        btn.style.border = '1.5px solid #363431';
+        btn.style.borderRadius = '8px';
+        btn.style.cursor = 'pointer';
+        btn.style.display = 'flex';
+        btn.style.alignItems = 'center';
+        btn.style.justifyContent = 'center';
+        btn.style.transition = 'transform 0.1s, border-color 0.1s';
+
+        let img = document.createElement('div');
+        img.style.width = '44px';
+        img.style.height = '44px';
+        img.style.backgroundImage = `url('${getPieceImageUrl(color, p.type)}')`;
+        img.style.backgroundSize = 'contain';
+        img.style.backgroundRepeat = 'no-repeat';
+        img.style.backgroundPosition = 'center';
+
+        btn.appendChild(img);
+
+        btn.onmouseenter = () => { btn.style.borderColor = '#81b64c'; btn.style.transform = 'scale(1.1)'; };
+        btn.onmouseleave = () => { btn.style.borderColor = '#363431'; btn.style.transform = 'scale(1)'; };
+
+        btn.onclick = (e) => {
+            e.stopPropagation();
+            modal.remove();
+            onSelect(p.type);
+        };
+
+        row.appendChild(btn);
+    });
+
+    box.appendChild(row);
+
+    modal.onclick = () => {
+        modal.remove();
+        selectedSquare = null;
+        currentLegalMoves = [];
+        renderBoard();
+    };
+
+    modal.appendChild(box);
+    document.body.appendChild(modal);
+}
+
+// ============================================================================
 // SMOOTH HOLD-TO-ENLARGE & DRAG-AND-DROP CONTROLLER (100% Android Compatible)
 // ============================================================================
 var dragPieceState = {
@@ -422,7 +514,6 @@ function ensureBranchReadyForMove() {
             $('#status').text("Viewing past move — Tap 'Live' button to continue match");
             return false;
         }
-        // Seamlessly branch from viewed history move in post-game / analysis
         gameHistory = gameHistory.slice(0, historyIndex + 1);
         game.load(gameHistory[historyIndex].fen);
         isAnalysisBranchMode = true;
@@ -443,7 +534,6 @@ function handleBoardPointerDown(sq, clientX, clientY) {
     if (!ensureBranchReadyForMove()) return false;
     if (isAutoBotMode() && !isAnalysisBranchMode) return false;
 
-    // 1. If a square is already selected and user taps/clicks a valid destination square -> execute immediately!
     if (selectedSquare && sq !== selectedSquare && currentLegalMoves.find(m => m.to === sq)) {
         if (!isAnalysisBranchMode && gameMode === 'pvb' && game.turn() !== playerColor) {
             premoveQueue.push({ from: selectedSquare, to: sq });
@@ -457,7 +547,6 @@ function handleBoardPointerDown(sq, clientX, clientY) {
         return true;
     }
 
-    // 2. Premove Selection & Drag (when it is Bot's turn in PvB)
     if (!isAnalysisBranchMode && gameMode === 'pvb' && game.turn() !== playerColor) {
         if (!premoveEnabled) return false;
         let vGame = getVirtualPremoveGame();
@@ -481,7 +570,6 @@ function handleBoardPointerDown(sq, clientX, clientY) {
         }
     }
 
-    // 3. Normal Turn Piece Selection & Drag ( Enlarge on Hold + Drag to Square )
     let piece = game.get(sq);
     if (piece && piece.color === game.turn()) {
         if (gameMode === 'pvb' && !isAnalysisBranchMode && piece.color !== playerColor) return false;
@@ -539,7 +627,6 @@ function handleBoardPointerUp(clientX, clientY) {
             return;
         }
     }
-    // Keep piece selected so user can also tap destination square if they just tapped/held briefly
     updateSelectionAndDotsInPlace();
 }
 
@@ -618,10 +705,27 @@ function parseAndApplyUciMove(uciStr) {
     return m;
 }
 
-function executeHumanMove(fromSq, toSq) {
+function executeHumanMove(fromSq, toSq, promoPiece = null) {
     if (!isAnalysisBranchMode && isMatchOver()) return;
+
+    // Check if the current move is a Pawn Promotion
+    let movingPiece = game.get(fromSq);
+    let isPromotion = (movingPiece && movingPiece.type === 'p' && (toSq[1] === '8' || toSq[1] === '1'));
+
+    if (isPromotion && !promoPiece) {
+        let legals = game.moves({ square: fromSq, verbose: true });
+        let isValid = legals.some(m => m.to === toSq);
+        if (isValid) {
+            showPromotionModal(movingPiece.color, function(chosenPiece) {
+                executeHumanMove(fromSq, toSq, chosenPiece);
+            });
+            return;
+        }
+    }
+
+    let finalPromo = promoPiece || 'q';
     let prevRec = gameHistory[gameHistory.length - 1];
-    let moveObj = game.move({ from: fromSq, to: toSq, promotion: 'q' });
+    let moveObj = game.move({ from: fromSq, to: toSq, promotion: finalPromo });
     if (!moveObj) { playSnd('illegal'); return; }
     selectedSquare = null; currentLegalMoves = []; clearArrows();
 
@@ -779,7 +883,6 @@ function updateEvalBar(idx) {
     let whitePct = rec.evalScore !== undefined ? rec.evalScore : 50.0;
     let txt = rec.evalText || "0.0";
 
-    // Anchor White fill at bottom when playing White, and at top when flipped to Black (so Black is at bottom)
     if (currentBoardOrientation === 'w') {
         $('#eval-fill').css({ top: 'auto', bottom: '0', height: whitePct + '%' });
         $('#eval-text-bottom').text(whitePct >= 50 ? txt : '').css('color', '#161512');
@@ -791,7 +894,6 @@ function updateEvalBar(idx) {
     }
 }
 
-// Fixed Chess.com Order: Pawn (p) -> Knight (n) -> Bishop (b) -> Rook (r) -> Queen (q)
 function updateMaterial(fen) {
     let temp = new Chess(fen);
     let board = temp.board();
