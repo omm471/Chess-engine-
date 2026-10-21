@@ -1,9 +1,10 @@
 /* ============================================================================
-   static/mod_core.js (v100 - Step 2)
+   static/mod_core.js (v100 - Offline Themes & Pieces)
    - Fixed Mobile Touch Drag-and-Drop (No DOM destruction during touchstart)
    - Captured Pieces Order: Pawn -> Knight -> Bishop -> Rook -> Queen
-   - Seamless Post-Game & History Branching + Winner/Loser King Highlights
    - Chess.com Style Vertical Pawn Promotion (Touch-Optimized)
+   - Local Offline Pieces (/static/img/chesspieces/wikipedia/)
+   - Dynamic 10 Board Themes Support with LocalStorage Memory
    ============================================================================ */
 
 var game = new Chess();
@@ -62,8 +63,9 @@ const defaultBotNames = {
     "2000": "Grandmaster AI", "2500": "Stockfish GM", "2800": "Stockfish Max"
 };
 
+// 100% Offline Local Piece Support
 const pieceThemeUrls = {
-    "wikipedia": "https://chessboardjs.com/img/chesspieces/wikipedia/{piece}.png",
+    "wikipedia": "/static/img/chesspieces/wikipedia/{piece}.png",
     "cburnett": "https://raw.githubusercontent.com/lichess-org/lila/master/public/piece/cburnett/{piece}.svg",
     "merida": "https://raw.githubusercontent.com/lichess-org/lila/master/public/piece/merida/{piece}.svg"
 };
@@ -248,10 +250,20 @@ window.saveUsername = function() {
     let u = (safeEl('setup-username') || {}).value;
     if (u && u.trim()) localStorage.setItem('chess_username', u.trim());
 };
+
+// Auto-persisting theme switcher with dynamic coordinate styling
 window.applyThemeAndPieces = function() {
-    let theme = (safeEl('setting-board-theme') || {}).value || 'theme-green';
-    document.body.classList.remove('theme-green', 'theme-wood', 'theme-blue', 'theme-dark');
+    let themeSel = safeEl('setting-board-theme');
+    let theme = themeSel ? themeSel.value : 'theme-green';
+    
+    document.body.className = document.body.className.replace(/\btheme-[^\s]+\b/g, '').trim();
     document.body.classList.add(theme);
+    localStorage.setItem('saved_chess_theme', theme);
+
+    let pStyleSel = safeEl('setting-piece-style');
+    let pStyle = pStyleSel ? pStyleSel.value : 'wikipedia';
+    localStorage.setItem('saved_chess_piece_style', pStyle);
+
     renderBoard();
 };
 
@@ -413,7 +425,6 @@ function showPromotionModal(color, toSq, onSelect) {
     let modal = document.createElement('div');
     modal.id = 'promotion-choice-modal';
 
-    // Stop events on modal container from bubbling to the board's drag-and-drop listener
     ['touchstart', 'touchmove', 'touchend', 'touchcancel', 'mousedown', 'mousemove', 'mouseup', 'click'].forEach(evtName => {
         modal.addEventListener(evtName, function(e) {
             e.stopPropagation();
@@ -533,7 +544,7 @@ function showPromotionModal(color, toSq, onSelect) {
 }
 
 // ============================================================================
-// SMOOTH HOLD-TO-ENLARGE & DRAG-AND-DROP CONTROLLER (100% Android Compatible)
+// TOUCH / DRAG-AND-DROP CONTROLLER
 // ============================================================================
 var dragPieceState = {
     active: false,
@@ -1203,4 +1214,19 @@ $(document).ready(function() {
     bindPieceDragAndDropEvents();
     document.body.addEventListener('touchstart', () => getAudioCtx(), { once: true });
     document.body.addEventListener('click', () => getAudioCtx(), { once: true });
+
+    // Restore saved board theme and piece style automatically on startup
+    let savedTheme = localStorage.getItem('saved_chess_theme');
+    if (savedTheme) {
+        let sel = safeEl('setting-board-theme');
+        if (sel) sel.value = savedTheme;
+        document.body.className = document.body.className.replace(/\btheme-[^\s]+\b/g, '').trim();
+        document.body.classList.add(savedTheme);
+    }
+
+    let savedPieces = localStorage.getItem('saved_chess_piece_style');
+    if (savedPieces) {
+        let pSel = safeEl('setting-piece-style');
+        if (pSel) pSel.value = savedPieces;
+    }
 });
