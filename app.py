@@ -23,6 +23,28 @@ if os.path.exists(ZIP_THEMES_PATH) and not os.path.exists(BOARDS_DIR):
         print("[✔] All 10 Chess Board Themes successfully extracted to static/boards/")
     except Exception as e:
         print("[!] Theme extraction error:", e)
+# =========================================================
+# AUTO-DOWNLOAD OFFLINE JS DEPENDENCIES (RUNS ONCE)
+# =========================================================
+import urllib.request
+
+JS_DIR = os.path.join(os.path.abspath('static'), 'js')
+os.makedirs(JS_DIR, exist_ok=True)
+
+deps = {
+    "jquery.min.js": "https://code.jquery.com/jquery-3.5.1.min.js",
+    "chess.min.js": "https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js"
+}
+
+for fname, url in deps.items():
+    fpath = os.path.join(JS_DIR, fname)
+    if not os.path.exists(fpath):
+        try:
+            urllib.request.urlretrieve(url, fpath)
+            print(f"[✔] Downloaded offline dependency: {fname}")
+        except Exception as e:
+            print(f"[!] Could not download {fname}:", e)
+
 
 app = Flask(__name__)
 engine_lock = threading.Lock()
