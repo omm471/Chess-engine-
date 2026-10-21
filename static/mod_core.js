@@ -704,13 +704,18 @@ function parseAndApplyUciMove(uciStr) {
     if (!m) m = game.move(uciStr, { sloppy: true });
     return m;
 }
-
 function executeHumanMove(fromSq, toSq, promoPiece = null) {
     if (!isAnalysisBranchMode && isMatchOver()) return;
 
-    // Check if the current move is a Pawn Promotion
     let movingPiece = game.get(fromSq);
-    let isPromotion = (movingPiece && movingPiece.type === 'p' && (toSq[1] === '8' || toSq[1] === '1'));
+    // Behad accurate promotion check
+    let isPromotion = false;
+    if (movingPiece && movingPiece.type === 'p') {
+        let toRank = toSq.charAt(1);
+        if ((movingPiece.color === 'w' && toRank === '8') || (movingPiece.color === 'b' && toRank === '1')) {
+            isPromotion = true;
+        }
+    }
 
     if (isPromotion && !promoPiece) {
         let legals = game.moves({ square: fromSq, verbose: true });
@@ -719,14 +724,16 @@ function executeHumanMove(fromSq, toSq, promoPiece = null) {
             showPromotionModal(movingPiece.color, function(chosenPiece) {
                 executeHumanMove(fromSq, toSq, chosenPiece);
             });
-            return;
+            return; // Modal show hone ke baad aage ka code roko
         }
     }
 
     let finalPromo = promoPiece || 'q';
     let prevRec = gameHistory[gameHistory.length - 1];
     let moveObj = game.move({ from: fromSq, to: toSq, promotion: finalPromo });
+    
     if (!moveObj) { playSnd('illegal'); return; }
+    
     selectedSquare = null; currentLegalMoves = []; clearArrows();
 
     if (!timerStarted && !isAnalysisBranchMode) { startTimer(); timerStarted = true; }
@@ -734,8 +741,10 @@ function executeHumanMove(fromSq, toSq, promoPiece = null) {
         if (moveObj.color === 'w') whiteTime += whiteIncrement; else blackTime += blackIncrement;
         updateTimer();
     }
+    
     let sndType = detectMoveSoundType(game, moveObj);
     let instantEv = window.computeInstantEvalFromFen ? window.computeInstantEvalFromFen(game.fen()) : { score: 50.0, text: "0.0", cp: 0 };
+    
     gameHistory.push({
         fen: game.fen(), move: { from: moveObj.from, to: moveObj.to }, moveObj: moveObj,
         soundType: sndType,
@@ -743,10 +752,9 @@ function executeHumanMove(fromSq, toSq, promoPiece = null) {
         bestMoveSan: prevRec && prevRec.nextBestSan ? prevRec.nextBestSan : "",
         evalScore: instantEv.score, evalText: instantEv.text, cp: instantEv.cp
     });
+    
     historyIndex = gameHistory.length - 1;
-    let movedIdx = historyIndex;
-
-    processMoveVisuals(moveObj, movedIdx);
+    processMoveVisuals(moveObj, historyIndex);
 
     if (gameMode === 'pvp' && autoFlipPvP && !isAnalysisBranchMode) {
         setTimeout(() => flipBoardUI(), 150);
@@ -757,6 +765,8 @@ function executeHumanMove(fromSq, toSq, promoPiece = null) {
         aiMoveTimerId = setTimeout(makeAiMove, 120);
     }
 }
+
+
 
 function makeAiMove() {
     if (isAnalysisBranchMode || isMatchOver()) return;
