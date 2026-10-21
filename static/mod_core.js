@@ -1,9 +1,8 @@
 /* ============================================================================
-   static/mod_core.js (v100 - Step 2)
-   - Fixed Mobile Touch Drag-and-Drop (No DOM destruction during touchstart)
-   - Captured Pieces Order: Pawn -> Knight -> Bishop -> Rook -> Queen
-   - Seamless Post-Game & History Branching + Winner/Loser King Highlights
-   - Added: Interactive Pawn Promotion Modal (Queen, Knight, Rook, Bishop)
+   static/mod_core.js (v100 - Final Pro Version)
+   - Fixed Mobile Touch Drag-and-Drop
+   - Vertical Chess.com Style Pawn Promotion
+   - Interactive Board Editor (Custom Position Setup like Chessis)
    ============================================================================ */
 
 var game = new Chess();
@@ -373,107 +372,162 @@ function renderBoard() {
 }
 
 // ============================================================================
-// DYNAMIC PROMOTION MODAL HANDLER
+// CHESS.COM STYLE VERTICAL PROMOTION POPUP
 // ============================================================================
-function showPromotionModal(color, onSelect) {
+function showPromotionModal(color, toSq, onSelect) {
     let existing = document.getElementById('promotion-choice-modal');
     if (existing) existing.remove();
+    let oldOverlay = document.getElementById('promotion-cancel-overlay');
+    if (oldOverlay) oldOverlay.remove();
+
+    let boardEl = document.getElementById('board');
+    let sqEl = boardEl.querySelector(`[data-square="${toSq}"]`);
+    if (!sqEl) return;
+
+    // Invisible Overlay just to cancel if user clicks outside
+    let cancelOverlay = document.createElement('div');
+    cancelOverlay.id = 'promotion-cancel-overlay';
+    cancelOverlay.style.position = 'fixed';
+    cancelOverlay.style.inset = '0';
+    cancelOverlay.style.zIndex = '99998';
+    cancelOverlay.onclick = (e) => {
+        e.stopPropagation();
+        cancelOverlay.remove();
+        let m = document.getElementById('promotion-choice-modal');
+        if (m) m.remove();
+        selectedSquare = null; currentLegalMoves = []; renderBoard();
+    };
+    document.body.appendChild(cancelOverlay);
 
     let modal = document.createElement('div');
     modal.id = 'promotion-choice-modal';
-    modal.style.position = 'fixed';
-    modal.style.inset = '0';
-    modal.style.background = 'rgba(0, 0, 0, 0.78)';
-    modal.style.display = 'flex';
-    modal.style.justifyContent = 'center';
-    modal.style.alignItems = 'center';
+    modal.style.position = 'absolute';
+    // Match exactly 1 square width and 4 squares height
+    modal.style.width = sqEl.clientWidth + 'px'; 
+    modal.style.height = (sqEl.clientHeight * 4) + 'px'; 
+    modal.style.background = '#fff';
+    modal.style.boxShadow = '0 8px 25px rgba(0,0,0,0.7)';
     modal.style.zIndex = '99999';
+    modal.style.display = 'flex';
+    modal.style.flexDirection = 'column';
+    modal.style.borderRadius = '5px';
+    modal.style.overflow = 'hidden';
 
-    let box = document.createElement('div');
-    box.style.background = '#21201d';
-    box.style.border = '2px solid #81b64c';
-    box.style.borderRadius = '10px';
-    box.style.padding = '14px 16px';
-    box.style.boxShadow = '0 10px 30px rgba(0,0,0,0.9)';
-    box.style.textAlign = 'center';
+    // Align exactly over the target square
+    let topPos = sqEl.offsetTop;
+    let leftPos = sqEl.offsetLeft;
 
-    let title = document.createElement('div');
-    title.innerText = 'Promote Pawn To:';
-    title.style.color = '#fff';
-    title.style.fontSize = '14px';
-    title.style.fontWeight = 'bold';
-    title.style.marginBottom = '12px';
-    box.appendChild(title);
+    // If pushing pawn to the top, menu drops down. If pushing to bottom, menu pops up.
+    if (topPos > boardEl.clientHeight / 2) {
+        modal.style.top = (topPos - (sqEl.clientHeight * 3)) + 'px'; 
+    } else {
+        modal.style.top = topPos + 'px';
+    }
+    modal.style.left = leftPos + 'px';
 
-    let row = document.createElement('div');
-    row.style.display = 'flex';
-    row.style.gap = '10px';
-    row.style.justifyContent = 'center';
-
-    const pieces = [
-        { type: 'q', name: 'Queen' },
-        { type: 'n', name: 'Knight' },
-        { type: 'r', name: 'Rook' },
-        { type: 'b', name: 'Bishop' }
-    ];
-
+    const pieces = ['q', 'n', 'r', 'b'];
     pieces.forEach(p => {
         let btn = document.createElement('div');
-        btn.style.width = '54px';
-        btn.style.height = '54px';
-        btn.style.background = '#161512';
-        btn.style.border = '1.5px solid #363431';
-        btn.style.borderRadius = '8px';
+        btn.style.width = '100%';
+        btn.style.height = '25%';
         btn.style.cursor = 'pointer';
-        btn.style.display = 'flex';
-        btn.style.alignItems = 'center';
-        btn.style.justifyContent = 'center';
-        btn.style.transition = 'transform 0.1s, border-color 0.1s';
-
-        let img = document.createElement('div');
-        img.style.width = '44px';
-        img.style.height = '44px';
-        img.style.backgroundImage = `url('${getPieceImageUrl(color, p.type)}')`;
-        img.style.backgroundSize = 'contain';
-        img.style.backgroundRepeat = 'no-repeat';
-        img.style.backgroundPosition = 'center';
-
-        btn.appendChild(img);
-
-        btn.onmouseenter = () => { btn.style.borderColor = '#81b64c'; btn.style.transform = 'scale(1.1)'; };
-        btn.onmouseleave = () => { btn.style.borderColor = '#363431'; btn.style.transform = 'scale(1)'; };
+        btn.style.backgroundImage = `url('${getPieceImageUrl(color, p)}')`;
+        btn.style.backgroundSize = 'contain';
+        btn.style.backgroundRepeat = 'no-repeat';
+        btn.style.backgroundPosition = 'center';
+        
+        let isLightSq = sqEl.classList.contains('light');
+        btn.style.backgroundColor = isLightSq ? '#ebecd0' : '#739552'; 
+        
+        btn.onmouseenter = () => btn.style.backgroundColor = '#f5f682';
+        btn.onmouseleave = () => btn.style.backgroundColor = isLightSq ? '#ebecd0' : '#739552';
 
         btn.onclick = (e) => {
             e.stopPropagation();
             modal.remove();
-            onSelect(p.type);
+            cancelOverlay.remove();
+            onSelect(p);
         };
-
-        row.appendChild(btn);
+        modal.appendChild(btn);
     });
 
-    box.appendChild(row);
-
-    modal.onclick = () => {
-        modal.remove();
-        selectedSquare = null;
-        currentLegalMoves = [];
-        renderBoard();
-    };
-
-    modal.appendChild(box);
-    document.body.appendChild(modal);
+    boardEl.appendChild(modal);
 }
 
 // ============================================================================
-// SMOOTH HOLD-TO-ENLARGE & DRAG-AND-DROP CONTROLLER (100% Android Compatible)
+// NEW: CHESSIS STYLE BOARD EDITOR (POSITION SETUP)
 // ============================================================================
-var dragPieceState = {
-    active: false,
-    fromSq: null,
-    currentSq: null,
-    isPremoveDrag: false
+var isBoardEditorMode = false;
+var selectedEditorPiece = null;
+
+window.openBoardEditor = function() {
+    isBoardEditorMode = true;
+    stopAllActiveMatchProcesses();
+    $('#board-editor-palette').show();
+    $('.nav-row, .front-board-bar, #formal-main-bar').hide();
+    $('#status').text("Editor Mode: Select piece below, tap board to place.");
+    $('#editor-fen-input').val(game.fen());
+    selectedSquare = null; currentLegalMoves = []; clearArrows();
+    renderBoard();
 };
+
+window.closeBoardEditor = function() {
+    isBoardEditorMode = false;
+    $('#board-editor-palette').hide();
+    $('.nav-row, .front-board-bar, #formal-main-bar').css('display', '');
+    goToStart();
+};
+
+window.selEdP = function(pieceStr, el) {
+    selectedEditorPiece = pieceStr;
+    $('.epc').css('border-color', 'transparent').css('background-color', '');
+    if(pieceStr === 'trash') {
+        $(el).css('border-color', '#fff').css('background-color', '#ff2222');
+    } else {
+        $(el).css('border-color', '#000').css('background-color', 'rgba(0,0,0,0.15)');
+    }
+};
+
+window.clearEditorBoard = function() {
+    game.clear();
+    $('#editor-fen-input').val(game.fen());
+    renderBoard();
+};
+
+window.resetEditorBoard = function() {
+    game.reset();
+    $('#editor-fen-input').val(game.fen());
+    renderBoard();
+};
+
+window.loadEditorFen = function() {
+    let fen = $('#editor-fen-input').val().trim();
+    let res = game.load(fen);
+    if(!res) { playSnd('illegal'); alert("Invalid FEN Format!"); }
+    renderBoard();
+};
+
+window.applyBoardEditorAndPlay = function() {
+    let fen = game.fen();
+    isBoardEditorMode = false;
+    $('#board-editor-palette').hide();
+    $('.nav-row, .front-board-bar, #formal-main-bar').css('display', '');
+    
+    stopAllActiveMatchProcesses();
+    gameHistory = [{
+        fen: fen, move: null, moveObj: null, soundType: 'move',
+        evalScore: 50.0, evalText: "0.0", cp: 0, bestMoveUci: "", bestMoveSan: ""
+    }];
+    historyIndex = 0;
+    isAnalysisBranchMode = true; 
+    updateEvalBar(0); updateMaterial(fen); renderBoard(); updateStatus();
+    $('#status').text("Playing from custom position (Analysis Mode)");
+};
+
+// ============================================================================
+// TOUCH / MOUSE CONTROLS
+// ============================================================================
+var dragPieceState = { active: false, fromSq: null, currentSq: null, isPremoveDrag: false };
 var lastPieceTouchTime = 0;
 
 function getBoardSquareFromPoint(clientX, clientY) {
@@ -530,6 +584,23 @@ function ensureBranchReadyForMove() {
 function handleBoardPointerDown(sq, clientX, clientY) {
     if (drawModeEnabled || !sq) return false;
     if (window.clearCustomAnnotations) window.clearCustomAnnotations();
+
+    // Editor Logic Handled Here
+    if (isBoardEditorMode) {
+        if (selectedEditorPiece) {
+            if (selectedEditorPiece === 'trash') {
+                game.remove(sq);
+                playSnd('capture');
+            } else {
+                let parts = selectedEditorPiece.split('-');
+                game.put({ type: parts[1], color: parts[0] }, sq);
+                playSnd('move');
+            }
+            $('#editor-fen-input').val(game.fen());
+            renderBoard();
+        }
+        return false;
+    }
 
     if (!ensureBranchReadyForMove()) return false;
     if (isAutoBotMode() && !isAnalysisBranchMode) return false;
@@ -593,7 +664,7 @@ function handleBoardPointerDown(sq, clientX, clientY) {
 }
 
 function handleBoardPointerMove(clientX, clientY) {
-    if (!dragPieceState.active || drawModeEnabled) return;
+    if (!dragPieceState.active || drawModeEnabled || isBoardEditorMode) return;
     showGhostPiece(null, clientX, clientY);
     let hoverSq = getBoardSquareFromPoint(clientX, clientY);
     if (hoverSq !== dragPieceState.currentSq) {
@@ -604,7 +675,7 @@ function handleBoardPointerMove(clientX, clientY) {
 }
 
 function handleBoardPointerUp(clientX, clientY) {
-    if (!dragPieceState.active) return;
+    if (!dragPieceState.active || isBoardEditorMode) return;
     let dropSq = getBoardSquareFromPoint(clientX, clientY) || dragPieceState.currentSq;
     let fromSq = dragPieceState.fromSq;
     let wasPremove = dragPieceState.isPremoveDrag;
@@ -704,11 +775,11 @@ function parseAndApplyUciMove(uciStr) {
     if (!m) m = game.move(uciStr, { sloppy: true });
     return m;
 }
+
 function executeHumanMove(fromSq, toSq, promoPiece = null) {
     if (!isAnalysisBranchMode && isMatchOver()) return;
 
     let movingPiece = game.get(fromSq);
-    // Behad accurate promotion check
     let isPromotion = false;
     if (movingPiece && movingPiece.type === 'p') {
         let toRank = toSq.charAt(1);
@@ -721,10 +792,10 @@ function executeHumanMove(fromSq, toSq, promoPiece = null) {
         let legals = game.moves({ square: fromSq, verbose: true });
         let isValid = legals.some(m => m.to === toSq);
         if (isValid) {
-            showPromotionModal(movingPiece.color, function(chosenPiece) {
+            showPromotionModal(movingPiece.color, toSq, function(chosenPiece) {
                 executeHumanMove(fromSq, toSq, chosenPiece);
             });
-            return; // Modal show hone ke baad aage ka code roko
+            return; 
         }
     }
 
@@ -765,8 +836,6 @@ function executeHumanMove(fromSq, toSq, promoPiece = null) {
         aiMoveTimerId = setTimeout(makeAiMove, 120);
     }
 }
-
-
 
 function makeAiMove() {
     if (isAnalysisBranchMode || isMatchOver()) return;
@@ -1133,9 +1202,50 @@ function showAnalysisStatus() {
     }
 }
 
+// INJECT HTML FOR BOARD EDITOR ON LOAD
 $(document).ready(function() {
     preloadAllSounds();
     bindPieceDragAndDropEvents();
     document.body.addEventListener('touchstart', () => getAudioCtx(), { once: true });
     document.body.addEventListener('click', () => getAudioCtx(), { once: true });
+
+    let editorHtml = `
+    <div id="board-editor-palette" style="display: none; background: #eac53e; padding: 6px; border-radius: 6px; border: 2px solid #b3911b; margin-top: 5px; margin-bottom: 5px;">
+        <div style="display: flex; gap: 4px; justify-content: center; margin-bottom: 5px; flex-wrap: wrap;">
+            <div class="epc" data-p="trash" onclick="selEdP('trash', this)" style="width:34px;height:34px;background:#cc3333;color:#fff;display:flex;align-items:center;justify-content:center;font-size:22px;cursor:pointer;border:2px solid transparent;border-radius:4px;box-shadow:0 2px 4px rgba(0,0,0,0.3);">🗑</div>
+            <img src="${getPieceImageUrl('w', 'k')}" class="epc" onclick="selEdP('w-k', this)" style="width:34px;height:34px;cursor:pointer;border:2px solid transparent;border-radius:4px;">
+            <img src="${getPieceImageUrl('w', 'q')}" class="epc" onclick="selEdP('w-q', this)" style="width:34px;height:34px;cursor:pointer;border:2px solid transparent;border-radius:4px;">
+            <img src="${getPieceImageUrl('w', 'r')}" class="epc" onclick="selEdP('w-r', this)" style="width:34px;height:34px;cursor:pointer;border:2px solid transparent;border-radius:4px;">
+            <img src="${getPieceImageUrl('w', 'b')}" class="epc" onclick="selEdP('w-b', this)" style="width:34px;height:34px;cursor:pointer;border:2px solid transparent;border-radius:4px;">
+            <img src="${getPieceImageUrl('w', 'n')}" class="epc" onclick="selEdP('w-n', this)" style="width:34px;height:34px;cursor:pointer;border:2px solid transparent;border-radius:4px;">
+            <img src="${getPieceImageUrl('w', 'p')}" class="epc" onclick="selEdP('w-p', this)" style="width:34px;height:34px;cursor:pointer;border:2px solid transparent;border-radius:4px;">
+            
+            <img src="${getPieceImageUrl('b', 'k')}" class="epc" onclick="selEdP('b-k', this)" style="width:34px;height:34px;cursor:pointer;border:2px solid transparent;border-radius:4px;">
+            <img src="${getPieceImageUrl('b', 'q')}" class="epc" onclick="selEdP('b-q', this)" style="width:34px;height:34px;cursor:pointer;border:2px solid transparent;border-radius:4px;">
+            <img src="${getPieceImageUrl('b', 'r')}" class="epc" onclick="selEdP('b-r', this)" style="width:34px;height:34px;cursor:pointer;border:2px solid transparent;border-radius:4px;">
+            <img src="${getPieceImageUrl('b', 'b')}" class="epc" onclick="selEdP('b-b', this)" style="width:34px;height:34px;cursor:pointer;border:2px solid transparent;border-radius:4px;">
+            <img src="${getPieceImageUrl('b', 'n')}" class="epc" onclick="selEdP('b-n', this)" style="width:34px;height:34px;cursor:pointer;border:2px solid transparent;border-radius:4px;">
+            <img src="${getPieceImageUrl('b', 'p')}" class="epc" onclick="selEdP('b-p', this)" style="width:34px;height:34px;cursor:pointer;border:2px solid transparent;border-radius:4px;">
+        </div>
+        <div style="display:flex; gap:4px; margin-bottom: 5px;">
+            <button onclick="resetEditorBoard()" style="background:#4b7399; padding:4px 8px; color:#fff; border:none; border-radius:3px; font-weight:bold; cursor:pointer;">↻ Reset</button>
+            <button onclick="clearEditorBoard()" style="background:#b33430; padding:4px 8px; color:#fff; border:none; border-radius:3px; font-weight:bold; cursor:pointer;">✕ Clear</button>
+        </div>
+        <div style="display:flex; gap:4px; margin-bottom: 5px;">
+            <div style="background:#282623; border-radius:4px; display:flex; flex:1; align-items:center; padding-left:5px;">
+                <span style="color:#5c9ded; font-size:16px;">💾</span>
+                <input type="text" id="editor-fen-input" style="flex:1; background:transparent; color:#fff; padding:6px; font-size:10px; border:none; outline:none;" value="${game.fen()}">
+            </div>
+            <button onclick="loadEditorFen()" style="background:#3b82f6; padding:6px 10px; color:#fff; border:none; border-radius:3px; font-weight:bold; cursor:pointer;">Load</button>
+        </div>
+        <div style="display:flex; gap:6px;">
+            <button onclick="closeBoardEditor()" style="flex:1; background:#666; padding:8px; color:#fff; border:none; border-radius:4px; font-weight:bold; cursor:pointer;">Cancel</button>
+            <button onclick="applyBoardEditorAndPlay()" style="flex:1; background:#2563eb; padding:8px; color:#fff; border:none; border-radius:4px; font-weight:bold; cursor:pointer;">Done / Play</button>
+        </div>
+    </div>`;
+    
+    $('.bottom-controls-panel').prepend(editorHtml);
+    
+    $('#formal-main-bar').css('grid-template-columns', 'repeat(6, 1fr)');
+    $('#formal-main-bar').append('<button id="btn-board-editor" class="formal-btn" style="background:#eac53e; border-color:#b3911b; color:#000;" onclick="openBoardEditor()">Editor</button>');
 });
