@@ -3,7 +3,7 @@
    - Fixed Mobile Touch Drag-and-Drop (No DOM destruction during touchstart)
    - Captured Pieces Order: Pawn -> Knight -> Bishop -> Rook -> Queen
    - Seamless Post-Game & History Branching + Winner/Loser King Highlights
-   - Added: Chess.com Style Vertical Pawn Promotion (Square Aligned)
+   - Chess.com Style Vertical Pawn Promotion (Touch-Optimized)
    ============================================================================ */
 
 var game = new Chess();
@@ -373,7 +373,7 @@ function renderBoard() {
 }
 
 // ============================================================================
-// CHESS.COM STYLE VERTICAL PROMOTION POPUP
+// CHESS.COM STYLE VERTICAL PROMOTION POPUP (TOUCH BUG FIXED)
 // ============================================================================
 function showPromotionModal(color, toSq, onSelect) {
     let existing = document.getElementById('promotion-choice-modal');
@@ -385,21 +385,41 @@ function showPromotionModal(color, toSq, onSelect) {
     let sqEl = boardEl ? boardEl.querySelector(`[data-square="${toSq}"]`) : null;
     if (!boardEl || !sqEl) return;
 
+    let handled = false;
+
     let cancelOverlay = document.createElement('div');
     cancelOverlay.id = 'promotion-cancel-overlay';
     cancelOverlay.style.cssText = 'position:fixed;inset:0;z-index:99998;background:rgba(0,0,0,0.18);';
-    cancelOverlay.onclick = function(e) {
-        e.stopPropagation();
-        cancelOverlay.remove();
+
+    function doCancel(e) {
+        if (e) {
+            e.preventDefault();
+            e.stopPropagation();
+        }
+        if (handled) return;
+        handled = true;
         let m = document.getElementById('promotion-choice-modal');
         if (m) m.remove();
-        selectedSquare = null; currentLegalMoves = []; renderBoard();
-    };
+        cancelOverlay.remove();
+        selectedSquare = null;
+        currentLegalMoves = [];
+        renderBoard();
+    }
+
+    cancelOverlay.addEventListener('touchend', doCancel, { passive: false });
+    cancelOverlay.addEventListener('click', doCancel);
     document.body.appendChild(cancelOverlay);
 
     let modal = document.createElement('div');
     modal.id = 'promotion-choice-modal';
-    
+
+    // Stop events on modal container from bubbling to the board's drag-and-drop listener
+    ['touchstart', 'touchmove', 'touchend', 'touchcancel', 'mousedown', 'mousemove', 'mouseup', 'click'].forEach(evtName => {
+        modal.addEventListener(evtName, function(e) {
+            e.stopPropagation();
+        }, { passive: false });
+    });
+
     let sqW = sqEl.clientWidth || 40;
     let sqH = sqEl.clientHeight || 40;
     let cancelH = Math.round(sqH * 0.45);
@@ -426,6 +446,18 @@ function showPromotionModal(color, toSq, onSelect) {
     }
     modal.style.left = leftPos + 'px';
 
+    function doSelect(p, e) {
+        if (e) {
+            e.preventDefault();
+            e.stopPropagation();
+        }
+        if (handled) return;
+        handled = true;
+        modal.remove();
+        cancelOverlay.remove();
+        onSelect(p);
+    }
+
     const pieces = ['q', 'n', 'r', 'b'];
     pieces.forEach(p => {
         let btn = document.createElement('div');
@@ -445,18 +477,25 @@ function showPromotionModal(color, toSq, onSelect) {
         img.style.backgroundSize = 'contain';
         img.style.backgroundRepeat = 'no-repeat';
         img.style.backgroundPosition = 'center';
+        img.style.pointerEvents = 'none';
 
         btn.appendChild(img);
 
         btn.onmouseenter = () => btn.style.background = '#eaeaea';
         btn.onmouseleave = () => btn.style.background = '#ffffff';
 
-        btn.onclick = (e) => {
+        btn.addEventListener('touchstart', function(e) {
             e.stopPropagation();
-            modal.remove();
-            cancelOverlay.remove();
-            onSelect(p);
-        };
+        }, { passive: false });
+
+        btn.addEventListener('touchend', function(e) {
+            doSelect(p, e);
+        }, { passive: false });
+
+        btn.addEventListener('click', function(e) {
+            doSelect(p, e);
+        });
+
         modal.appendChild(btn);
     });
 
@@ -470,21 +509,24 @@ function showPromotionModal(color, toSq, onSelect) {
     cancelBtn.style.justifyContent = 'center';
     cancelBtn.style.cursor = 'pointer';
     cancelBtn.style.color = '#777777';
-    cancelBtn.style.fontSize = '13px';
+    cancelBtn.style.fontSize = '14px';
     cancelBtn.style.fontWeight = 'bold';
     cancelBtn.innerText = '✕';
 
     cancelBtn.onmouseenter = () => cancelBtn.style.background = '#e4e4e4';
     cancelBtn.onmouseleave = () => cancelBtn.style.background = '#f2f2f2';
 
-    cancelBtn.onclick = (e) => {
+    cancelBtn.addEventListener('touchstart', function(e) {
         e.stopPropagation();
-        modal.remove();
-        cancelOverlay.remove();
-        selectedSquare = null;
-        currentLegalMoves = [];
-        renderBoard();
-    };
+    }, { passive: false });
+
+    cancelBtn.addEventListener('touchend', function(e) {
+        doCancel(e);
+    }, { passive: false });
+
+    cancelBtn.addEventListener('click', function(e) {
+        doCancel(e);
+    });
 
     modal.appendChild(cancelBtn);
     boardEl.appendChild(modal);
@@ -554,6 +596,7 @@ function ensureBranchReadyForMove() {
 
 function handleBoardPointerDown(sq, clientX, clientY) {
     if (drawModeEnabled || !sq) return false;
+    if (document.getElementById('promotion-choice-modal')) return false;
     if (window.clearCustomAnnotations) window.clearCustomAnnotations();
 
     if (!ensureBranchReadyForMove()) return false;
@@ -663,6 +706,7 @@ function bindPieceDragAndDropEvents() {
     boardEl.addEventListener('touchstart', function(e) {
         getAudioCtx();
         if (drawModeEnabled) return;
+        if (document.getElementById('promotion-choice-modal')) return;
         if (e.touches && e.touches.length === 1) {
             lastPieceTouchTime = Date.now();
             let t = e.touches[0];
@@ -699,6 +743,7 @@ function bindPieceDragAndDropEvents() {
     boardEl.addEventListener('mousedown', function(e) {
         if (Date.now() - lastPieceTouchTime < 600) return;
         if (drawModeEnabled || e.button !== 0) return;
+        if (document.getElementById('promotion-choice-modal')) return;
         getAudioCtx();
         let sq = getBoardSquareFromPoint(e.clientX, e.clientY);
         if (sq) {
