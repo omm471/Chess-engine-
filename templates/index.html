@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Chess AI Pro</title>
     <link rel="stylesheet" href="/static/style.css?v=101">
-    <style>
+        <style>
         body {
             background: #161512 !important;
             color: #d0d0d0 !important;
@@ -46,7 +46,6 @@
         .square.light .coord-rank, .square.light .coord-file { color: rgba(0, 0, 0, 0.58) !important; }
         .square.dark .coord-rank, .square.dark .coord-file { color: rgba(255, 255, 255, 0.78) !important; }
 
-        .premove-sq { background-color: rgba(235, 64, 52, 0.55) !important; box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.45) !important; }
         .premove-step-badge {
             position: absolute; bottom: 2px; left: 2px; background: #e63946; color: #fff;
             font-size: 9px; font-weight: 800; padding: 1px 4px; border-radius: 3px; z-index: 9; pointer-events: none;
@@ -72,7 +71,7 @@
         .dragging-source-piece { opacity: 0 !important; visibility: hidden !important; }
         .drag-target-hover { box-shadow: inset 0 0 0 3px rgba(255, 255, 255, 0.82) !important; }
 
-        /* Winner King & Loser King Highlights (Chess.com Clean Style) */
+        /* Winner King & Loser King Highlights */
         .king-loser-sq {
             background: radial-gradient(circle, rgba(220, 53, 49, 0.88) 0%, rgba(145, 20, 20, 0.95) 100%) !important;
             box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.55) !important;
@@ -183,31 +182,16 @@
         .blunder-list { max-height: 150px; overflow-y: auto; display: flex; flex-direction: column; gap: 5px; margin-top: 5px; }
         .blunder-item { background: #181715; border: 1px solid #2e2c29; border-left: 3px solid #ca3431; padding: 6px 8px; border-radius: 4px; font-size: 11px; display: flex; justify-content: space-between; align-items: center; cursor: pointer; text-align: left; }
 
-        /* Dynamic Classic Saved Games Archive Cards */
-        .archive-card {
-            background: #1a1917;
-            border: 1px solid #32302c;
-            border-radius: 7px;
-            padding: 10px 11px;
-            margin-bottom: 8px;
-            text-align: left;
-            transition: border-color 0.15s;
-        }
+        .archive-card { background: #1a1917; border: 1px solid #32302c; border-radius: 7px; padding: 10px 11px; margin-bottom: 8px; text-align: left; transition: border-color 0.15s; }
         .archive-card:hover { border-color: #81b64c; }
         .archive-top-row { display: flex; justify-content: space-between; align-items: center; gap: 6px; margin-bottom: 5px; }
         .archive-players { font-size: 12px; font-weight: 700; color: #fff; line-height: 1.25; }
-        .archive-badge {
-            font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 4px;
-            background: #2b2925; color: #f0c15c; white-space: nowrap;
-        }
+        .archive-badge { font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 4px; background: #2b2925; color: #f0c15c; white-space: nowrap; }
         .archive-meta { font-size: 10.5px; color: #9e9c98; margin-bottom: 6px; display: flex; justify-content: space-between; align-items: center; }
         .archive-acc-pills { display: flex; gap: 6px; margin-bottom: 7px; font-size: 10px; }
         .archive-acc-pill { background: #24221f; border: 1px solid #363430; padding: 2px 7px; border-radius: 4px; color: #d0d0d0; }
         .archive-actions { display: flex; gap: 6px; }
-        .archive-btn {
-            flex: 1; padding: 6px 8px; font-size: 11px; font-weight: 700;
-            border-radius: 4px; border: 1px solid transparent; cursor: pointer; text-align: center;
-        }
+        .archive-btn { flex: 1; padding: 6px 8px; font-size: 11px; font-weight: 700; border-radius: 4px; border: 1px solid transparent; cursor: pointer; text-align: center; }
         .archive-btn-load { background: #81b64c; color: #fff; }
         .archive-btn-report { background: #252c36; border-color: #5c9ded; color: #90c2ff; }
         .archive-btn-pgn { background: #2c2a27; border-color: #423f3b; color: #ddd; }
@@ -216,32 +200,51 @@
         .progress-bar-bg { width: 100%; height: 6px; background: #141311; border-radius: 3px; overflow: hidden; }
         .progress-bar-fill { width: 0%; height: 100%; background: #81b64c; transition: width 0.2s; }
         .eval-graph-canvas { display: block; width: 100%; cursor: pointer; background: #181715; border-radius: 4px; }
-        body.blindfold-mode .piece { background-image: none !important; background-color: rgba(129, 182, 76, 0.35) !important; border: 2px dashed rgba(255,255,255,0.65) !important; border-radius: 50% !important; width: 28px !important; height: 28px !important; margin: 6px !important; }
+        
+        /* ------------------------------------------------------------------
+           ALIGNMENT FIX FOR SQUARE GRID (Width/Height set to 100%)
+           ------------------------------------------------------------------ */
+        .square {
+            position: relative;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            width: 100% !important;   /* <--- Fixed Alignment */
+            height: 100% !important;  /* <--- Fixed Alignment */
+            font-size: 32px;
+            cursor: pointer;
+        }
 
-        /* ==========================================================================
-           10 OFFLINE CUSTOM BOARD THEMES (Loaded from static/boards/a.png to j.png)
-           ========================================================================== */
-        body.theme-board-a #board { background-image: url('/static/boards/a.png') !important; background-size: 100% 100% !important; }
-        body.theme-board-b #board { background-image: url('/static/boards/b.png') !important; background-size: 100% 100% !important; }
-        body.theme-board-c #board { background-image: url('/static/boards/c.png') !important; background-size: 100% 100% !important; }
-        body.theme-board-d #board { background-image: url('/static/boards/d.png') !important; background-size: 100% 100% !important; }
-        body.theme-board-e #board { background-image: url('/static/boards/e.png') !important; background-size: 100% 100% !important; }
-        body.theme-board-f #board { background-image: url('/static/boards/f.png') !important; background-size: 100% 100% !important; }
-        body.theme-board-g #board { background-image: url('/static/boards/g.png') !important; background-size: 100% 100% !important; }
-        body.theme-board-h #board { background-image: url('/static/boards/h.png') !important; background-size: 100% 100% !important; }
-        body.theme-board-i #board { background-image: url('/static/boards/i.png') !important; background-size: 100% 100% !important; }
-        body.theme-board-j #board { background-image: url('/static/boards/j.png') !important; background-size: 100% 100% !important; }
+        /* ------------------------------------------------------------------
+           10 OFFLINE CUSTOM BOARD THEMES 
+           ------------------------------------------------------------------ */
+        body.theme-board-a #board { background-image: url('/static/boards/a.png') !important; background-size: cover !important; background-position: center !important; }
+        body.theme-board-b #board { background-image: url('/static/boards/b.png') !important; background-size: cover !important; background-position: center !important; }
+        body.theme-board-c #board { background-image: url('/static/boards/c.png') !important; background-size: cover !important; background-position: center !important; }
+        body.theme-board-d #board { background-image: url('/static/boards/d.png') !important; background-size: cover !important; background-position: center !important; }
+        body.theme-board-e #board { background-image: url('/static/boards/e.png') !important; background-size: cover !important; background-position: center !important; }
+        body.theme-board-f #board { background-image: url('/static/boards/f.png') !important; background-size: cover !important; background-position: center !important; }
+        body.theme-board-g #board { background-image: url('/static/boards/g.png') !important; background-size: cover !important; background-position: center !important; }
+        body.theme-board-h #board { background-image: url('/static/boards/h.png') !important; background-size: cover !important; background-position: center !important; }
+        body.theme-board-i #board { background-image: url('/static/boards/i.png') !important; background-size: cover !important; background-position: center !important; }
+        body.theme-board-j #board { background-image: url('/static/boards/j.png') !important; background-size: cover !important; background-position: center !important; }
 
-        /* Make squares transparent when custom board texture is active */
-        body[class*="theme-board-"] .square.light,
-        body[class*="theme-board-"] .square.dark {
+        /* Make standard light/dark background colors transparent ONLY for offline custom themes */
+        body[class*="theme-board-"] .square.light:not(.selected):not(.last-move):not(.premove-sq):not(.highlight-check),
+        body[class*="theme-board-"] .square.dark:not(.selected):not(.last-move):not(.premove-sq):not(.highlight-check) {
             background-color: transparent !important;
         }
+
+        /* RESTORE HIGHLIGHT COLORS FOR OFFLINE THEMES (Yellow, Red) */
+        body[class*="theme-board-"] .square.selected { background-color: rgba(245, 246, 130, 0.8) !important; }
+        body[class*="theme-board-"] .square.last-move { background-color: rgba(245, 246, 130, 0.55) !important; }
+        body[class*="theme-board-"] .square.premove-sq { background-color: rgba(235, 64, 52, 0.55) !important; }
+        body[class*="theme-board-"] .square.highlight-check { background-color: rgba(235, 40, 40, 0.85) !important; }
 
         /* High-contrast notation coordinates for all custom board textures */
         body[class*="theme-board-"] .square.light .coord-rank,
         body[class*="theme-board-"] .square.light .coord-file {
-            color: rgba(0, 0, 0, 0.72) !important;
+            color: rgba(0, 0, 0, 0.75) !important;
             font-weight: 800 !important;
             text-shadow: 0 0 2px rgba(255, 255, 255, 0.8) !important;
         }
