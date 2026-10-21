@@ -8,8 +8,21 @@ import subprocess
 import threading
 import chess
 import chess.engine
+import zipfile
 from datetime import datetime
 from flask import Flask, render_template, request, jsonify, send_from_directory
+
+ZIP_THEMES_PATH = os.path.join(os.path.abspath('static'), 'chessthemes.zip')
+BOARDS_DIR = os.path.join(os.path.abspath('static'), 'boards')
+
+if os.path.exists(ZIP_THEMES_PATH) and not os.path.exists(BOARDS_DIR):
+    try:
+        os.makedirs(BOARDS_DIR, exist_ok=True)
+        with zipfile.ZipFile(ZIP_THEMES_PATH, 'r') as zf:
+            zf.extractall(BOARDS_DIR)
+        print("[✔] All 10 Chess Board Themes successfully extracted to static/boards/")
+    except Exception as e:
+        print("[!] Theme extraction error:", e)
 
 app = Flask(__name__)
 engine_lock = threading.Lock()
