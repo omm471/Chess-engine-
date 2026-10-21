@@ -217,6 +217,40 @@
         .progress-bar-fill { width: 0%; height: 100%; background: #81b64c; transition: width 0.2s; }
         .eval-graph-canvas { display: block; width: 100%; cursor: pointer; background: #181715; border-radius: 4px; }
         body.blindfold-mode .piece { background-image: none !important; background-color: rgba(129, 182, 76, 0.35) !important; border: 2px dashed rgba(255,255,255,0.65) !important; border-radius: 50% !important; width: 28px !important; height: 28px !important; margin: 6px !important; }
+
+        /* ==========================================================================
+           10 OFFLINE CUSTOM BOARD THEMES (Loaded from static/boards/a.png to j.png)
+           ========================================================================== */
+        body.theme-board-a #board { background-image: url('/static/boards/a.png') !important; background-size: 100% 100% !important; }
+        body.theme-board-b #board { background-image: url('/static/boards/b.png') !important; background-size: 100% 100% !important; }
+        body.theme-board-c #board { background-image: url('/static/boards/c.png') !important; background-size: 100% 100% !important; }
+        body.theme-board-d #board { background-image: url('/static/boards/d.png') !important; background-size: 100% 100% !important; }
+        body.theme-board-e #board { background-image: url('/static/boards/e.png') !important; background-size: 100% 100% !important; }
+        body.theme-board-f #board { background-image: url('/static/boards/f.png') !important; background-size: 100% 100% !important; }
+        body.theme-board-g #board { background-image: url('/static/boards/g.png') !important; background-size: 100% 100% !important; }
+        body.theme-board-h #board { background-image: url('/static/boards/h.png') !important; background-size: 100% 100% !important; }
+        body.theme-board-i #board { background-image: url('/static/boards/i.png') !important; background-size: 100% 100% !important; }
+        body.theme-board-j #board { background-image: url('/static/boards/j.png') !important; background-size: 100% 100% !important; }
+
+        /* Make squares transparent when custom board texture is active */
+        body[class*="theme-board-"] .square.light,
+        body[class*="theme-board-"] .square.dark {
+            background-color: transparent !important;
+        }
+
+        /* High-contrast notation coordinates for all custom board textures */
+        body[class*="theme-board-"] .square.light .coord-rank,
+        body[class*="theme-board-"] .square.light .coord-file {
+            color: rgba(0, 0, 0, 0.72) !important;
+            font-weight: 800 !important;
+            text-shadow: 0 0 2px rgba(255, 255, 255, 0.8) !important;
+        }
+        body[class*="theme-board-"] .square.dark .coord-rank,
+        body[class*="theme-board-"] .square.dark .coord-file {
+            color: rgba(255, 255, 255, 0.90) !important;
+            font-weight: 800 !important;
+            text-shadow: 0 0 2px rgba(0, 0, 0, 0.8) !important;
+        }
     </style>
 </head>
 <body class="theme-green">
@@ -533,7 +567,22 @@
 
             <div class="chessis-sec-title">Board, Audio & Optional Helpers</div>
             <div class="chessis-row"><div class="chessis-row-title">Board Theme</div>
-                <select id="setting-board-theme" style="width:130px;" onchange="applyThemeAndPieces()"><option value="theme-green" selected>Classic Green</option><option value="theme-wood">Classic Wood</option><option value="theme-blue">Icy Sea Blue</option><option value="theme-dark">Dark Slate</option></select>
+                <select id="setting-board-theme" style="width:150px;" onchange="applyThemeAndPieces()">
+                    <option value="theme-green" selected>Classic Green</option>
+                    <option value="theme-wood">Classic Wood</option>
+                    <option value="theme-blue">Icy Sea Blue</option>
+                    <option value="theme-dark">Dark Slate</option>
+                    <option value="theme-board-a">Theme A (Warm Wood)</option>
+                    <option value="theme-board-b">Theme B (Green &amp; Buff)</option>
+                    <option value="theme-board-c">Theme C (Wood Grain)</option>
+                    <option value="theme-board-d">Theme D (Ice Blue)</option>
+                    <option value="theme-board-e">Theme E (Slate Stone)</option>
+                    <option value="theme-board-f">Theme F (Sky Blue)</option>
+                    <option value="theme-board-g">Theme G (Ocean Blue)</option>
+                    <option value="theme-board-h">Theme H (Classic Green)</option>
+                    <option value="theme-board-i">Theme I (Silver Sparkle)</option>
+                    <option value="theme-board-j">Theme J (Granite Marble)</option>
+                </select>
             </div>
             <div class="chessis-row"><div class="chessis-row-title">Piece Style</div>
                 <select id="setting-piece-style" style="width:130px;" onchange="applyThemeAndPieces()"><option value="wikipedia" selected>Classic</option><option value="cburnett">Lichess Neo</option><option value="merida">Merida</option></select>
@@ -686,5 +735,23 @@
     <script src="/static/mod_drawing.js?v=101"></script>
     <script src="/static/mod_share_vault.js?v=101"></script>
     <script src="/static/mod_extras.js?v=101"></script>
+
+    <!-- Clean Dynamic Theme Switcher for Custom Boards -->
+    <script>
+        (function() {
+            window.applyThemeAndPieces = function() {
+                let themeSel = document.getElementById('setting-board-theme');
+                let theme = themeSel ? themeSel.value : 'theme-green';
+                
+                // Remove all existing theme classes
+                document.body.className = document.body.className.replace(/\btheme-[^\s]+\b/g, '').trim();
+                document.body.classList.add(theme);
+                
+                if (typeof renderBoard === 'function') {
+                    renderBoard();
+                }
+            };
+        })();
+    </script>
 </body>
 </html>
