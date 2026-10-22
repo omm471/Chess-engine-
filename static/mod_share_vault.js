@@ -1,6 +1,6 @@
 /* ============================================================================
-   static/mod_share_vault.js (v100 - Step 3)
-   Restored Full Branded PGN Format with Headers + Archive Save
+   static/mod_share_vault.js (v101 - PDF & Vault Integration)
+   Branded PGN Format + ReportLab PDF Exporter + Archive Save
    ============================================================================ */
 
 window.buildBrandedPGN = function() {
@@ -87,8 +87,38 @@ window.copyCurrentFEN = function() {
     });
 };
 
+// ============================================================================
+// REPORTLAB TOURNAMENT PDF EXPORT TRIGGER
+// ============================================================================
+window.downloadMatchPDF = function() {
+    let wName = encodeURIComponent(getWhiteDisplayName());
+    let bName = encodeURIComponent(getBlackDisplayName());
+    let opening = encodeURIComponent(getTextSafe('opening-bar', 'Standard Opening'));
+    let pgnText = encodeURIComponent(window.buildBrandedPGN());
+    
+    let resCode = "*";
+    if (game.in_checkmate()) resCode = (game.turn() === 'w') ? "0-1" : "1-0";
+    else if (game.in_draw()) resCode = "1/2-1/2";
+    else if (matchEnded && gameEndEffect) {
+        if (gameEndEffect.winner === 'w') resCode = "1-0";
+        else if (gameEndEffect.winner === 'b') resCode = "0-1";
+        else if (gameEndEffect.winner === 'draw') resCode = "1/2-1/2";
+    }
+
+    let url = `/api/export_pdf?white=${wName}&black=${bName}&opening=${opening}&result=${encodeURIComponent(resCode)}&pgn=${pgnText}`;
+    
+    // Trigger download directly via hidden link
+    let downloadLink = document.createElement('a');
+    downloadLink.href = url;
+    downloadLink.setAttribute('download', `Match_ScoreSheet_${Date.now()}.pdf`);
+    document.body.appendChild(downloadLink);
+    downloadLink.click();
+    document.body.removeChild(downloadLink);
+};
+
+// Connect existing "Save Card" button to generate & download official PDF
 window.downloadShareableKundliCard = function() {
-    openShareModal();
+    window.downloadMatchPDF();
 };
 
 window.openMatchVaultModal = function() {
