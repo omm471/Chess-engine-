@@ -320,6 +320,22 @@ def delete_match():
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 
+@app.route('/delete_all_matches', methods=['POST'])
+def delete_all_matches():
+    try:
+        # Supabase me saari rows clear karne ke liye (id > 0)
+        res = requests.delete(
+            f"{SUPABASE_URL}/rest/v1/matches?id=gt.0",
+            headers=SUPABASE_HEADERS,
+            timeout=8
+        )
+        if res.status_code in [200, 204]:
+            return jsonify({"status": "cleared"})
+        return jsonify({"status": "error", "message": res.text}), res.status_code
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
 # Cloud Multi-Match PGN Vault Exporter
 @app.route('/api/export_all_pgn', methods=['GET'])
 def export_all_pgn():
