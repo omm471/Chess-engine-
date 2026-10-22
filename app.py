@@ -266,6 +266,7 @@ def index():
 
 @app.route('/save_match', methods=['POST'])
 def save_match():
+    match_id = request.form.get('id')
     match_payload = {
         "date": datetime.now().strftime("%d %b %Y • %I:%M %p"),
         "white": request.form.get('white', 'White'),
@@ -277,19 +278,32 @@ def save_match():
         "pgn": request.form.get('pgn', ''),
         "fen": request.form.get('fen', '')
     }
+
     try:
-        headers = {**SUPABASE_HEADERS, "Prefer": "return=minimal"}
-        res = requests.post(
-            f"{SUPABASE_URL}/rest/v1/matches",
-            headers=headers,
-            json=match_payload,
-            timeout=6
-        )
-        if res.status_code in [200, 201]:
-            return jsonify({"status": "saved", "cloud": True})
-        return jsonify({"status": "error", "message": res.text}), res.status_code
+        if match_id:
+            # Agar match already in-progress hai toh usi row ko update karein
+            res = requests.patch(
+                f"{SUPABASE_URL}/rest/v1/matches?id=eq.{match_id}",
+                headers=SUPABASE_HEADERS,
+                json=match_payload,
+                timeout=6
+            )
+            return jsonify({"status": "updated", "id": match_id})
+        else:
+            # Naya match start hone par insert karein aur ID return karein
+            headers = {**SUPABASE_HEADERS, "Prefer": "return=representation"}
+            res = requests.post(
+                f"{SUPABASE_URL}/rest/v1/matches",
+                headers=headers,
+                json=match_payload,
+                timeout=6
+            )
+            created = res.json()
+            new_id = created[0]["id"] if isinstance(created, list) and len(created) > 0 else None
+            return jsonify({"status": "saved", "id": new_id})
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
+
 
 @app.route('/get_matches', methods=['POST', 'GET'])
 def get_matches():
