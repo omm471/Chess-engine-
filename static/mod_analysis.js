@@ -1,6 +1,6 @@
 /* ============================================================================
-   static/mod_analysis.js (v100 - Step 3)
-   Chess.com Style White/Black Evaluation Graph + Click-to-Jump + Move Badges
+   static/mod_analysis.js (v101 - Analysis & Daily Puzzle Integration)
+   Chess.com Style Graph + Move Badges + Lichess Daily Tactics
    ============================================================================ */
 
 var matchAccuracyData = { wAcc: 100, bAcc: 100, wAcpl: 12, bAcpl: 15, counts: {} };
@@ -55,14 +55,14 @@ function renderChessComGraphOnCanvas(canvasId, isInteractive) {
     let w = canvas.width, h = canvas.height;
     ctx.clearRect(0, 0, w, h);
 
-    // 1. Black Advantage Background (Top Half Dark) & Base
+    // 1. Black Advantage Background & Base
     ctx.fillStyle = '#262421';
     ctx.fillRect(0, 0, w, h);
 
     let len = gameHistory.length;
     let step = w / Math.max(1, len - 1);
 
-    // 2. White Advantage Filled Area (Chess.com White Fill under curve)
+    // 2. White Advantage Filled Area
     ctx.beginPath();
     ctx.moveTo(0, h);
     for (let i = 0; i < len; i++) {
@@ -77,7 +77,7 @@ function renderChessComGraphOnCanvas(canvasId, isInteractive) {
     ctx.fillStyle = 'rgba(238, 238, 238, 0.88)';
     ctx.fill();
 
-    // 3. Center 0.0 Equal Evaluation Dashed Line
+    // 3. Center 0.0 Equal Line
     ctx.beginPath();
     ctx.strokeStyle = 'rgba(129, 182, 76, 0.55)';
     ctx.lineWidth = 1;
@@ -101,7 +101,7 @@ function renderChessComGraphOnCanvas(canvasId, isInteractive) {
     }
     ctx.stroke();
 
-    // 5. Current Viewed Move Vertical Cursor Line
+    // 5. Current Viewed Move Cursor
     if (historyIndex >= 0 && historyIndex < len && len > 1) {
         let cx = historyIndex * step;
         ctx.beginPath();
@@ -112,7 +112,7 @@ function renderChessComGraphOnCanvas(canvasId, isInteractive) {
         ctx.stroke();
     }
 
-    // 6. Plot Key Move Quality Dots (Blunders, Mistakes, Inaccuracies)
+    // 6. Plot Blunders / Mistakes Dots
     for (let i = 1; i < len; i++) {
         let rec = gameHistory[i];
         if (!rec || !rec.classification) continue;
@@ -132,7 +132,7 @@ function renderChessComGraphOnCanvas(canvasId, isInteractive) {
         }
     }
 
-    // 7. Bind click/tap on graph to jump to that move
+    // 7. Interactive Click-to-Jump
     if (isInteractive && !canvas.dataset.boundClick) {
         canvas.dataset.boundClick = "1";
         canvas.addEventListener('click', function(e) {
@@ -141,9 +141,9 @@ function renderChessComGraphOnCanvas(canvasId, isInteractive) {
             let ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
             let targetIdx = Math.round(ratio * (gameHistory.length - 1));
             historyIndex = targetIdx;
-            playSoundForHistoryRec(gameHistory[historyIndex]);
-            renderBoard();
-            showAnalysisStatus();
+            if (typeof playSoundForHistoryRec === 'function') playSoundForHistoryRec(gameHistory[historyIndex]);
+            if (typeof renderBoard === 'function') renderBoard();
+            if (typeof showAnalysisStatus === 'function') showAnalysisStatus();
             drawAllEvalGraphs();
             drawKundliEvalGraph();
         });
@@ -156,4 +156,35 @@ window.drawKundliEvalGraph = function() {
 
 window.drawAllEvalGraphs = function() {
     renderChessComGraphOnCanvas('main-eval-graph', true);
+};
+
+// ============================================================================
+// LICHESS DAILY TACTICS PUZZLE FETCHER
+// ============================================================================
+window.loadDailyPuzzle = function() {
+    safeText('status', 'Fetching Daily Puzzle from Lichess...');
+    fetch('/api/daily_puzzle')
+        .then(res => res.json())
+        .then(data => {
+            if (data.status === 'success' && data.fen) {
+                if (typeof game !== 'undefined' && game.load) {
+                    game.load(data.fen);
+                    if (typeof gameHistory !== 'undefined') {
+                        gameHistory = [{ fen: data.fen, moveObj: null }];
+                        historyIndex = 0;
+                    }
+                    if (typeof renderBoard === 'function') renderBoard();
+                    if (typeof showAnalysisStatus === 'function') showAnalysisStatus();
+                    let themes = data.themes ? data.themes.slice(0, 3).join(', ') : 'Tactics';
+                    safeText('opening-bar', `Puzzle #${data.id} • Rating: ${data.rating}`);
+                    safeText('status', `Lichess Daily Puzzle (${data.rating} ELO) • ${themes}`);
+                    alert(`🧩 Daily Puzzle Loaded!\nRating: ${data.rating}\nThemes: ${themes}\nFind the winning move!`);
+                }
+            } else {
+                alert('Puzzle fetch failed: ' + (data.message || 'Unknown error'));
+            }
+        })
+        .catch(err => {
+            alert('Internet connection required to fetch daily puzzle.');
+        });
 };
