@@ -6,54 +6,24 @@ import shutil
 import sqlite3
 import subprocess
 import threading
-import chess
-import chess.engine
+import urllib.request
 import zipfile
 from io import BytesIO
-from flask import send_file, request
-
-@app.route('/api/test_card', methods=['GET', 'POST'])
-def api_test_card():
-    try:
-        from PIL import Image, ImageDraw, ImageFont
-        
-        # 1. Canvas dimensions (OLED dark theme)
-        width, height = 700, 400
-        img = Image.new('RGB', (width, height), color='#0D1117')
-        draw = ImageDraw.Draw(img)
-        
-        # 2. Card borders & Header accent
-        draw.rounded_rectangle([15, 15, width - 15, height - 15], radius=16, outline='#30363D', width=2)
-        draw.rectangle([15, 15, width - 15, 60], fill='#161B22')
-        draw.text((35, 25), "CHESS AI PRO — MATCH SUMMARY", fill='#58A6FF')
-        
-        # 3. Match Details & Stats
-        white_player = request.args.get('white', 'You (1200)')
-        black_player = request.args.get('black', 'Stockfish GM (2500)')
-        result = request.args.get('result', 'Checkmate! Black Wins')
-        moves_count = request.args.get('moves', '34 Moves')
-        
-        draw.text((40, 100), f"White: {white_player}", fill='#FFFFFF')
-        draw.text((40, 140), f"Black: {black_player}", fill='#CCCCCC')
-        draw.text((40, 190), f"Result: {result}", fill='#00FF66')
-        draw.text((40, 230), f"Game Length: {moves_count}", fill='#8B949E')
-        draw.text((40, 270), "Engine: Stockfish 16.1 NNUE (ARM64)", fill='#38BDF8')
-        
-        # Watermark / Footer
-        draw.text((40, 340), "Generated locally on Android via PRoot Linux", fill='#555555')
-        
-        # 4. Return PNG file directly to browser
-        buf = BytesIO()
-        img.save(buf, format='PNG')
-        buf.seek(0)
-        return send_file(buf, mimetype='image/png')
-        
-    except Exception as e:
-        return f"Pillow Test Error: {str(e)}", 500
-
 from datetime import datetime
-from flask import Flask, render_template, request, jsonify, send_from_directory
 
+import chess
+import chess.engine
+from flask import Flask, render_template, request, jsonify, send_from_directory, send_file
+
+# =========================================================
+# FLASK APP INITIALIZATION (MUST BE BEFORE ANY ROUTE)
+# =========================================================
+app = Flask(__name__)
+engine_lock = threading.Lock()
+
+# =========================================================
+# AUTO-EXTRACT BOARD THEMES
+# =========================================================
 ZIP_THEMES_PATH = os.path.join(os.path.abspath('static'), 'chessthemes.zip')
 BOARDS_DIR = os.path.join(os.path.abspath('static'), 'boards')
 
@@ -62,14 +32,13 @@ if os.path.exists(ZIP_THEMES_PATH) and not os.path.exists(BOARDS_DIR):
         os.makedirs(BOARDS_DIR, exist_ok=True)
         with zipfile.ZipFile(ZIP_THEMES_PATH, 'r') as zf:
             zf.extractall(BOARDS_DIR)
-        print("[✔] All 10 Chess Board Themes successfully extracted to static/boards/")
+        print("[✔] All 10 Chess Board Themes successfully extracted to static/boards/", flush=True)
     except Exception as e:
-        print("[!] Theme extraction error:", e)
-# =========================================================
-# AUTO-DOWNLOAD OFFLINE JS DEPENDENCIES (RUNS ONCE)
-# =========================================================
-import urllib.request
+        print("[!] Theme extraction error:", e, flush=True)
 
+# =========================================================
+# AUTO-DOWNLOAD OFFLINE JS DEPENDENCIES
+# =========================================================
 JS_DIR = os.path.join(os.path.abspath('static'), 'js')
 os.makedirs(JS_DIR, exist_ok=True)
 
@@ -83,14 +52,13 @@ for fname, url in deps.items():
     if not os.path.exists(fpath):
         try:
             urllib.request.urlretrieve(url, fpath)
-            print(f"[✔] Downloaded offline dependency: {fname}")
+            print(f"[✔] Downloaded offline dependency: {fname}", flush=True)
         except Exception as e:
-            print(f"[!] Could not download {fname}:", e)
+            print(f"[!] Could not download {fname}:", e, flush=True)
 
-
-app = Flask(__name__)
-engine_lock = threading.Lock()
-
+# =========================================================
+# ENGINE CONFIGURATION & DIRECTORIES
+# =========================================================
 ENGINES_DIR = os.path.abspath('engines')
 os.makedirs(ENGINES_DIR, exist_ok=True)
 OPENINGS_CACHE_FILE = os.path.abspath('eco_openings_full.json')
@@ -291,6 +259,44 @@ def init_db():
 
 init_db()
 
+# =========================================================
+# ROUTES (DEFINED AFTER APP INITIALIZATION)
+# =========================================================
+
+@app.route('/api/test_card', methods=['GET', 'POST'])
+def api_test_card():
+    try:
+        from PIL import Image, ImageDraw
+        
+        width, height = 700, 400
+        img = Image.new('RGB', (width, height), color='#0D1117')
+        draw = ImageDraw.Draw(img)
+        
+        draw.rounded_rectangle([15, 15, width - 15, height - 15], radius=16, outline='#30363D', width=2)
+        draw.rectangle([15, 15, width - 15, 60], fill='#161B22')
+        draw.text((35, 25), "CHESS AI PRO — MATCH SUMMARY", fill='#58A6FF')
+        
+        white_player = request.args.get('white', 'You (1200)')
+        black_player = request.args.get('black', 'Stockfish GM (2500)')
+        result = request.args.get('result', 'Checkmate! Black Wins')
+        moves_count = request.args.get('moves', '34 Moves')
+        
+        draw.text((40, 100), f"White: {white_player}", fill='#FFFFFF')
+        draw.text((40, 140), f"Black: {black_player}", fill='#CCCCCC')
+        draw.text((40, 190), f"Result: {result}", fill='#00FF66')
+        draw.text((40, 230), f"Game Length: {moves_count}", fill='#8B949E')
+        draw.text((40, 270), "Engine: Stockfish 16.1 NNUE (ARM64)", fill='#38BDF8')
+        
+        draw.text((40, 340), "Generated locally on Android via PRoot Linux", fill='#555555')
+        
+        buf = BytesIO()
+        img.save(buf, format='PNG')
+        buf.seek(0)
+        return send_file(buf, mimetype='image/png')
+        
+    except Exception as e:
+        return f"Pillow Test Error: {str(e)}", 500
+
 @app.route('/')
 def index():
     return render_template('index.html')
@@ -376,7 +382,6 @@ def ai_move():
             eff_time = min(think_time, 0.25) if int(level) <= 1200 else think_time
             mpv = config["multipv"]
 
-            # For high strength (2000+ or Engine vs Engine) or XBoard engines, play pure strongest engine line
             if not is_uci or int(level) >= 2000:
                 if is_uci:
                     info = engine.analyse(board, chess.engine.Limit(time=eff_time, depth=eff_depth))
@@ -424,7 +429,7 @@ def ai_move():
                     try: engine.configure({"UCI_LimitStrength": False})
                     except Exception: pass
         except Exception as e:
-            print("Engine Play Notice:", e)
+            print("Engine Play Notice:", e, flush=True)
             try:
                 res = engine.play(board, chess.engine.Limit(time=0.3))
                 chosen_move = res.move
@@ -464,7 +469,6 @@ def evaluate_position():
             return jsonify({'score': 50.0, 'text': '0.0', 'cp': 0, 'best_uci': '', 'best_san': '', 'depth': req_depth, 'nps': engine_state["last_nps"], 'engine': engine_state["real_name"]})
 
         with engine_lock:
-            # Always use UCI engine (Stockfish) for evaluation if current engine is XBoard (like Phalanx)
             if req_engine_path or req_engine_preset:
                 ensure_Engine_Loaded(req_engine_path, req_engine_preset)
             if engine_state["protocol"] != "uci":
@@ -647,10 +651,12 @@ def delete_match():
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)})
 
+# =========================================================
+# WSGI SERVER RUNNER
+# =========================================================
 if __name__ == '__main__':
     try:
         import logging
-        # Waitress ke queue warning spam ko band karein
         logging.getLogger('waitress.queue').setLevel(logging.ERROR)
         logging.getLogger('waitress').setLevel(logging.ERROR)
 
