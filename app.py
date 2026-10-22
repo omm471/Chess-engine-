@@ -11,7 +11,7 @@ from io import BytesIO
 from datetime import datetime
 
 # =========================================================
-# FEATURE 4: ULTRA-FAST C-BASED JSON (UJSON)
+# ULTRA-FAST C-BASED JSON (UJSON)
 # =========================================================
 try:
     import ujson as json
@@ -19,7 +19,7 @@ except ImportError:
     import json
 
 # =========================================================
-# FEATURE 2: REQUESTS FOR ONLINE SYNC
+# REQUESTS FOR ONLINE SYNC
 # =========================================================
 try:
     import requests
@@ -282,15 +282,12 @@ init_db()
 def index():
     return render_template('index.html')
 
-# ---------------------------------------------------------
-# FEATURE 2: LICHESS DAILY TACTICS / PUZZLE API
-# ---------------------------------------------------------
+# Lichess Daily Tactics API
 @app.route('/api/daily_puzzle', methods=['GET'])
 def get_daily_puzzle():
     if not requests:
         return jsonify({"status": "error", "message": "requests package missing"}), 500
     try:
-        # Fetch Lichess official daily puzzle
         r = requests.get("https://lichess.org/api/puzzle/daily", timeout=6)
         if r.status_code == 200:
             data = r.json()
@@ -308,9 +305,7 @@ def get_daily_puzzle():
         return jsonify({"status": "error", "message": str(e)}), 500
     return jsonify({"status": "error", "message": "Failed to fetch puzzle"}), 502
 
-# ---------------------------------------------------------
-# FEATURE 3: REPORTLAB TOURNAMENT PDF EXPORTER
-# ---------------------------------------------------------
+# FIDE Style Match Score Sheet PDF Exporter
 @app.route('/api/export_pdf', methods=['POST', 'GET'])
 def export_pdf():
     try:
@@ -358,7 +353,6 @@ def export_pdf():
         elements.append(Paragraph(f"Generated via Chess AI Engine — {datetime.now().strftime('%d %B %Y')}", sub_style))
         elements.append(Spacer(1, 15))
 
-        # Tournament Header Table
         meta_data = [
             [Paragraph("<b>White:</b> " + white, styles['Normal']), Paragraph("<b>Black:</b> " + black, styles['Normal'])],
             [Paragraph("<b>Opening:</b> " + opening, styles['Normal']), Paragraph("<b>Result:</b> " + result, styles['Normal'])],
@@ -390,7 +384,6 @@ def export_pdf():
         elements.append(pgn_box)
         elements.append(Spacer(1, 25))
 
-        # Signatures
         sig_data = [["_______________________", "_______________________"], ["White Player Signature", "Black Player / Arbiter Signature"]]
         sig_table = Table(sig_data, colWidths=[270, 270])
         sig_table.setStyle(TableStyle([
