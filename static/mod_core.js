@@ -1,8 +1,9 @@
 /* ============================================================================
-   static/mod_core.js (v105 - Full Feature Engine & Touch Core)
+   static/mod_core.js (v106 - Full Feature Engine, Touch Core & Auto-Resume)
    - Real-time Depth, NPS (kN/s), Hardware and Engine Telemetry restored
    - Clocks, Increments, Sounds, Material Advantage (+X)
    - Vertical Pawn Promotion & Touch-Drag controls
+   - Auto-Save & Auto-Resume Session Engine with Cloud Sync
    ============================================================================ */
 
 var game = new Chess();
@@ -783,7 +784,6 @@ function makeAiMove() {
             historyIndex = gameHistory.length - 1;
             let newIdx = historyIndex;
 
-            // Restores Live Nodes Per Second (kN/s) and Search Depth!
             if (data.depth || data.nps) {
                 let knps = data.nps ? Math.round(data.nps / 1000) + " kN/s" : "";
                 let dInfo = data.depth ? `Depth ${data.depth}` : "";
@@ -843,6 +843,9 @@ function processMoveVisuals(moveObj, targetIndex) {
             try { if (window.drawAllEvalGraphs) window.drawAllEvalGraphs(); } catch (e) {}
         }
     });
+
+    // AUTO-SAVE ON EVERY MOVE
+    autoSaveCurrentState();
 }
 
 function updateEvalBar(idx) {
@@ -897,6 +900,7 @@ function finishMatchWithAnimation(winnerColor, reasonType, title, subtitle, alre
     syncOptionalPanelsVisibility();
     renderBoard();
     if (window.updateCareerRatingOnGameEnd) window.updateCareerRatingOnGameEnd(winnerColor);
+    localStorage.removeItem('chess_active_match');
     if (gameOverModalTimerId) clearTimeout(gameOverModalTimerId);
     gameOverModalTimerId = setTimeout(() => {
         playSnd('notify');
@@ -998,6 +1002,7 @@ window.startGame = function(fromSetup = false) {
     matchEnded = false; gameEndEffect = null;
     selectedSquare = null; currentLegalMoves = []; premoveQueue = []; clearArrows();
     hideGhostPiece();
+    localStorage.removeItem('chess_active_match');
     game.reset();
     let initEv = window.computeInstantEvalFromFen ? window.computeInstantEvalFromFen(game.fen()) : { score: 50.0, text: "0.0", cp: 0 };
     gameHistory = [{
@@ -1037,6 +1042,7 @@ window.takebackMove = function() {
     updateEvalBar(historyIndex); updateMaterial(game.fen());
     if (window.updateOpeningExplorer) window.updateOpeningExplorer();
     renderBoard(); if (window.drawAllEvalGraphs) window.drawAllEvalGraphs(); updateStatus();
+    autoSaveCurrentState();
 };
 
 window.goToStart = function() {
@@ -1090,6 +1096,67 @@ function showAnalysisStatus() {
     }
 }
 
+// ============================================================================
+// AUTO-SAVE & AUTO-RESUME ENGINE
+// ============================================================================
+
+function autoSaveCurrentState() {
+    if (isMatchOver()) {
+        localStorage.removeItem('chess_active_match');
+        return;
+    }
+    let state = {
+        fen: game.fen(),
+        gameHistory: gameHistory,
+        historyIndex: historyIndex,
+        whiteTime: whiteTime,
+        blackTime: blackTime,
+        playerColor: playerColor,
+        currentBoardOrientation: currentBoardOrientation,
+        gameMode: gameMode,
+        timerStarted: timerStarted
+    };
+    localStorage.setItem('chess_active_match', JSON.stringify(state));
+
+    if (gameHistory.length >= 2 && window.saveCurrentMatchToVault) {
+        window.saveCurrentMatchToVault("In Progress (Move " + historyIndex + ")");
+    }
+}
+
+function autoResumePreviousMatch() {
+    let raw = localStorage.getItem('chess_active_match');
+    if (!raw) return false;
+    try {
+        let state = JSON.parse(raw);
+        if (!state || !state.fen) return false;
+
+        game.load(state.fen);
+        gameHistory = state.gameHistory || [{ fen: state.fen, moveObj: null }];
+        historyIndex = state.historyIndex !== undefined ? state.historyIndex : gameHistory.length - 1;
+        whiteTime = state.whiteTime || 600;
+        blackTime = state.blackTime || 600;
+        playerColor = state.playerColor || 'w';
+        currentBoardOrientation = state.currentBoardOrientation || 'w';
+        gameMode = state.gameMode || 'pvb';
+        timerStarted = state.timerStarted || false;
+
+        renderBoard();
+        updateTimer();
+        updateEvalBar(historyIndex);
+        updateMaterial(game.fen());
+        updateStatus();
+        syncEloBadgeVisibility();
+
+        if (timerStarted && !isMatchOver()) {
+            startTimer();
+        }
+        $('#status').text("Resumed previous game session.");
+        return true;
+    } catch (e) {
+        return false;
+    }
+}
+
 $(document).ready(function() {
     preloadAllSounds();
     bindPieceDragAndDropEvents();
@@ -1109,4 +1176,6 @@ $(document).ready(function() {
         let pSel = safeEl('setting-piece-style');
         if (pSel) pSel.value = savedPieces;
     }
+
+    autoResumePreviousMatch();
 });
