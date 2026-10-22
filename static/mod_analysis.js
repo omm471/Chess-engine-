@@ -167,18 +167,36 @@ window.loadDailyPuzzle = function() {
         .then(res => res.json())
         .then(data => {
             if (data.status === 'success' && data.fen) {
-                if (typeof game !== 'undefined' && game.load) {
-                    game.load(data.fen);
-                    if (typeof gameHistory !== 'undefined') {
-                        gameHistory = [{ fen: data.fen, moveObj: null }];
-                        historyIndex = 0;
+                if (typeof game !== 'undefined') {
+                    // Reset and load reconstructed valid FEN
+                    game.reset();
+                    let loaded = game.load(data.fen);
+                    
+                    if (loaded) {
+                        if (typeof gameHistory !== 'undefined') {
+                            gameHistory = [{ fen: data.fen, moveObj: null }];
+                            historyIndex = 0;
+                        }
+
+                        // Auto flip board so player plays from their side
+                        if (data.turn && typeof isBoardFlipped !== 'undefined' && typeof flipBoardUI === 'function') {
+                            if ((data.turn === 'b' && !isBoardFlipped) || (data.turn === 'w' && isBoardFlipped)) {
+                                flipBoardUI();
+                            }
+                        }
+
+                        if (typeof renderBoard === 'function') renderBoard();
+                        if (typeof showAnalysisStatus === 'function') showAnalysisStatus();
+
+                        let themes = data.themes ? data.themes.slice(0, 3).join(', ') : 'Tactics';
+                        let turnName = (data.turn === 'w') ? 'White to move' : 'Black to move';
+                        
+                        safeText('opening-bar', `Puzzle #${data.id} • Rating: ${data.rating}`);
+                        safeText('status', `🧩 ${turnName} • Find the winning move!`);
+                        alert(`🧩 Daily Puzzle #${data.id} Loaded!\nRating: ${data.rating} ELO\nTurn: ${turnName}\nThemes: ${themes}`);
+                    } else {
+                        alert('FEN validation error on board.');
                     }
-                    if (typeof renderBoard === 'function') renderBoard();
-                    if (typeof showAnalysisStatus === 'function') showAnalysisStatus();
-                    let themes = data.themes ? data.themes.slice(0, 3).join(', ') : 'Tactics';
-                    safeText('opening-bar', `Puzzle #${data.id} • Rating: ${data.rating}`);
-                    safeText('status', `Lichess Daily Puzzle (${data.rating} ELO) • ${themes}`);
-                    alert(`🧩 Daily Puzzle Loaded!\nRating: ${data.rating}\nThemes: ${themes}\nFind the winning move!`);
                 }
             } else {
                 alert('Puzzle fetch failed: ' + (data.message || 'Unknown error'));
@@ -188,3 +206,4 @@ window.loadDailyPuzzle = function() {
             alert('Internet connection required to fetch daily puzzle.');
         });
 };
+
