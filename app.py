@@ -8,6 +8,7 @@ import threading
 import urllib.request
 import zipfile
 from datetime import datetime
+from functools import wraps
 
 try:
     import ujson as json
@@ -21,7 +22,7 @@ except ImportError:
 
 import chess
 import chess.engine
-from flask import Flask, render_template, request, jsonify, send_from_directory
+from flask import Flask, render_template, request, jsonify, send_from_directory, abort, render_template_string
 
 app = Flask(__name__)
 engine_lock = threading.Lock()
@@ -652,14 +653,28 @@ def delete_match():
         return jsonify({"status": "error", "message": str(e)})
 
 # ============================================================================
-# DEVELOPER REMOTE ASSET SYNC & DASHBOARD
+# DEVELOPER REMOTE ASSET SYNC & DASHBOARD (AUTO-CREATE & SAFE FALLBACK)
 # ============================================================================
-from functools import wraps
-from flask import abort, render_template_string
 
-# Development Secret Key aur Target Assets Directory
-DEV_API_KEY = "DEV_SECRET_KEY_98765"  # Apni pasand ka secure token rakhein
-ASSETS_DIR = os.path.abspath("/storage/emulated/0/Download/ChessAIPro")
+DEV_API_KEY = "DEV_SECRET_KEY_98765"
+DEFAULT_TARGET_DIR = "/storage/emulated/0/Download/ChessAIPro"
+
+def get_valid_assets_dir():
+    # Pehle external storage target check/create karein
+    try:
+        if not os.path.exists(DEFAULT_TARGET_DIR):
+            os.makedirs(DEFAULT_TARGET_DIR, exist_ok=True)
+        return os.path.abspath(DEFAULT_TARGET_DIR)
+    except Exception:
+        pass
+    
+    # Fallback: Agar Android storage inaccessible ho toh project root ya local dir lein
+    fallback = os.path.abspath("downloads")
+    try:
+        os.makedirs(fallback, exist_ok=True)
+        return fallback
+    except Exception:
+        return os.path.abspath(".")
 
 def require_api_key(f):
     @wraps(f)
@@ -673,12 +688,10 @@ def require_api_key(f):
 @app.route('/api/list-assets', methods=['GET'])
 @require_api_key
 def list_assets():
-    if not os.path.exists(ASSETS_DIR):
-        return jsonify({"status": "error", "message": "Directory not found"}), 404
-
+    target_dir = get_valid_assets_dir()
     files_list = []
     try:
-        for entry in os.scandir(ASSETS_DIR):
+        for entry in os.scandir(target_dir):
             if entry.is_file():
                 info = entry.stat()
                 files_list.append({
@@ -686,17 +699,15 @@ def list_assets():
                     "size_kb": round(info.st_size / 1024, 2),
                     "modified": datetime.fromtimestamp(info.st_mtime).strftime('%Y-%m-%d %H:%M:%S')
                 })
-        return jsonify({"status": "success", "files": files_list, "path": ASSETS_DIR})
+        return jsonify({"status": "success", "files": files_list, "path": target_dir})
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 
 @app.route('/api/download-asset/<path:filename>', methods=['GET'])
 @require_api_key
 def download_asset(filename):
-    if not os.path.exists(ASSETS_DIR):
-        abort(404, description="Target directory does not exist")
-    # send_from_directory internally path traversal attacks ko sanitize karta hai
-    return send_from_directory(ASSETS_DIR, filename, as_attachment=True)
+    target_dir = get_valid_assets_dir()
+    return send_from_directory(target_dir, filename, as_attachment=True)
 
 DEV_DASHBOARD_HTML = """
 <!DOCTYPE html>
@@ -743,7 +754,7 @@ DEV_DASHBOARD_HTML = """
                         return;
                     }
                     if (data.files.length === 0) {
-                        tbody.innerHTML = "<tr><td colspan='3'>Directory empty.</td></tr>";
+                        tbody.innerHTML = `<tr><td colspan='3' style='color:#aaa;'>Directory empty (${data.path}).</td></tr>`;
                         return;
                     }
                     data.files.forEach(f => {
