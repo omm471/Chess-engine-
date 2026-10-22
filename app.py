@@ -8,15 +8,14 @@ import subprocess
 import threading
 import urllib.request
 import zipfile
-from io import BytesIO
 from datetime import datetime
 
 import chess
 import chess.engine
-from flask import Flask, render_template, request, jsonify, send_from_directory, send_file
+from flask import Flask, render_template, request, jsonify, send_from_directory
 
 # =========================================================
-# FLASK APP INITIALIZATION (MUST BE BEFORE ANY ROUTE)
+# FLASK APP INITIALIZATION
 # =========================================================
 app = Flask(__name__)
 engine_lock = threading.Lock()
@@ -260,42 +259,8 @@ def init_db():
 init_db()
 
 # =========================================================
-# ROUTES (DEFINED AFTER APP INITIALIZATION)
+# ROUTES
 # =========================================================
-
-@app.route('/api/test_card', methods=['GET', 'POST'])
-def api_test_card():
-    try:
-        from PIL import Image, ImageDraw
-        
-        width, height = 700, 400
-        img = Image.new('RGB', (width, height), color='#0D1117')
-        draw = ImageDraw.Draw(img)
-        
-        draw.rounded_rectangle([15, 15, width - 15, height - 15], radius=16, outline='#30363D', width=2)
-        draw.rectangle([15, 15, width - 15, 60], fill='#161B22')
-        draw.text((35, 25), "CHESS AI PRO — MATCH SUMMARY", fill='#58A6FF')
-        
-        white_player = request.args.get('white', 'You (1200)')
-        black_player = request.args.get('black', 'Stockfish GM (2500)')
-        result = request.args.get('result', 'Checkmate! Black Wins')
-        moves_count = request.args.get('moves', '34 Moves')
-        
-        draw.text((40, 100), f"White: {white_player}", fill='#FFFFFF')
-        draw.text((40, 140), f"Black: {black_player}", fill='#CCCCCC')
-        draw.text((40, 190), f"Result: {result}", fill='#00FF66')
-        draw.text((40, 230), f"Game Length: {moves_count}", fill='#8B949E')
-        draw.text((40, 270), "Engine: Stockfish 16.1 NNUE (ARM64)", fill='#38BDF8')
-        
-        draw.text((40, 340), "Generated locally on Android via PRoot Linux", fill='#555555')
-        
-        buf = BytesIO()
-        img.save(buf, format='PNG')
-        buf.seek(0)
-        return send_file(buf, mimetype='image/png')
-        
-    except Exception as e:
-        return f"Pillow Test Error: {str(e)}", 500
 
 @app.route('/')
 def index():
