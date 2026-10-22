@@ -607,10 +607,14 @@ def delete_match():
 
 if __name__ == '__main__':
     try:
+        import logging
+        # Waitress ke queue warning spam ko band karein
+        logging.getLogger('waitress.queue').setLevel(logging.ERROR)
+        logging.getLogger('waitress').setLevel(logging.ERROR)
+
         from waitress import serve
-        print("[✔] Production WSGI Server (Waitress) active!")
-        print("* Running on http://127.0.0.1:5000")
-        serve(app, host='0.0.0.0', port=5000, threads=4)
+        print("[✔] Production WSGI Server (Waitress) active!", flush=True)
+        print("* Running on http://127.0.0.1:5000", flush=True)
+        serve(app, host='0.0.0.0', port=5000, threads=8, channel_timeout=120)
     except ImportError:
-        # Agar waitress na mile toh default fallback
         app.run(host='0.0.0.0', port=5000, debug=False)
