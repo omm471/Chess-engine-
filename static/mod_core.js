@@ -1,11 +1,5 @@
 /* ============================================================================
-   static/mod_core.js (v103 - Interactive Puzzle & Offline Engine Support)
-   - Fixed Mobile Touch Drag-and-Drop (No DOM destruction during touchstart)
-   - Captured Pieces Order: Pawn -> Knight -> Bishop -> Rook -> Queen
-   - Chess.com Style Vertical Pawn Promotion (Touch-Optimized)
-   - Local Offline Pieces (/static/img/chesspieces/wikipedia/)
-   - Dynamic 10 Board Themes Support with LocalStorage Memory
-   - Full Integration for Lichess Daily Puzzle & Opponent Auto-Reply
+   static/mod_core.js (v104 - Engine Core & Touch Controller)
    ============================================================================ */
 
 var game = new Chess();
@@ -64,7 +58,6 @@ const defaultBotNames = {
     "2000": "Grandmaster AI", "2500": "Stockfish GM", "2800": "Stockfish Max"
 };
 
-// 100% Offline Local Piece Support
 const pieceThemeUrls = {
     "wikipedia": "/static/img/chesspieces/wikipedia/{piece}.png",
     "cburnett": "https://raw.githubusercontent.com/lichess-org/lila/master/public/piece/cburnett/{piece}.svg",
@@ -88,10 +81,7 @@ const soundPaths = {
 };
 
 Object.keys(soundPaths).forEach(k => {
-    audioPools[k] = {
-        idx: 0,
-        items: [new Audio(soundPaths[k]), new Audio(soundPaths[k]), new Audio(soundPaths[k])]
-    };
+    audioPools[k] = { idx: 0, items: [new Audio(soundPaths[k]), new Audio(soundPaths[k]), new Audio(soundPaths[k])] };
     audioPools[k].items.forEach(a => { a.preload = 'auto'; });
 });
 
@@ -218,8 +208,6 @@ window.openSetupModal = function() {
     loadBotNameForElo('white'); loadBotNameForElo('black');
     if (window.populateSetupEngineSelectors) window.populateSetupEngineSelectors();
     toggleSetupMode();
-    let u = localStorage.getItem('chess_username');
-    if (u && safeEl('setup-username')) safeEl('setup-username').value = u;
     safeDisplay('setup-modal', 'flex');
 };
 window.openSettingsModal = function() {
@@ -234,15 +222,6 @@ window.toggleSetupMode = function() {
     safeDisplay('setup-white-bot-group', m === 'bvb' ? 'flex' : 'none');
     safeDisplay('setup-black-bot-group', (m === 'pvb' || m === 'bvb') ? 'flex' : 'none');
     safeDisplay('setup-eve-group', m === 'eve' ? 'flex' : 'none');
-    safeDisplay('setup-think-group', m === 'pvp' ? 'none' : 'flex');
-    safeDisplay('setup-depth-group', m === 'pvp' ? 'none' : 'flex');
-    safeDisplay('setup-personality-group', (m === 'pvb' || m === 'bvb') ? 'flex' : 'none');
-    let oppLbl = safeEl('opponent-elo-label');
-    if (oppLbl) oppLbl.innerText = (m === 'bvb') ? "Black Bot Level & Name:" : "Opponent Bot Level & Name:";
-};
-window.toggleCustomTime = function() {
-    let v = (safeEl('setup-time') || {}).value;
-    safeDisplay('custom-time-group', v === 'custom' ? 'flex' : 'none');
 };
 
 function getSavedBotName(elo) { return localStorage.getItem('bot_name_' + elo) || defaultBotNames[elo] || "Stockfish AI"; }
@@ -256,24 +235,13 @@ window.saveBotNameForElo = function(side) {
     let val = (safeEl(side === 'white' ? 'setup-white-bot-name' : 'setup-bot-name') || {}).value;
     if (val && val.trim()) localStorage.setItem('bot_name_' + elo, val.trim());
 };
-window.saveUsername = function() {
-    let u = (safeEl('setup-username') || {}).value;
-    if (u && u.trim()) localStorage.setItem('chess_username', u.trim());
-};
 
-// Auto-persisting theme switcher with dynamic coordinate styling
 window.applyThemeAndPieces = function() {
     let themeSel = safeEl('setting-board-theme');
     let theme = themeSel ? themeSel.value : 'theme-green';
-    
     document.body.className = document.body.className.replace(/\btheme-[^\s]+\b/g, '').trim();
     document.body.classList.add(theme);
     localStorage.setItem('saved_chess_theme', theme);
-
-    let pStyleSel = safeEl('setting-piece-style');
-    let pStyle = pStyleSel ? pStyleSel.value : 'wikipedia';
-    localStorage.setItem('saved_chess_piece_style', pStyle);
-
     renderBoard();
 };
 
@@ -285,26 +253,6 @@ function sqToSvgCoords(sq) {
     return { x: col * 40 + 20, y: row * 40 + 20 };
 }
 function clearArrows() { let svg = safeEl('arrow-overlay'); if (svg) svg.innerHTML = ""; }
-
-function getVirtualPremoveGame() {
-    let vGame = new Chess(game.fen());
-    for (let i = 0; i < premoveQueue.length; i++) {
-        let pm = premoveQueue[i];
-        let tokens = vGame.fen().split(' ');
-        tokens[1] = playerColor; tokens[3] = '-';
-        vGame.load(tokens.join(' '));
-        let p = vGame.get(pm.from);
-        if (p && p.color === playerColor) {
-            vGame.remove(pm.from);
-            let isPromo = (p.type === 'p' && (pm.to[1] === '8' || pm.to[1] === '1'));
-            vGame.put({ type: isPromo ? 'q' : p.type, color: playerColor }, pm.to);
-        }
-    }
-    let finalTokens = vGame.fen().split(' ');
-    finalTokens[1] = playerColor; finalTokens[3] = '-';
-    vGame.load(finalTokens.join(' '));
-    return vGame;
-}
 
 function getPieceImageUrl(color, type) {
     let pStyle = (safeEl('setting-piece-style') || {}).value || 'wikipedia';
@@ -333,13 +281,10 @@ function renderBoard() {
 
     let isLiveTip = (historyIndex === gameHistory.length - 1);
     let displayFen = (historyIndex >= 0 && historyIndex < gameHistory.length) ? gameHistory[historyIndex].fen : game.fen();
-    let tempGame = (isLiveTip && premoveQueue.length > 0) ? getVirtualPremoveGame() : new Chess(displayFen);
+    let tempGame = new Chess(displayFen);
     let boardState = tempGame.board();
     let files = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'];
     let lastMove = (historyIndex > 0 && gameHistory[historyIndex]) ? gameHistory[historyIndex].move : null;
-    let lastClassification = (historyIndex > 0 && gameHistory[historyIndex]) ? gameHistory[historyIndex].classification : null;
-
-    let showBadgesNow = isMatchOver() || isAnalysisBranchMode || liveFeedbackEnabled;
 
     for (let r = 0; r < 8; r++) {
         for (let c = 0; c < 8; c++) {
@@ -355,16 +300,6 @@ function renderBoard() {
             if (selectedSquare === sqName) sqDiv.addClass('selected');
             if (lastMove && (lastMove.from === sqName || lastMove.to === sqName)) sqDiv.addClass('last-move');
 
-            if (isLiveTip && premoveQueue.length > 0) {
-                premoveQueue.forEach((pm, idx) => {
-                    if (pm.from === sqName || pm.to === sqName) sqDiv.addClass('premove-sq');
-                    if (pm.to === sqName) sqDiv.append($('<div>').addClass('premove-step-badge').text('#' + (idx + 1)));
-                });
-            }
-
-            if (lastMove && lastMove.to === sqName && lastClassification && showBadgesNow) {
-                sqDiv.append($('<div>').addClass('move-badge').css('background-color', lastClassification.color).text(lastClassification.symbol));
-            }
             let moveOption = currentLegalMoves.find(m => m.to === sqName);
             if (moveOption) {
                 sqDiv.append($('<div>').addClass(moveOption.flags && (moveOption.flags.includes('c') || moveOption.flags.includes('e')) ? 'legal-capture' : 'legal-dot'));
@@ -373,196 +308,14 @@ function renderBoard() {
             if (piece) {
                 if (piece.type === 'k' && tempGame.in_check() && tempGame.turn() === piece.color) sqDiv.addClass('in-check');
                 let pieceDiv = $('<div>').addClass('piece').css('background-image', `url('${getPieceImageUrl(piece.color, piece.type)}')`);
-
-                if (isLiveTip && matchEnded && gameEndEffect && piece.type === 'k') {
-                    if (gameEndEffect.winner === 'draw') {
-                        sqDiv.addClass('king-draw-sq');
-                    } else if (piece.color === gameEndEffect.winner) {
-                        sqDiv.addClass('king-winner-sq');
-                        pieceDiv.addClass('king-winner-piece');
-                    } else {
-                        sqDiv.addClass('king-loser-sq');
-                        pieceDiv.addClass('king-fallen-piece');
-                    }
-                }
                 sqDiv.append(pieceDiv);
             }
             boardEl.append(sqDiv);
         }
     }
-    try { if (window.renderHeatmapOverlay) window.renderHeatmapOverlay(); } catch (e) {}
-    try { if (window.renderCustomAnnotations) window.renderCustomAnnotations(); } catch (e) {}
 }
 
-// ============================================================================
-// CHESS.COM STYLE VERTICAL PROMOTION POPUP
-// ============================================================================
-function showPromotionModal(color, toSq, onSelect) {
-    let existing = document.getElementById('promotion-choice-modal');
-    if (existing) existing.remove();
-    let oldOverlay = document.getElementById('promotion-cancel-overlay');
-    if (oldOverlay) oldOverlay.remove();
-
-    let boardEl = document.getElementById('board');
-    let sqEl = boardEl ? boardEl.querySelector(`[data-square="${toSq}"]`) : null;
-    if (!boardEl || !sqEl) return;
-
-    let handled = false;
-
-    let cancelOverlay = document.createElement('div');
-    cancelOverlay.id = 'promotion-cancel-overlay';
-    cancelOverlay.style.cssText = 'position:fixed;inset:0;z-index:99998;background:rgba(0,0,0,0.18);';
-
-    function doCancel(e) {
-        if (e) {
-            e.preventDefault();
-            e.stopPropagation();
-        }
-        if (handled) return;
-        handled = true;
-        let m = document.getElementById('promotion-choice-modal');
-        if (m) m.remove();
-        cancelOverlay.remove();
-        selectedSquare = null;
-        currentLegalMoves = [];
-        renderBoard();
-    }
-
-    cancelOverlay.addEventListener('touchend', doCancel, { passive: false });
-    cancelOverlay.addEventListener('click', doCancel);
-    document.body.appendChild(cancelOverlay);
-
-    let modal = document.createElement('div');
-    modal.id = 'promotion-choice-modal';
-
-    ['touchstart', 'touchmove', 'touchend', 'touchcancel', 'mousedown', 'mousemove', 'mouseup', 'click'].forEach(evtName => {
-        modal.addEventListener(evtName, function(e) {
-            e.stopPropagation();
-        }, { passive: false });
-    });
-
-    let sqW = sqEl.clientWidth || 40;
-    let sqH = sqEl.clientHeight || 40;
-    let cancelH = Math.round(sqH * 0.45);
-    let totalH = (sqH * 4) + cancelH;
-
-    modal.style.position = 'absolute';
-    modal.style.width = sqW + 'px';
-    modal.style.height = totalH + 'px';
-    modal.style.background = '#ffffff';
-    modal.style.boxShadow = '0 6px 20px rgba(0,0,0,0.7)';
-    modal.style.borderRadius = '4px';
-    modal.style.overflow = 'hidden';
-    modal.style.zIndex = '99999';
-    modal.style.display = 'flex';
-    modal.style.flexDirection = 'column';
-
-    let topPos = sqEl.offsetTop;
-    let leftPos = sqEl.offsetLeft;
-
-    if (topPos > boardEl.clientHeight / 2) {
-        modal.style.top = (topPos + sqH - totalH) + 'px';
-    } else {
-        modal.style.top = topPos + 'px';
-    }
-    modal.style.left = leftPos + 'px';
-
-    function doSelect(p, e) {
-        if (e) {
-            e.preventDefault();
-            e.stopPropagation();
-        }
-        if (handled) return;
-        handled = true;
-        modal.remove();
-        cancelOverlay.remove();
-        onSelect(p);
-    }
-
-    const pieces = ['q', 'n', 'r', 'b'];
-    pieces.forEach(p => {
-        let btn = document.createElement('div');
-        btn.style.width = '100%';
-        btn.style.height = sqH + 'px';
-        btn.style.cursor = 'pointer';
-        btn.style.display = 'flex';
-        btn.style.alignItems = 'center';
-        btn.style.justifyContent = 'center';
-        btn.style.background = '#ffffff';
-        btn.style.transition = 'background 0.12s';
-
-        let img = document.createElement('div');
-        img.style.width = '84%';
-        img.style.height = '84%';
-        img.style.backgroundImage = `url('${getPieceImageUrl(color, p)}')`;
-        img.style.backgroundSize = 'contain';
-        img.style.backgroundRepeat = 'no-repeat';
-        img.style.backgroundPosition = 'center';
-        img.style.pointerEvents = 'none';
-
-        btn.appendChild(img);
-
-        btn.onmouseenter = () => btn.style.background = '#eaeaea';
-        btn.onmouseleave = () => btn.style.background = '#ffffff';
-
-        btn.addEventListener('touchstart', function(e) {
-            e.stopPropagation();
-        }, { passive: false });
-
-        btn.addEventListener('touchend', function(e) {
-            doSelect(p, e);
-        }, { passive: false });
-
-        btn.addEventListener('click', function(e) {
-            doSelect(p, e);
-        });
-
-        modal.appendChild(btn);
-    });
-
-    let cancelBtn = document.createElement('div');
-    cancelBtn.style.width = '100%';
-    cancelBtn.style.height = cancelH + 'px';
-    cancelBtn.style.background = '#f2f2f2';
-    cancelBtn.style.borderTop = '1px solid #e0e0e0';
-    cancelBtn.style.display = 'flex';
-    cancelBtn.style.alignItems = 'center';
-    cancelBtn.style.justifyContent = 'center';
-    cancelBtn.style.cursor = 'pointer';
-    cancelBtn.style.color = '#777777';
-    cancelBtn.style.fontSize = '14px';
-    cancelBtn.style.fontWeight = 'bold';
-    cancelBtn.innerText = '✕';
-
-    cancelBtn.onmouseenter = () => cancelBtn.style.background = '#e4e4e4';
-    cancelBtn.onmouseleave = () => cancelBtn.style.background = '#f2f2f2';
-
-    cancelBtn.addEventListener('touchstart', function(e) {
-        e.stopPropagation();
-    }, { passive: false });
-
-    cancelBtn.addEventListener('touchend', function(e) {
-        doCancel(e);
-    }, { passive: false });
-
-    cancelBtn.addEventListener('click', function(e) {
-        doCancel(e);
-    });
-
-    modal.appendChild(cancelBtn);
-    boardEl.appendChild(modal);
-}
-
-// ============================================================================
-// TOUCH / DRAG-AND-DROP CONTROLLER
-// ============================================================================
-var dragPieceState = {
-    active: false,
-    fromSq: null,
-    currentSq: null,
-    isPremoveDrag: false
-};
-var lastPieceTouchTime = 0;
+var dragPieceState = { active: false, fromSq: null, currentSq: null, isPremoveDrag: false };
 
 function getBoardSquareFromPoint(clientX, clientY) {
     let boardEl = document.getElementById('board');
@@ -596,70 +349,15 @@ function hideGhostPiece() {
     $('.square').removeClass('drag-target-hover');$('.square .piece').removeClass('dragging-source-piece');
 }
 
-function ensureBranchReadyForMove() {
-    if (window.activePuzzle && window.activePuzzle.isRunning) return true;
-    if (historyIndex < gameHistory.length - 1) {
-        if (!isMatchOver() && !isAnalysisBranchMode) {
-            $('#status').text("Viewing past move — Tap 'Live' button to continue match");
-            return false;
-        }
-        gameHistory = gameHistory.slice(0, historyIndex + 1);
-        game.load(gameHistory[historyIndex].fen);
-        isAnalysisBranchMode = true;
-        matchEnded = false;
-        gameEndEffect = null;
-        stopAllActiveMatchProcesses();
-        $('#status').text("Analysis Free Play Mode");
-    } else if (isMatchOver() && !isAnalysisBranchMode) {
-        return false;
-    }
-    return true;
-}
-
 function handleBoardPointerDown(sq, clientX, clientY) {
     if (drawModeEnabled || !sq) return false;
-    if (document.getElementById('promotion-choice-modal')) return false;
     if (window.clearCustomAnnotations) window.clearCustomAnnotations();
-
-    if (!ensureBranchReadyForMove()) return false;
-    if (isAutoBotMode() && !isAnalysisBranchMode) return false;
 
     let inPuzzle = Boolean(window.activePuzzle && window.activePuzzle.isRunning);
 
     if (selectedSquare && sq !== selectedSquare && currentLegalMoves.find(m => m.to === sq)) {
-        if (!isAnalysisBranchMode && !inPuzzle && gameMode === 'pvb' && game.turn() !== playerColor) {
-            premoveQueue.push({ from: selectedSquare, to: sq });
-            selectedSquare = null; currentLegalMoves = [];
-            playSnd('move');
-            $('#status').text(`Premove #${premoveQueue.length} queued`);
-            renderBoard();
-        } else {
-            executeHumanMove(selectedSquare, sq);
-        }
+        executeHumanMove(selectedSquare, sq);
         return true;
-    }
-
-    if (!isAnalysisBranchMode && !inPuzzle && gameMode === 'pvb' && game.turn() !== playerColor) {
-        if (!premoveEnabled) return false;
-        let vGame = getVirtualPremoveGame();
-        let vp = vGame.get(sq);
-        if (vp && vp.color === playerColor) {
-            selectedSquare = sq;
-            currentLegalMoves = vGame.moves({ square: sq, verbose: true });
-            updateSelectionAndDotsInPlace();
-            $(`.square[data-square="${sq}"] .piece`).addClass('dragging-source-piece');
-            showGhostPiece(getPieceImageUrl(vp.color, vp.type), clientX, clientY);
-            dragPieceState.active = true;
-            dragPieceState.fromSq = sq;
-            dragPieceState.currentSq = sq;
-            dragPieceState.isPremoveDrag = true;
-            return true;
-        } else {
-            selectedSquare = null; currentLegalMoves = [];
-            if (premoveQueue.length > 0) { premoveQueue = []; $('#status').text("Premoves cleared."); }
-            renderBoard();
-            return false;
-        }
     }
 
     let piece = game.get(sq);
@@ -674,7 +372,6 @@ function handleBoardPointerDown(sq, clientX, clientY) {
         dragPieceState.active = true;
         dragPieceState.fromSq = sq;
         dragPieceState.currentSq = sq;
-        dragPieceState.isPremoveDrag = false;
         return true;
     } else {
         selectedSquare = null;
@@ -685,7 +382,7 @@ function handleBoardPointerDown(sq, clientX, clientY) {
 }
 
 function handleBoardPointerMove(clientX, clientY) {
-    if (!dragPieceState.active || drawModeEnabled) return;
+    if (!dragPieceState.active) return;
     showGhostPiece(null, clientX, clientY);
     let hoverSq = getBoardSquareFromPoint(clientX, clientY);
     if (hoverSq !== dragPieceState.currentSq) {
@@ -699,7 +396,6 @@ function handleBoardPointerUp(clientX, clientY) {
     if (!dragPieceState.active) return;
     let dropSq = getBoardSquareFromPoint(clientX, clientY) || dragPieceState.currentSq;
     let fromSq = dragPieceState.fromSq;
-    let wasPremove = dragPieceState.isPremoveDrag;
 
     dragPieceState.active = false;
     hideGhostPiece();
@@ -707,15 +403,7 @@ function handleBoardPointerUp(clientX, clientY) {
     if (dropSq && dropSq !== fromSq) {
         let validMove = currentLegalMoves.find(m => m.to === dropSq);
         if (validMove) {
-            if (wasPremove) {
-                premoveQueue.push({ from: fromSq, to: dropSq });
-                selectedSquare = null; currentLegalMoves = [];
-                playSnd('move');
-                $('#status').text(`Premove #${premoveQueue.length} queued`);
-                renderBoard();
-            } else {
-                executeHumanMove(fromSq, dropSq);
-            }
+            executeHumanMove(fromSq, dropSq);
             return;
         }
     }
@@ -729,140 +417,69 @@ function bindPieceDragAndDropEvents() {
 
     boardEl.addEventListener('touchstart', function(e) {
         getAudioCtx();
-        if (drawModeEnabled) return;
-        if (document.getElementById('promotion-choice-modal')) return;
         if (e.touches && e.touches.length === 1) {
-            lastPieceTouchTime = Date.now();
             let t = e.touches[0];
             let sq = getBoardSquareFromPoint(t.clientX, t.clientY);
-            if (sq) {
-                e.preventDefault();
-                handleBoardPointerDown(sq, t.clientX, t.clientY);
-            }
+            if (sq) { e.preventDefault(); handleBoardPointerDown(sq, t.clientX, t.clientY); }
         }
     }, { passive: false });
 
     window.addEventListener('touchmove', function(e) {
-        if (!dragPieceState.active || drawModeEnabled) return;
+        if (!dragPieceState.active) return;
         if (e.touches && e.touches.length === 1) {
             e.preventDefault();
-            let t = e.touches[0];
-            handleBoardPointerMove(t.clientX, t.clientY);
+            handleBoardPointerMove(e.touches[0].clientX, e.touches[0].clientY);
         }
     }, { passive: false });
 
     window.addEventListener('touchend', function(e) {
-        if (!dragPieceState.active || drawModeEnabled) return;
-        lastPieceTouchTime = Date.now();
+        if (!dragPieceState.active) return;
         let t = (e.changedTouches && e.changedTouches[0]) ? e.changedTouches[0] : { clientX: 0, clientY: 0 };
         handleBoardPointerUp(t.clientX, t.clientY);
     }, { passive: false });
 
-    window.addEventListener('touchcancel', function() {
-        if (!dragPieceState.active) return;
-        dragPieceState.active = false;
-        hideGhostPiece();
-    });
-
     boardEl.addEventListener('mousedown', function(e) {
-        if (Date.now() - lastPieceTouchTime < 600) return;
-        if (drawModeEnabled || e.button !== 0) return;
-        if (document.getElementById('promotion-choice-modal')) return;
+        if (e.button !== 0) return;
         getAudioCtx();
         let sq = getBoardSquareFromPoint(e.clientX, e.clientY);
-        if (sq) {
-            e.preventDefault();
-            handleBoardPointerDown(sq, e.clientX, e.clientY);
-        }
+        if (sq) { e.preventDefault(); handleBoardPointerDown(sq, e.clientX, e.clientY); }
     });
 
     window.addEventListener('mousemove', function(e) {
-        if (Date.now() - lastPieceTouchTime < 600) return;
-        if (!dragPieceState.active || drawModeEnabled) return;
+        if (!dragPieceState.active) return;
         handleBoardPointerMove(e.clientX, e.clientY);
     });
 
     window.addEventListener('mouseup', function(e) {
-        if (Date.now() - lastPieceTouchTime < 600) return;
-        if (!dragPieceState.active || drawModeEnabled) return;
+        if (!dragPieceState.active) return;
         handleBoardPointerUp(e.clientX, e.clientY);
     });
 }
 
-function parseAndApplyUciMove(uciStr) {
-    if (!uciStr || uciStr.length < 4) return null;
-    let fromSq = uciStr.substring(0, 2);
-    let toSq = uciStr.substring(2, 4);
-    let promo = uciStr.length > 4 ? uciStr.substring(4, 5).toLowerCase() : 'q';
-    let m = game.move({ from: fromSq, to: toSq, promotion: promo });
-    if (!m) m = game.move(uciStr, { sloppy: true });
-    return m;
-}
-
 function executeHumanMove(fromSq, toSq, promoPiece = null) {
-    if (!isAnalysisBranchMode && !(window.activePuzzle && window.activePuzzle.isRunning) && isMatchOver()) return;
+    let inPuzzle = Boolean(window.activePuzzle && window.activePuzzle.isRunning);
+    if (!isAnalysisBranchMode && !inPuzzle && isMatchOver()) return;
 
-    let movingPiece = game.get(fromSq);
-    let isPromotion = false;
-    if (movingPiece && movingPiece.type === 'p') {
-        let toRank = toSq.charAt(1);
-        if ((movingPiece.color === 'w' && toRank === '8') || (movingPiece.color === 'b' && toRank === '1')) {
-            isPromotion = true;
-        }
-    }
-
-    if (isPromotion && !promoPiece) {
-        let legals = game.moves({ square: fromSq, verbose: true });
-        let isValid = legals.some(m => m.to === toSq);
-        if (isValid) {
-            showPromotionModal(movingPiece.color, toSq, function(chosenPiece) {
-                executeHumanMove(fromSq, toSq, chosenPiece);
-            });
-            return;
-        }
-    }
-
-    let finalPromo = promoPiece || 'q';
-    let prevRec = gameHistory[gameHistory.length - 1];
-    let moveObj = game.move({ from: fromSq, to: toSq, promotion: finalPromo });
+    let moveObj = game.move({ from: fromSq, to: toSq, promotion: promoPiece || 'q' });
     if (!moveObj) { playSnd('illegal'); return; }
     selectedSquare = null; currentLegalMoves = []; clearArrows();
 
-    let inPuzzle = Boolean(window.activePuzzle && window.activePuzzle.isRunning);
-
-    if (!timerStarted && !isAnalysisBranchMode && !inPuzzle) { startTimer(); timerStarted = true; }
-    if (!isInfiniteTime && !isAnalysisBranchMode && !inPuzzle) {
-        if (moveObj.color === 'w') whiteTime += whiteIncrement; else blackTime += blackIncrement;
-        updateTimer();
-    }
     let sndType = detectMoveSoundType(game, moveObj);
-    let instantEv = window.computeInstantEvalFromFen ? window.computeInstantEvalFromFen(game.fen()) : { score: 50.0, text: "0.0", cp: 0 };
-    gameHistory.push({
-        fen: game.fen(), move: { from: moveObj.from, to: moveObj.to }, moveObj: moveObj,
-        soundType: sndType,
-        bestMoveUci: prevRec && prevRec.nextBestUci ? prevRec.nextBestUci : "",
-        bestMoveSan: prevRec && prevRec.nextBestSan ? prevRec.nextBestSan : "",
-        evalScore: instantEv.score, evalText: instantEv.text, cp: instantEv.cp
-    });
+    gameHistory.push({ fen: game.fen(), move: { from: moveObj.from, to: moveObj.to }, moveObj: moveObj, soundType: sndType });
     historyIndex = gameHistory.length - 1;
-    let movedIdx = historyIndex;
 
-    // INTERCEPT PUZZLE MOVE: Validate move and auto-reply opponent
+    // PUZZLE INTERCEPTOR: Validate move and auto-reply
     if (inPuzzle) {
-        playSoundForHistoryRec(gameHistory[movedIdx]);
+        playSoundForHistoryRec(gameHistory[historyIndex]);
         renderBoard();
         let uci = moveObj.from + moveObj.to + (moveObj.promotion || '');
         if (window.checkPuzzlePlayerMove) {
             window.checkPuzzlePlayerMove(uci);
         }
-        return; // Halt AI engine and evaluation during puzzle
+        return;
     }
 
-    processMoveVisuals(moveObj, movedIdx);
-
-    if (gameMode === 'pvp' && autoFlipPvP && !isAnalysisBranchMode) {
-        setTimeout(() => flipBoardUI(), 150);
-    }
+    processMoveVisuals(moveObj, historyIndex);
 
     if (!isAnalysisBranchMode && !isMatchOver() && (isAutoBotMode() || (gameMode === 'pvb' && game.turn() !== playerColor))) {
         if (aiMoveTimerId) clearTimeout(aiMoveTimerId);
@@ -873,90 +490,19 @@ function executeHumanMove(fromSq, toSq, promoPiece = null) {
 function makeAiMove() {
     if (isAnalysisBranchMode || isMatchOver() || (window.activePuzzle && window.activePuzzle.isRunning)) return;
     let turnSide = game.turn();
-    let botElo = isAutoBotMode() ? (turnSide === 'w' ? currentWhiteElo : currentBlackElo) : currentBlackElo;
-    let sideName = (turnSide === 'w') ? getWhiteDisplayName() : getBlackDisplayName();
-    $('#status').text(`${sideName} thinking...`);
+    let botElo = currentBlackElo;
 
-    let postData = {
-        fen: game.fen(),
-        level: botElo,
-        think_time: engineThinkTime,
-        depth: engineMaxDepth,
-        _t: Date.now()
-    };
-
-    if (gameMode === 'eve') {
-        let engCfg = (turnSide === 'w') ? whiteEngineCfg : blackEngineCfg;
-        postData.engine_path = engCfg.path || "";
-        postData.engine_preset = engCfg.preset || "";
-        postData.level = "2800";
-    }
-
-    activeAiXhr = $.ajax({
-        url: '/ai_move',
-        method: 'POST',
-        data: postData,
-        timeout: 18000,
+    $.ajax({
+        url: '/ai_move', method: 'POST',
+        data: { fen: game.fen(), level: botElo, think_time: engineThinkTime, depth: engineMaxDepth, _t: Date.now() },
         success: function(data) {
-            activeAiXhr = null;
             if (!data || !data.move || isAnalysisBranchMode || isMatchOver()) return;
-
-            let prevIdx = gameHistory.length - 1;
-            if (data.prev_cp !== undefined && gameHistory[prevIdx]) gameHistory[prevIdx].cp = data.prev_cp;
-
-            let moveObj = parseAndApplyUciMove(data.move);
-            if (!moveObj) {
-                let legals = game.moves({ verbose: true });
-                if (legals.length > 0) moveObj = game.move(legals[0]);
-            }
-            if (!moveObj) return;
-
-            if (!isInfiniteTime && !isMatchOver()) {
-                if (moveObj.color === 'w') whiteTime += whiteIncrement; else blackTime += blackIncrement;
-                updateTimer();
-            }
-
-            let sndType = detectMoveSoundType(game, moveObj);
-            let instantEv = window.computeInstantEvalFromFen ? window.computeInstantEvalFromFen(game.fen()) : { score: 50.0, text: "0.0", cp: 0 };
-            gameHistory.push({
-                fen: game.fen(), move: { from: moveObj.from, to: moveObj.to }, moveObj: moveObj,
-                soundType: sndType,
-                bestMoveUci: data.best_uci || "", bestMoveSan: data.best_san || "",
-                evalScore: instantEv.score, evalText: instantEv.text, cp: instantEv.cp
-            });
+            let mObj = game.move(data.move, { sloppy: true });
+            if (!mObj) return;
+            let sndType = detectMoveSoundType(game, mObj);
+            gameHistory.push({ fen: game.fen(), move: { from: mObj.from, to: mObj.to }, moveObj: mObj, soundType: sndType });
             historyIndex = gameHistory.length - 1;
-            let newIdx = historyIndex;
-
-            if (data.depth || data.nps) {
-                let knps = data.nps ? Math.round(data.nps / 1000) + " kN/s" : "";
-                let dInfo = data.depth ? `Depth ${data.depth}` : "";
-                safeHtml('coach-bubble', `<b>Engine:</b>&nbsp;${data.engine || 'Stockfish'} • ${dInfo} ${knps ? '• ' + knps : ''}`);
-            }
-
-            processMoveVisuals(moveObj, newIdx);
-
-            if (!isMatchOver() && !isAnalysisBranchMode && isAutoBotMode()) {
-                if (aiMoveTimerId) clearTimeout(aiMoveTimerId);
-                aiMoveTimerId = setTimeout(makeAiMove, 200);
-                return;
-            }
-
-            if (!isMatchOver() && !isAnalysisBranchMode && gameMode === 'pvb' && game.turn() === playerColor && premoveQueue.length > 0) {
-                let nextPm = premoveQueue.shift();
-                let legalCheck = game.moves({ square: nextPm.from, verbose: true }).find(m => m.to === nextPm.to);
-                if (legalCheck) {
-                    setTimeout(() => executeHumanMove(nextPm.from, nextPm.to), 80);
-                } else {
-                    premoveQueue = [];
-                    renderBoard();
-                }
-            }
-        },
-        error: function() {
-            activeAiXhr = null;
-            if (!isMatchOver() && !isAnalysisBranchMode && (isAutoBotMode() || (gameMode === 'pvb' && game.turn() !== playerColor))) {
-                aiMoveTimerId = setTimeout(makeAiMove, 500);
-            }
+            processMoveVisuals(mObj, historyIndex);
         }
     });
 }
@@ -966,159 +512,26 @@ function processMoveVisuals(moveObj, targetIndex) {
     playSoundForHistoryRec(rec);
     renderBoard();
     updateStatus();
-
     try { syncOptionalPanelsVisibility(); } catch (e) {}
     try { $('#pgn-box').val(game.pgn()); } catch (e) {}
-    try { updateMaterial(gameHistory[historyIndex].fen); } catch (e) {}
-    try { if (window.updateOpeningExplorer) window.updateOpeningExplorer(); } catch (e) {}
-    try { if (window.classifyMoveByEval) window.classifyMoveByEval(targetIndex); } catch (e) {}
-
-    $.post('/eval', { fen: rec.fen, depth: (isAutoBotMode() ? 12 : 15), time: 0.14, _t: Date.now() }, function(data) {
-        if (data && gameHistory[targetIndex]) {
-            gameHistory[targetIndex].evalScore = data.score;
-            gameHistory[targetIndex].evalText = data.text;
-            if (data.cp !== undefined) gameHistory[targetIndex].cp = data.cp;
-            if (data.best_san) {
-                gameHistory[targetIndex].nextBestSan = data.best_san;
-                gameHistory[targetIndex].nextBestUci = data.best_uci || "";
-            }
-            if (historyIndex === targetIndex) updateEvalBar(targetIndex);
-            try { if (window.classifyMoveByEval) window.classifyMoveByEval(targetIndex); } catch (e) {}
-            try { if (window.drawAllEvalGraphs) window.drawAllEvalGraphs(); } catch (e) {}
-        }
-    });
-}
-
-function updateEvalBar(idx) {
-    if (!showEvalBar) return;
-    let rec = gameHistory[idx] || { evalScore: 50.0, evalText: "0.0", cp: 0 };
-    let whitePct = rec.evalScore !== undefined ? rec.evalScore : 50.0;
-    let txt = rec.evalText || "0.0";
-
-    if (currentBoardOrientation === 'w') {
-        $('#eval-fill').css({ top: 'auto', bottom: '0', height: whitePct + '%' });
-        $('#eval-text-bottom').text(whitePct >= 50 ? txt : '').css('color', '#161512');
-        $('#eval-text-top').text(whitePct < 50 ? txt : '').css('color', '#e0e0e0');
-    } else {
-        $('#eval-fill').css({ top: '0', bottom: 'auto', height: whitePct + '%' });
-        $('#eval-text-top').text(whitePct >= 50 ? txt : '').css('color', '#161512');
-        $('#eval-text-bottom').text(whitePct < 50 ? txt : '').css('color', '#e0e0e0');
-    }
-}
-
-function updateMaterial(fen) {
-    let temp = new Chess(fen);
-    let board = temp.board();
-    let vals = { p: 1, n: 3, b: 3, r: 5, q: 9, k: 0 };
-    let startCounts = { w: { p:8, n:2, b:2, r:2, q:1 }, b: { p:8, n:2, b:2, r:2, q:1 } };
-    let currCounts = { w: { p:0, n:0, b:0, r:0, q:0 }, b: { p:0, n:0, b:0, r:0, q:0 } };
-    let wScore = 0, bScore = 0;
-    for (let r = 0; r < 8; r++) {
-        for (let c = 0; c < 8; c++) {
-            let p = board[r][c];
-            if (p && p.type !== 'k') { currCounts[p.color][p.type]++; if (p.color === 'w') wScore += vals[p.type]; else bScore += vals[p.type]; }
-        }
-    }
-    const icons = { w: { p:'♙', n:'♘', b:'♗', r:'♖', q:'♕' }, b: { p:'♟', n:'♞', b:'♝', r:'♜', q:'♛' } };
-    let capByWhite = "", capByBlack = "";
-    ['p', 'n', 'b', 'r', 'q'].forEach(t => {
-        capByWhite += icons.b[t].repeat(Math.max(0, startCounts.b[t] - currCounts.b[t]));
-        capByBlack += icons.w[t].repeat(Math.max(0, startCounts.w[t] - currCounts.w[t]));
-    });
-    let diff = wScore - bScore;
-    if (diff > 0) capByWhite += ` <span class="adv-badge">+${diff}</span>`;
-    if (diff < 0) capByBlack += ` <span class="adv-badge">+${Math.abs(diff)}</span>`;
-    if (currentBoardOrientation === 'w') { safeHtml('bottom-captured', capByWhite); safeHtml('top-captured', capByBlack); }
-    else { safeHtml('top-captured', capByWhite); safeHtml('bottom-captured', capByBlack); }
-}
-
-function finishMatchWithAnimation(winnerColor, reasonType, title, subtitle, alreadyPlayedGameEndSound = false) {
-    if (matchEnded) return;
-    matchEnded = true;
-    stopAllActiveMatchProcesses();
-    gameEndEffect = { winner: winnerColor, reason: reasonType };
-    if (!alreadyPlayedGameEndSound) playSnd('gameover');
-    syncOptionalPanelsVisibility();
-    renderBoard();
-    if (window.updateCareerRatingOnGameEnd) window.updateCareerRatingOnGameEnd(winnerColor);
-    if (gameOverModalTimerId) clearTimeout(gameOverModalTimerId);
-    gameOverModalTimerId = setTimeout(() => {
-        playSnd('notify');
-        triggerGameOverSequence(title, subtitle);
-    }, 1250);
-}
-
-function startTimer() {
-    clearInterval(timerInterval);
-    if (isInfiniteTime) return;
-    timerInterval = setInterval(() => {
-        if (isMatchOver() || isAnalysisBranchMode) { clearInterval(timerInterval); return; }
-        if (game.turn() === 'w') {
-            whiteTime--;
-            if (whiteTime === 10) playSnd('tenseconds');
-            if (whiteTime <= 0) {
-                whiteTime = 0; updateTimer();
-                let bName = getBlackDisplayName();
-                $('#status').text(`Time Out! ${bName} Wins on Time.`);
-                finishMatchWithAnimation('b', 'timeout', "Time Out!", `${bName} won on time.`, false);
-                return;
-            }
-        } else {
-            blackTime--;
-            if (blackTime === 10) playSnd('tenseconds');
-            if (blackTime <= 0) {
-                blackTime = 0; updateTimer();
-                let wName = getWhiteDisplayName();
-                $('#status').text(`Time Out! ${wName} Wins on Time.`);
-                finishMatchWithAnimation('w', 'timeout', "Time Out!", `${wName} won on time.`, false);
-                return;
-            }
-        }
-        updateTimer();
-    }, 1000);
-}
-
-function formatSec(sec) {
-    if (isInfiniteTime) return "∞";
-    let m = Math.floor(sec / 60), s = sec % 60;
-    return `${m < 10 ? '0' : ''}${m}:${s < 10 ? '0' : ''}${s}`;
-}
-function updateTimer() {
-    let wStr = formatSec(whiteTime), bStr = formatSec(blackTime);
-    if (currentBoardOrientation === 'w') { safeText('bottom-timer', wStr); safeText('top-timer', bStr); }
-    else { safeText('top-timer', wStr); safeText('bottom-timer', bStr); }
 }
 
 function updateStatus() {
     if (window.activePuzzle && window.activePuzzle.isRunning) return;
-    if (matchEnded) return;
     if (game.in_checkmate()) {
-        let winnerColor = (game.turn() === 'w') ? 'b' : 'w';
-        let winnerName = (winnerColor === 'w') ? getWhiteDisplayName() : getBlackDisplayName();
+        let winnerName = (game.turn() === 'w') ? getBlackDisplayName() : getWhiteDisplayName();
         $('#status').text(`Checkmate! ${winnerName} Wins.`);
-        finishMatchWithAnimation(winnerColor, 'checkmate', "Checkmate!", `${winnerName} won by checkmate.`, true);
+        triggerGameOverSequence("Checkmate!", `${winnerName} won by checkmate.`);
     } else if (game.in_draw()) {
-        let reason = "Draw";
-        if (game.in_stalemate()) reason = "Stalemate";
-        else if (game.in_threefold_repetition()) reason = "Threefold Repetition";
-        else if (game.insufficient_material()) reason = "Insufficient Material";
-        $('#status').text(reason);
-        finishMatchWithAnimation('draw', 'draw', "Match Drawn", reason, true);
+        $('#status').text("Draw");
+        triggerGameOverSequence("Match Drawn", "Game drawn.");
     } else {
-        let chk = game.in_check() ? " (Check)" : "";
-        if (isAnalysisBranchMode) {
-            $('#status').text(`Analysis Mode (${game.turn() === 'w' ? 'White' : 'Black'} to move)${chk}`);
-        } else if (isAutoBotMode()) {
-            $('#status').text(`${game.turn() === 'w' ? getWhiteDisplayName() : getBlackDisplayName()} to move${chk}`);
-        } else if (gameMode === 'pvp') {
-            $('#status').text(`${game.turn() === 'w' ? 'White' : 'Black'}'s turn${chk}`);
-        } else {
-            $('#status').text((game.turn() === playerColor ? "Your turn" : "Opponent's turn") + chk);
-        }
+        $('#status').text(game.turn() === 'w' ? "White's turn" : "Black's turn");
     }
 }
 
 function triggerGameOverSequence(title, subtitle) {
+    matchEnded = true;
     syncEloBadgeVisibility();
     if (window.updateAccuracySummary) window.updateAccuracySummary();
     if (window.saveCurrentMatchToVault) window.saveCurrentMatchToVault(title);
@@ -1131,141 +544,19 @@ function triggerGameOverSequence(title, subtitle) {
 
 window.handleModalBtn = function() { closeModal('game-modal'); openSetupModal(); };
 
-window.startGame = function(fromSetup = false) {
-    if (window.activePuzzle) {
-        window.activePuzzle.isRunning = false;
-    }
-    if (window.openingPracticeState) {
-        if (openingPracticeState.demoTimer) clearInterval(openingPracticeState.demoTimer);
-        openingPracticeState.active = false;
-        openingPracticeState.mode = "none";
-    }
-    stopAllActiveMatchProcesses();
-    if (gameOverModalTimerId) { clearTimeout(gameOverModalTimerId); gameOverModalTimerId = null; }
-    timerStarted = false; isAnalysisBranchMode = false; currentMatchSaved = false;
-    matchEnded = false; gameEndEffect = null;
-    selectedSquare = null; currentLegalMoves = []; premoveQueue = []; clearArrows();
-    hideGhostPiece();
-    if (window.clearCustomAnnotations) window.clearCustomAnnotations();
-    game.reset();
-    let initEv = window.computeInstantEvalFromFen ? window.computeInstantEvalFromFen(game.fen()) : { score: 50.0, text: "0.0", cp: 0 };
-    gameHistory = [{
-        fen: game.fen(), move: null, moveObj: null, soundType: 'move',
-        evalScore: initEv.score, evalText: initEv.text, cp: 0, bestMoveUci: "", bestMoveSan: ""
-    }];
-    historyIndex = 0;
-    syncEloBadgeVisibility();
-    syncOptionalPanelsVisibility();
-    if (window.updateOpeningExplorer) window.updateOpeningExplorer();
-    updateTimer(); updateEvalBar(0); updateMaterial(game.fen()); renderBoard();
-    if (window.drawAllEvalGraphs) window.drawAllEvalGraphs();
-    updateStatus(); playSnd('start');
-    if (isAutoBotMode() || (gameMode === 'pvb' && game.turn() !== playerColor)) {
-        timerStarted = true; startTimer();
-        aiMoveTimerId = setTimeout(makeAiMove, 300);
-    }
-};
+window.goToStart = function() { historyIndex = 0; renderBoard(); };
+window.goBackward = function() { if (historyIndex > 0) { historyIndex--; renderBoard(); } };
+window.goForward = function() { if (historyIndex < gameHistory.length - 1) { historyIndex++; renderBoard(); } };
+window.goLive = function() { historyIndex = gameHistory.length - 1; renderBoard(); };
 
 window.flipBoardUI = function() {
     currentBoardOrientation = (currentBoardOrientation === 'w') ? 'b' : 'w';
-    let topLbl = getTextSafe('top-player-label'), botLbl = getTextSafe('bottom-player-label');
-    let topNm = getTextSafe('top-player-name'), botNm = getTextSafe('bottom-player-name');
-    safeText('top-player-label', botLbl); safeText('bottom-player-label', topLbl);
-    safeText('top-player-name', botNm); safeText('bottom-player-name', topNm);
-    syncEloBadgeVisibility();
-    updateTimer(); updateEvalBar(historyIndex); updateMaterial(gameHistory[historyIndex].fen); renderBoard();
-};
-
-window.takebackMove = function() {
-    if (window.activePuzzle && window.activePuzzle.isRunning) {
-        if (gameHistory.length > 1) {
-            game.undo();
-            gameHistory.pop();
-            historyIndex = gameHistory.length - 1;
-            renderBoard();
-            safeText('status', 'Move undone. Find the winning move.');
-        }
-        return;
-    }
-    if (gameHistory.length <= 1) return;
-    premoveQueue = []; matchEnded = false; gameEndEffect = null;
-    let steps = (gameMode === 'pvb' && game.turn() === playerColor && gameHistory.length >= 3) ? 2 : 1;
-    for (let i = 0; i < steps; i++) { game.undo(); gameHistory.pop(); }
-    historyIndex = gameHistory.length - 1; selectedSquare = null; currentLegalMoves = []; clearArrows();
-    playSoundForHistoryRec(gameHistory[historyIndex]);
-    updateEvalBar(historyIndex); updateMaterial(game.fen());
-    if (window.updateOpeningExplorer) window.updateOpeningExplorer();
-    renderBoard(); if (window.drawAllEvalGraphs) window.drawAllEvalGraphs(); updateStatus();
-};
-
-window.goToStart = function() {
-    historyIndex = 0; selectedSquare = null; currentLegalMoves = [];
-    playSnd('move'); renderBoard(); showAnalysisStatus();
-    if (window.drawAllEvalGraphs) window.drawAllEvalGraphs();
-};
-
-window.goBackward = function() {
-    if (historyIndex > 0) {
-        historyIndex--;
-        selectedSquare = null; currentLegalMoves = [];
-        let rec = gameHistory[historyIndex];
-        playSoundForHistoryRec(rec);
-        renderBoard();
-        showAnalysisStatus();
-        if (window.drawAllEvalGraphs) window.drawAllEvalGraphs();
-    }
-};
-
-window.goForward = function() {
-    if (historyIndex < gameHistory.length - 1) {
-        historyIndex++;
-        selectedSquare = null; currentLegalMoves = [];
-        let rec = gameHistory[historyIndex];
-        playSoundForHistoryRec(rec);
-        renderBoard();
-        showAnalysisStatus();
-        if (window.drawAllEvalGraphs) window.drawAllEvalGraphs();
-    }
-};
-
-window.goLive = function() {
-    historyIndex = gameHistory.length - 1; selectedSquare = null; currentLegalMoves = []; clearArrows();
-    let rec = gameHistory[historyIndex];
-    playSoundForHistoryRec(rec);
     renderBoard();
-    updateEvalBar(historyIndex); updateMaterial(game.fen());
-    if (window.drawAllEvalGraphs) window.drawAllEvalGraphs(); updateStatus();
 };
-
-function showAnalysisStatus() {
-    clearArrows(); updateEvalBar(historyIndex); updateMaterial(gameHistory[historyIndex].fen);
-    if (window.updateOpeningExplorer) window.updateOpeningExplorer();
-    if (historyIndex === 0) { $('#status').text("Start of Game (Tap Hint or move a piece to analyze)"); return; }
-    let rec = gameHistory[historyIndex];
-    if (rec && rec.moveObj) {
-        let clsTxt = rec.classification ? ` (${rec.classification.label})` : "";
-        let bestTxt = rec.bestMoveSan ? ` • Best was ${rec.bestMoveSan}` : "";
-        $('#status').text(`Move ${historyIndex}: ${rec.moveObj.san}${clsTxt}${bestTxt}`);
-    }
-}
 
 $(document).ready(function() {
     preloadAllSounds();
     bindPieceDragAndDropEvents();
     document.body.addEventListener('touchstart', () => getAudioCtx(), { once: true });
     document.body.addEventListener('click', () => getAudioCtx(), { once: true });
-
-    let savedTheme = localStorage.getItem('saved_chess_theme');
-    if (savedTheme) {
-        let sel = safeEl('setting-board-theme');
-        if (sel) sel.value = savedTheme;
-        document.body.className = document.body.className.replace(/\btheme-[^\s]+\b/g, '').trim();
-        document.body.classList.add(savedTheme);
-    }
-
-    let savedPieces = localStorage.getItem('saved_chess_piece_style');
-    if (savedPieces) {
-        let pSel = safeEl('setting-piece-style');
-        if (pSel) pSel.value = savedPieces;
-    }
 });
