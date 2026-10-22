@@ -1,6 +1,5 @@
 /* ============================================================================
-   static/mod_share_vault.js (v101 - PDF & Vault Integration)
-   Branded PGN Format + ReportLab PDF Exporter + Archive Save
+   static/mod_share_vault.js (v102 - Pure PGN & Multi-PGN Vault Exporter)
    ============================================================================ */
 
 window.buildBrandedPGN = function() {
@@ -20,7 +19,6 @@ window.buildBrandedPGN = function() {
         else if (gameEndEffect.winner === 'draw') resCode = "1/2-1/2";
     }
 
-    // Reconstruct clean SAN move text from gameHistory so it works even in review mode
     let movesText = "";
     for (let i = 1; i < gameHistory.length; i++) {
         let rec = gameHistory[i];
@@ -35,7 +33,7 @@ window.buildBrandedPGN = function() {
 
     let headers = [
         `[Event "Chess AI Pro Match"]`,
-        `[Site "Chess AI Pro • Local Engine Server"]`,
+        `[Site "Chess AI Pro • Android PRoot"]`,
         `[Date "${dateStr}"]`,
         `[White "${wName}"]`,
         `[Black "${bName}"]`,
@@ -88,41 +86,53 @@ window.copyCurrentFEN = function() {
 };
 
 // ============================================================================
-// REPORTLAB TOURNAMENT PDF EXPORT TRIGGER
+// SINGLE MATCH PGN SAVER -> Download/ChessAIPro/PGN_Matches/
 // ============================================================================
-window.downloadMatchPDF = function() {
-    let wName = encodeURIComponent(getWhiteDisplayName());
-    let bName = encodeURIComponent(getBlackDisplayName());
-    let opening = encodeURIComponent(getTextSafe('opening-bar', 'Standard Opening'));
-    let pgnText = encodeURIComponent(window.buildBrandedPGN());
-    
-    let resCode = "*";
-    if (game.in_checkmate()) resCode = (game.turn() === 'w') ? "0-1" : "1-0";
-    else if (game.in_draw()) resCode = "1/2-1/2";
-    else if (matchEnded && gameEndEffect) {
-        if (gameEndEffect.winner === 'w') resCode = "1-0";
-        else if (gameEndEffect.winner === 'b') resCode = "0-1";
-        else if (gameEndEffect.winner === 'draw') resCode = "1/2-1/2";
-    }
+window.saveSingleMatchPGN = function() {
+    let pgnText = window.buildBrandedPGN();
+    let cleanWhite = getWhiteDisplayName().replace(/[^a-zA-Z0-9]/g, '_');
+    let cleanBlack = getBlackDisplayName().replace(/[^a-zA-Z0-9]/g, '_');
+    let timeStamp = new Date().toISOString().slice(0, 10).replace(/-/g, '') + "_" + Date.now().toString().slice(-4);
+    let fileName = `Match_${cleanWhite}_vs_${cleanBlack}_${timeStamp}.pgn`;
 
-    let url = `/api/export_pdf?white=${wName}&black=${bName}&opening=${opening}&result=${encodeURIComponent(resCode)}&pgn=${pgnText}`;
-    let fileName = `Match_Report_${Date.now()}.pdf`;
-
-    // Native Android Bridge Call (Bypasses WebView Download Restrictions)
-    if (window.AndroidBridge && typeof window.AndroidBridge.downloadPdfNative === 'function') {
-        window.AndroidBridge.downloadPdfNative(url, fileName);
+    if (window.AndroidBridge && typeof window.AndroidBridge.savePgnNative === 'function') {
+        window.AndroidBridge.savePgnNative(pgnText, fileName, false);
     } else {
-        window.open(url, '_blank');
+        // Fallback for browser testing
+        let blob = new Blob([pgnText], { type: 'application/x-chess-pgn' });
+        let a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = fileName;
+        a.click();
     }
 };
 
-window.downloadShareableKundliCard = function() {
-    window.downloadMatchPDF();
-};
-
-// Connect existing "Save Card" button to generate & download official PDF
-window.downloadShareableKundliCard = function() {
-    window.downloadMatchPDF();
+// ============================================================================
+// MULTI-MATCH PGN COLLECTION -> Download/ChessAIPro/ChessAIPro_All_Matches.pgn
+// ============================================================================
+window.exportAllMatchesMultiPGN = function() {
+    safeText('status', 'Gathering all matches into Multi-PGN...');
+    fetch('/api/export_all_pgn')
+        .then(res => res.json())
+        .then(data => {
+            if (data.status === 'success' && data.multi_pgn) {
+                let fileName = `ChessAIPro_All_Matches_${data.count}_Games.pgn`;
+                if (window.AndroidBridge && typeof window.AndroidBridge.savePgnNative === 'function') {
+                    window.AndroidBridge.savePgnNative(data.multi_pgn, fileName, true);
+                } else {
+                    let blob = new Blob([data.multi_pgn], { type: 'application/x-chess-pgn' });
+                    let a = document.createElement('a');
+                    a.href = URL.createObjectURL(blob);
+                    a.download = fileName;
+                    a.click();
+                }
+            } else {
+                alert("No saved matches found in vault yet! Play and save games first.");
+            }
+        })
+        .catch(err => {
+            alert("Error exporting Multi-PGN: " + err);
+        });
 };
 
 window.openMatchVaultModal = function() {
