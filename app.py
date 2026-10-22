@@ -653,14 +653,13 @@ def delete_match():
         return jsonify({"status": "error", "message": str(e)})
 
 # ============================================================================
-# DEVELOPER REMOTE ASSET SYNC & DASHBOARD (AUTO-CREATE & SAFE FALLBACK)
+# DEVELOPER REMOTE ASSET SYNC & DASHBOARD (RECURSIVE INSPECTION)
 # ============================================================================
 
 DEV_API_KEY = "DEV_SECRET_KEY_98765"
 DEFAULT_TARGET_DIR = "/storage/emulated/0/Download/ChessAIPro"
 
 def get_valid_assets_dir():
-    # Pehle external storage target check/create karein
     try:
         if not os.path.exists(DEFAULT_TARGET_DIR):
             os.makedirs(DEFAULT_TARGET_DIR, exist_ok=True)
@@ -668,7 +667,6 @@ def get_valid_assets_dir():
     except Exception:
         pass
     
-    # Fallback: Agar Android storage inaccessible ho toh project root ya local dir lein
     fallback = os.path.abspath("downloads")
     try:
         os.makedirs(fallback, exist_ok=True)
@@ -691,11 +689,13 @@ def list_assets():
     target_dir = get_valid_assets_dir()
     files_list = []
     try:
-        for entry in os.scandir(target_dir):
-            if entry.is_file():
-                info = entry.stat()
+        for root, dirs, files in os.walk(target_dir):
+            for file_name in files:
+                full_path = os.path.join(root, file_name)
+                rel_path = os.path.relpath(full_path, target_dir)
+                info = os.stat(full_path)
                 files_list.append({
-                    "name": entry.name,
+                    "name": rel_path,
                     "size_kb": round(info.st_size / 1024, 2),
                     "modified": datetime.fromtimestamp(info.st_mtime).strftime('%Y-%m-%d %H:%M:%S')
                 })
@@ -754,7 +754,7 @@ DEV_DASHBOARD_HTML = """
                         return;
                     }
                     if (data.files.length === 0) {
-                        tbody.innerHTML = `<tr><td colspan='3' style='color:#aaa;'>Directory empty (${data.path}).</td></tr>`;
+                        tbody.innerHTML = `<tr><td colspan='3' style='color:#aaa;'>Directory empty (${data.path}). Save a game or add files to see them here.</td></tr>`;
                         return;
                     }
                     data.files.forEach(f => {
