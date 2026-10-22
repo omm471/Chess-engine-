@@ -1,18 +1,30 @@
 /* ============================================================================
-   static/mod_analysis.js (v102 - Interactive Puzzle Trainer & Engine Graph)
+   static/mod_analysis.js (v103 - Fully Integrated Puzzle & Analysis Engine)
+   - Dynamic Perspective & Flipped Orientation (Player King Always at Bottom)
+   - Direction-Accurate Hint Arrows
+   - Interactive Opponent Auto-Reply Engine
+   - Victory Celebration Modal Trigger (Next Puzzle / Retry / Analyze)
    ============================================================================ */
 
 var matchAccuracyData = { wAcc: 100, bAcc: 100, wAcpl: 12, bAcpl: 15, counts: {} };
 
-// Interactive Puzzle State
+// ============================================================================
+// ACTIVE PUZZLE STATE MANAGEMENT
+// ============================================================================
 window.activePuzzle = {
     isRunning: false,
     id: "",
     rating: 0,
-    solution: [],  // ["e2e4", "e7e5", ...]
-    plyIndex: 0
+    solution: [],
+    plyIndex: 0,
+    playerColor: 'w',
+    initialFen: "",
+    theme: ""
 };
 
+// ============================================================================
+// ACCURACY & MOVE EVALUATION
+// ============================================================================
 window.classifyMoveByEval = function(idx) {
     if (idx <= 0 || idx >= gameHistory.length) return;
     let curr = gameHistory[idx];
@@ -56,6 +68,9 @@ window.updateAccuracySummary = function() {
     safeText(['black-acc-text', 'k-b-acc', 'modal-p2-acc'], bAvg + '%');
 };
 
+// ============================================================================
+// EVALUATION GRAPH ENGINE (CANVAS)
+// ============================================================================
 function renderChessComGraphOnCanvas(canvasId, isInteractive) {
     let canvas = safeEl(canvasId);
     if (!canvas) return;
@@ -160,8 +175,9 @@ window.drawAllEvalGraphs = function() {
 };
 
 // ============================================================================
-// PROBLEM 1 FIX: DYNAMIC PERSPECTIVE & ARROW ORIENTATION FOR PUZZLES
+// PROBLEM 1 & 2: PUZZLE CONTROLLER & VICTORY MODAL LOGIC
 // ============================================================================
+
 window.loadDailyPuzzle = function() {
     safeText('status', 'Fetching Daily Puzzle from Lichess...');
     fetch('/api/daily_puzzle')
@@ -175,7 +191,7 @@ window.loadDailyPuzzle = function() {
                 historyIndex = 0;
                 matchEnded = false;
 
-                let puzzleTurn = data.turn || 'w'; // 'w' ya 'b'
+                let puzzleTurn = data.turn || 'w';
 
                 window.activePuzzle = {
                     isRunning: true,
@@ -183,14 +199,16 @@ window.loadDailyPuzzle = function() {
                     rating: data.rating,
                     solution: data.solution,
                     plyIndex: 0,
-                    playerColor: puzzleTurn
+                    playerColor: puzzleTurn,
+                    initialFen: data.fen,
+                    theme: data.themes ? data.themes.join(', ') : 'Tactics'
                 };
 
-                // 1. Perspective Flip Fix: Player ka color hamesha neeche rahega
+                // Problem 1 Fix: Player King hamesha neeche rahega
                 currentBoardOrientation = puzzleTurn;
                 playerColor = puzzleTurn;
 
-                // 2. Player Names & Labels Swap
+                // Player Labels swap
                 if (puzzleTurn === 'b') {
                     safeText('bottom-player-label', 'Black');
                     safeText('bottom-player-name', 'You');
@@ -203,15 +221,12 @@ window.loadDailyPuzzle = function() {
                     safeText('top-player-name', `Opponent (${data.rating})`);
                 }
 
-                // 3. Clear old arrows and re-render board
                 clearArrows();
                 if (typeof renderBoard === 'function') renderBoard();
 
                 let turnName = (puzzleTurn === 'w') ? 'White to move' : 'Black to move';
-                let themes = data.themes ? data.themes.slice(0, 3).join(', ') : 'Tactics';
-
                 safeText('opening-bar', `Puzzle #${data.id} • Rating: ${data.rating} ELO`);
-                safeText('status', `🧩 ${turnName} • Your King is at the bottom!`);
+                safeText('status', `🧩 ${turnName} • Find the winning move!`);
             } else {
                 alert('Puzzle fetch failed: ' + (data.message || 'Check Internet'));
             }
@@ -221,7 +236,7 @@ window.loadDailyPuzzle = function() {
         });
 };
 
-// 4. Fixed Hint Arrow: Hamesha source (from) se target (to) point karega
+// Arrow drawing helper (Direction accurate)
 window.drawArrow = function(fromSq, toSq, color = 'rgba(74, 143, 240, 0.85)') {
     let svg = safeEl('arrow-overlay');
     if (!svg) return;
@@ -229,12 +244,9 @@ window.drawArrow = function(fromSq, toSq, color = 'rgba(74, 143, 240, 0.85)') {
     let p1 = sqToSvgCoords(fromSq);
     let p2 = sqToSvgCoords(toSq);
 
-    // Arrow shaft and head calculation
     let angle = Math.atan2(p2.y - p1.y, p2.x - p1.x);
     let arrowLength = Math.hypot(p2.x - p1.x, p2.y - p1.y);
-    let headLen = 14;
 
-    // Shorten line slightly so arrow head sits right on square center
     let endX = p1.x + (arrowLength - 6) * Math.cos(angle);
     let endY = p1.y + (arrowLength - 6) * Math.sin(angle);
 
@@ -251,7 +263,7 @@ window.drawArrow = function(fromSq, toSq, color = 'rgba(74, 143, 240, 0.85)') {
     svg.innerHTML = arrowSvg;
 };
 
-// 5. Fixed Hint Action for Puzzle Mode
+// Hint handler for puzzle
 window.requestHint = function() {
     if (window.activePuzzle && window.activePuzzle.isRunning) {
         let pz = window.activePuzzle;
@@ -260,18 +272,33 @@ window.requestHint = function() {
             let from = expectedUci.slice(0, 2);
             let to = expectedUci.slice(2, 4);
             window.drawArrow(from, to, 'rgba(129, 182, 76, 0.9)');
-            safeText('status', `Hint: Move piece from ${from.toUpperCase()} to ${to.toUpperCase()}`);
+            safeText('status', `Hint: Move from ${from.toUpperCase()} to ${to.toUpperCase()}`);
             return;
         }
     }
-    // Normal match hint logic continues below...
     if (typeof fetchEngineHint === 'function') fetchEngineHint();
 };
 
+// Problem 2 Fix: Celebratory Victory Popup Trigger
+window.triggerPuzzleVictory = function() {
+    let pz = window.activePuzzle;
+    pz.isRunning = false;
 
-// Puzzle Move Validator Interceptor
+    safeText('status', '🏆 Brilliant! Puzzle Solved Successfully!');
+    if (typeof playSound === 'function') playSound('game-end');
+
+    safeText('puzzle-modal-title', 'Brilliant! Puzzle Solved');
+    safeText('puzzle-modal-rating', `Rating: ${pz.rating} ELO • Puzzle #${pz.id}`);
+    safeText('puzzle-modal-theme', pz.theme || 'Tactics, Endgame');
+    
+    setTimeout(() => {
+        safeDisplay('puzzle-modal', 'flex');
+    }, 450);
+};
+
+// Move Validator Interceptor with Opponent Reply
 window.checkPuzzlePlayerMove = function(userMoveUci) {
-    if (!window.activePuzzle.isRunning) return false;
+    if (!window.activePuzzle || !window.activePuzzle.isRunning) return false;
 
     let pz = window.activePuzzle;
     let expectedUci = pz.solution[pz.plyIndex];
@@ -279,16 +306,13 @@ window.checkPuzzlePlayerMove = function(userMoveUci) {
     if (userMoveUci.startsWith(expectedUci) || userMoveUci === expectedUci) {
         pz.plyIndex++;
         
-        // Check if puzzle completed
+        // Final move completed
         if (pz.plyIndex >= pz.solution.length) {
-            pz.isRunning = false;
-            safeText('status', '🏆 Brilliant! Puzzle Solved Successfully!');
-            alert('🏆 Puzzle Solved! Excellent tactic vision!');
-            if (typeof playSound === 'function') playSound('game-end');
+            window.triggerPuzzleVictory();
             return true;
         }
 
-        // Opponent counter-move reply
+        // Opponent automatic reply move
         safeText('status', '✓ Best move! Opponent replying...');
         let oppUci = pz.solution[pz.plyIndex];
         pz.plyIndex++;
@@ -306,10 +330,7 @@ window.checkPuzzlePlayerMove = function(userMoveUci) {
                 if (typeof playSoundForMove === 'function') playSoundForMove(mObj);
 
                 if (pz.plyIndex >= pz.solution.length) {
-                    pz.isRunning = false;
-                    safeText('status', '🏆 Brilliant! Puzzle Solved Successfully!');
-                    alert('🏆 Puzzle Solved! Excellent tactic vision!');
-                    if (typeof playSound === 'function') playSound('game-end');
+                    window.triggerPuzzleVictory();
                 } else {
                     safeText('status', 'Your turn! Find the next winning move.');
                 }
@@ -318,7 +339,7 @@ window.checkPuzzlePlayerMove = function(userMoveUci) {
 
         return true;
     } else {
-        // Incorrect Move -> Undo move and warn user
+        // Wrong Move: Undo move and warn
         setTimeout(() => {
             game.undo();
             if (gameHistory.length > 1) {
@@ -327,9 +348,40 @@ window.checkPuzzlePlayerMove = function(userMoveUci) {
             }
             if (typeof renderBoard === 'function') renderBoard();
             if (typeof playSound === 'function') playSound('illegal');
-            safeText('status', '✘ Not the best move! Try again.');
-            alert('✘ That is not the best move. Try again!');
-        }, 200);
+            safeText('status', '✘ That is not the best move! Try again.');
+        }, 250);
         return true;
     }
+};
+
+// Next Puzzle Action
+window.fetchNextPuzzle = function() {
+    closeModal('puzzle-modal');
+    window.loadDailyPuzzle();
+};
+
+// Retry Current Puzzle Action
+window.retryCurrentPuzzle = function() {
+    closeModal('puzzle-modal');
+    let pz = window.activePuzzle;
+    if (pz && pz.initialFen) {
+        game.reset();
+        game.load(pz.initialFen);
+        gameHistory = [{ fen: pz.initialFen, moveObj: null }];
+        historyIndex = 0;
+        pz.plyIndex = 0;
+        pz.isRunning = true;
+        clearArrows();
+        if (typeof renderBoard === 'function') renderBoard();
+        safeText('status', `🧩 Puzzle Restarted! Find the winning move.`);
+    }
+};
+
+// Analyze Position in Free-Play Mode
+window.analyzeCurrentPuzzlePosition = function() {
+    closeModal('puzzle-modal');
+    window.activePuzzle.isRunning = false;
+    isAnalysisBranchMode = true;
+    safeText('status', 'Analysis Free Play Mode — Move pieces freely or tap Hint.');
+    if (typeof openDeepReport === 'function') openDeepReport();
 };
