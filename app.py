@@ -606,4 +606,11 @@ def delete_match():
         return jsonify({"status": "error", "message": str(e)})
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000, threaded=True)
+    try:
+        from waitress import serve
+        print("[✔] Production WSGI Server (Waitress) active!")
+        print("* Running on http://127.0.0.1:5000")
+        serve(app, host='0.0.0.0', port=5000, threads=4)
+    except ImportError:
+        # Agar waitress na mile toh default fallback
+        app.run(host='0.0.0.0', port=5000, debug=False)
