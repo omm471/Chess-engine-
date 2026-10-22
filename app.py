@@ -282,24 +282,53 @@ init_db()
 def index():
     return render_template('index.html')
 
-# Lichess Daily Tactics API
+# Lichess Daily Tactics API (Reconstructs Real FEN via python-chess)
 @app.route('/api/daily_puzzle', methods=['GET'])
 def get_daily_puzzle():
     if not requests:
         return jsonify({"status": "error", "message": "requests package missing"}), 500
     try:
-        r = requests.get("https://lichess.org/api/puzzle/daily", timeout=6)
+        import io
+        import chess.pgn
+
+        r = requests.get("https://lichess.org/api/puzzle/daily", timeout=8)
         if r.status_code == 200:
             data = r.json()
             puzzle = data.get("puzzle", {})
-            game = data.get("game", {})
+            game_data = data.get("game", {})
+            pgn_str = game_data.get("pgn", "")
+            initial_ply = int(puzzle.get("initialPly", 0))
+            solution = puzzle.get("solution", [])
+
+            # Parse PGN and advance board to puzzle state
+            pgn_io = io.StringIO(pgn_str)
+            parsed_game = chess.pgn.read_game(pgn_io)
+            board = parsed_game.board()
+            moves = list(parsed_game.mainline_moves())
+
+            for i, m in enumerate(moves):
+                if i < initial_ply:
+                    board.push(m)
+                else:
+                    break
+
+            # Push opponent's blunder if initialPly sits right before it
+            if solution and initial_ply < len(moves):
+                first_sol = chess.Move.from_uci(solution[0])
+                if first_sol not in board.legal_moves:
+                    board.push(moves[initial_ply])
+
+            real_fen = board.fen()
+            player_turn = "w" if board.turn == chess.WHITE else "b"
+
             return jsonify({
                 "status": "success",
                 "id": puzzle.get("id"),
                 "rating": puzzle.get("rating"),
                 "themes": puzzle.get("themes", []),
-                "solution": puzzle.get("solution", []),
-                "fen": game.get("tree", [{}])[0].get("fen") or game.get("pgn", "")
+                "solution": solution,
+                "fen": real_fen,
+                "turn": player_turn
             })
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
