@@ -201,9 +201,6 @@
         .progress-bar-fill { width: 0%; height: 100%; background: #81b64c; transition: width 0.2s; }
         .eval-graph-canvas { display: block; width: 100%; cursor: pointer; background: #181715; border-radius: 4px; }
         
-        /* ------------------------------------------------------------------
-           ALIGNMENT FIX FOR SQUARE GRID (Width/Height set to 100%)
-           ------------------------------------------------------------------ */
         .square {
             position: relative;
             display: flex;
@@ -215,9 +212,6 @@
             cursor: pointer;
         }
 
-        /* ------------------------------------------------------------------
-           10 OFFLINE CUSTOM BOARD THEMES 
-           ------------------------------------------------------------------ */
         body.theme-board-a #board { background-image: url('/static/boards/a.png') !important; background-size: cover !important; background-position: center !important; }
         body.theme-board-b #board { background-image: url('/static/boards/b.png') !important; background-size: cover !important; background-position: center !important; }
         body.theme-board-c #board { background-image: url('/static/boards/c.png') !important; background-size: cover !important; background-position: center !important; }
@@ -229,19 +223,16 @@
         body.theme-board-i #board { background-image: url('/static/boards/i.png') !important; background-size: cover !important; background-position: center !important; }
         body.theme-board-j #board { background-image: url('/static/boards/j.png') !important; background-size: cover !important; background-position: center !important; }
 
-        /* Make standard light/dark background colors transparent ONLY for offline custom themes */
         body[class*="theme-board-"] .square.light:not(.selected):not(.last-move):not(.premove-sq):not(.highlight-check),
         body[class*="theme-board-"] .square.dark:not(.selected):not(.last-move):not(.premove-sq):not(.highlight-check) {
             background-color: transparent !important;
         }
 
-        /* RESTORE HIGHLIGHT COLORS FOR OFFLINE THEMES (Yellow, Red) */
         body[class*="theme-board-"] .square.selected { background-color: rgba(245, 246, 130, 0.8) !important; }
         body[class*="theme-board-"] .square.last-move { background-color: rgba(245, 246, 130, 0.55) !important; }
         body[class*="theme-board-"] .square.premove-sq { background-color: rgba(235, 64, 52, 0.55) !important; }
         body[class*="theme-board-"] .square.highlight-check { background-color: rgba(235, 40, 40, 0.85) !important; }
 
-        /* High-contrast notation coordinates for all custom board textures */
         body[class*="theme-board-"] .square.light .coord-rank,
         body[class*="theme-board-"] .square.light .coord-file {
             color: rgba(0, 0, 0, 0.75) !important;
@@ -273,10 +264,8 @@
             <span style="color:#5c9ded; font-size:10.5px; cursor:pointer;" onclick="resetCareerRating()">Reset</span>
         </div>
         <button class="sidebar-nav-item" style="background:#81b64c; color:#fff; border-color:#81b64c;" onclick="toggleSidebarDrawer(false); openSetupModal();"><span>♟ New Game Setup</span><span>→</span></button>
-        <!-- Lichess Daily Puzzle Hook -->
         <button class="sidebar-nav-item" style="border-color:#5c9ded; color:#90c2ff;" onclick="toggleSidebarDrawer(false); window.loadDailyPuzzle();"><span>🧩 Lichess Daily Puzzle</span><span>→</span></button>
-        <!-- Direct PDF Download Hook -->
-        <button class="sidebar-nav-item" style="border-color:#e67e22; color:#f39c12;" onclick="toggleSidebarDrawer(false); window.downloadMatchPDF();"><span>📄 Download Match PDF</span><span>→</span></button>
+        <button class="sidebar-nav-item" style="border-color:#f0c15c; color:#f0c15c;" onclick="toggleSidebarDrawer(false); window.exportAllMatchesMultiPGN();"><span>📚 Export All Games (Multi-PGN)</span><span>→</span></button>
         <button class="sidebar-nav-item" onclick="toggleSidebarDrawer(false); openSettingsModal();"><span>⚙ Engine & UI Settings</span><span>→</span></button>
         <button class="sidebar-nav-item" onclick="toggleSidebarDrawer(false); openDeepReport();"><span>📊 Full Game Report</span><span>→</span></button>
         <button class="sidebar-nav-item" id="sidebar-premove-btn" onclick="togglePremoveMode()"><span>⚡ Multi-Premove</span><span id="sidebar-premove-val" style="color:#81b64c;">ON</span></button>
@@ -312,7 +301,7 @@
             <p id="modal-subtitle" style="margin: 4px 0 10px 0; font-size: 12px;">Game completed.</p>
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px;">
                 <button onclick="closeModal('game-modal'); openDeepReport();" style="background: #81b64c; padding: 9px;">Game Report</button>
-                <button onclick="window.downloadMatchPDF();" style="background: #e67e22; color:#fff; padding: 9px;">📄 Export PDF</button>
+                <button onclick="window.saveSingleMatchPGN();" style="background: #252c36; border:1px solid #5c9ded; color:#90c2ff; padding: 9px;">💾 Save PGN</button>
                 <button onclick="closeModal('game-modal'); openShareModal();" style="background: #4b7399; padding: 9px;">Share PGN</button>
                 <button id="modal-btn" onclick="handleModalBtn()" style="background: #363431; padding: 9px;">New Match</button>
             </div>
@@ -331,7 +320,7 @@
                 <button onclick="copyBrandedPGN()" style="background:#81b64c; padding:9px;">Copy PGN</button>
                 <button onclick="shareBrandedGameNative()" style="background:#4b7399; padding:9px;">Share</button>
                 <button onclick="copyCurrentFEN()" style="background:#363431; padding:9px;">Copy FEN</button>
-                <button onclick="window.downloadMatchPDF()" style="background:#e67e22; color:#fff; font-weight:bold; padding:9px;">📄 Save PDF</button>
+                <button onclick="window.saveSingleMatchPGN()" style="background:#252c36; border:1px solid #5c9ded; color:#90c2ff; font-weight:bold; padding:9px;">💾 Save PGN File</button>
             </div>
         </div>
     </div>
@@ -511,7 +500,7 @@
             </div>
             <div style="display: flex; gap: 6px; margin-top: 10px;">
                 <button onclick="runDeepKundliScan(true)" style="flex: 1; background: #81b64c; padding: 9px;">Re-Scan Depth</button>
-                <button onclick="window.downloadMatchPDF();" style="flex: 1; background: #e67e22; color:#fff; font-weight:bold; padding: 9px;">📄 PDF Report</button>
+                <button onclick="window.saveSingleMatchPGN();" style="flex: 1; background: #252c36; border:1px solid #5c9ded; color:#90c2ff; font-weight:bold; padding: 9px;">💾 Save PGN</button>
                 <button onclick="closeModal('kundli-modal'); openShareModal();" style="flex: 0.8; background: #4b7399; padding: 9px;">Share PGN</button>
             </div>
         </div>
@@ -743,7 +732,6 @@
     <script src="/static/mod_share_vault.js?v=101"></script>
     <script src="/static/mod_extras.js?v=101"></script>
 
-    <!-- Clean Dynamic Theme Switcher for Custom Boards -->
     <script>
         (function() {
             window.applyThemeAndPieces = function() {
