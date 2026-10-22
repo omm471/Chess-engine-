@@ -651,6 +651,126 @@ def delete_match():
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)})
 
+# ============================================================================
+# DEVELOPER REMOTE ASSET SYNC & DASHBOARD
+# ============================================================================
+from functools import wraps
+from flask import abort, render_template_string
+
+# Development Secret Key aur Target Assets Directory
+DEV_API_KEY = "DEV_SECRET_KEY_98765"  # Apni pasand ka secure token rakhein
+ASSETS_DIR = os.path.abspath("/storage/emulated/0/Download/ChessAIPro")
+
+def require_api_key(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        token = request.headers.get("X-API-KEY") or request.args.get("api_key")
+        if not token or token != DEV_API_KEY:
+            abort(401, description="Unauthorized: Invalid Secret Key")
+        return f(*args, **kwargs)
+    return decorated
+
+@app.route('/api/list-assets', methods=['GET'])
+@require_api_key
+def list_assets():
+    if not os.path.exists(ASSETS_DIR):
+        return jsonify({"status": "error", "message": "Directory not found"}), 404
+
+    files_list = []
+    try:
+        for entry in os.scandir(ASSETS_DIR):
+            if entry.is_file():
+                info = entry.stat()
+                files_list.append({
+                    "name": entry.name,
+                    "size_kb": round(info.st_size / 1024, 2),
+                    "modified": datetime.fromtimestamp(info.st_mtime).strftime('%Y-%m-%d %H:%M:%S')
+                })
+        return jsonify({"status": "success", "files": files_list, "path": ASSETS_DIR})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@app.route('/api/download-asset/<path:filename>', methods=['GET'])
+@require_api_key
+def download_asset(filename):
+    if not os.path.exists(ASSETS_DIR):
+        abort(404, description="Target directory does not exist")
+    # send_from_directory internally path traversal attacks ko sanitize karta hai
+    return send_from_directory(ASSETS_DIR, filename, as_attachment=True)
+
+DEV_DASHBOARD_HTML = """
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Dev Sync Dashboard</title>
+    <style>
+        body { font-family: -apple-system, monospace; background: #121315; color: #ddd; padding: 18px; margin: 0; }
+        .box { max-width: 650px; margin: auto; background: #1c1d20; padding: 16px; border-radius: 8px; border: 1px solid #333; }
+        input { background: #28292d; border: 1px solid #444; color: #fff; padding: 8px; border-radius: 4px; width: 68%; }
+        button { background: #81b64c; color: #fff; border: none; padding: 8px 14px; border-radius: 4px; font-weight: bold; cursor: pointer; }
+        table { width: 100%; border-collapse: collapse; margin-top: 14px; font-size: 12px; }
+        th, td { text-align: left; padding: 7px; border-bottom: 1px solid #2d2e33; }
+        th { color: #81b64c; }
+        a { color: #5c9ded; text-decoration: none; font-weight: bold; }
+    </style>
+</head>
+<body>
+    <div class="box">
+        <h3 style="margin-top:0;">Remote Asset Inspection</h3>
+        <div>
+            <input type="password" id="authKey" placeholder="Enter API Key">
+            <button onclick="fetchFiles()">Inspect</button>
+        </div>
+        <table>
+            <thead><tr><th>Filename</th><th>Size</th><th>Action</th></tr></thead>
+            <tbody id="fileRows"></tbody>
+        </table>
+    </div>
+
+    <script>
+        function fetchFiles() {
+            const key = document.getElementById('authKey').value.trim();
+            const tbody = document.getElementById('fileRows');
+            tbody.innerHTML = "<tr><td colspan='3'>Fetching file tree...</td></tr>";
+
+            fetch('/api/list-assets?api_key=' + encodeURIComponent(key))
+                .then(r => r.json())
+                .then(data => {
+                    tbody.innerHTML = '';
+                    if (data.status !== 'success') {
+                        tbody.innerHTML = `<tr><td colspan='3' style='color:#e63946;'>${data.message || 'Error'}</td></tr>`;
+                        return;
+                    }
+                    if (data.files.length === 0) {
+                        tbody.innerHTML = "<tr><td colspan='3'>Directory empty.</td></tr>";
+                        return;
+                    }
+                    data.files.forEach(f => {
+                        const tr = document.createElement('tr');
+                        const url = `/api/download-asset/${encodeURIComponent(f.name)}?api_key=${encodeURIComponent(key)}`;
+                        tr.innerHTML = `
+                            <td>${f.name}</td>
+                            <td>${f.size_kb} KB</td>
+                            <td><a href="${url}" download>Download</a></td>
+                        `;
+                        tbody.appendChild(tr);
+                    });
+                })
+                .catch(err => {
+                    tbody.innerHTML = `<tr><td colspan='3' style='color:#e63946;'>Connection Error: ${err}</td></tr>`;
+                });
+        }
+    </script>
+</body>
+</html>
+"""
+
+@app.route('/dev-dashboard')
+def dev_dashboard():
+    return render_template_string(DEV_DASHBOARD_HTML)
+
+
 if __name__ == '__main__':
     try:
         import logging
