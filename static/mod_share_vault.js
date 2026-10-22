@@ -1,8 +1,5 @@
 /* ============================================================================
    static/mod_share_vault.js (v104 - Complete PGN Management Engine)
-   - Individual Match PGN Saver
-   - Master Multi-PGN Exporter (All Matches in 1 File)
-   - Match-Over Direct Save Hook
    ============================================================================ */
 
 window.buildBrandedPGN = function() {
@@ -26,11 +23,8 @@ window.buildBrandedPGN = function() {
     for (let i = 1; i < gameHistory.length; i++) {
         let rec = gameHistory[i];
         if (!rec || !rec.moveObj) continue;
-        if (i % 2 === 1) {
-            movesText += `${Math.ceil(i / 2)}. ${rec.moveObj.san} `;
-        } else {
-            movesText += `${rec.moveObj.san} `;
-        }
+        if (i % 2 === 1) movesText += `${Math.ceil(i / 2)}. ${rec.moveObj.san} `;
+        else movesText += `${rec.moveObj.san} `;
     }
     if (!movesText.trim()) movesText = game.pgn() || "";
 
@@ -88,9 +82,7 @@ window.copyCurrentFEN = function() {
     });
 };
 
-// ============================================================================
-// 1. SAVE INDIVIDUAL MATCH PGN -> Download/ChessAIPro/PGN_Matches/
-// ============================================================================
+// 1. SAVE SINGLE MATCH PGN -> Download/ChessAIPro/PGN_Matches/
 window.saveSingleMatchPGN = function() {
     let pgnText = window.buildBrandedPGN();
     let cleanWhite = getWhiteDisplayName().replace(/[^a-zA-Z0-9]/g, '_');
@@ -106,13 +98,10 @@ window.saveSingleMatchPGN = function() {
         a.href = URL.createObjectURL(blob);
         a.download = fileName;
         a.click();
-        alert(`Downloaded: ${fileName}`);
     }
 };
 
-// ============================================================================
-// 2. EXPORT MASTER MULTI-PGN -> Download/ChessAIPro/ChessAIPro_All_Matches.pgn
-// ============================================================================
+// 2. EXPORT ALL MATCHES MULTI-PGN -> Download/ChessAIPro/ChessAIPro_All_Matches.pgn
 window.exportAllMatchesMultiPGN = function() {
     safeText('status', 'Combining all matches into Master Multi-PGN...');
     fetch('/api/export_all_pgn')
@@ -128,10 +117,9 @@ window.exportAllMatchesMultiPGN = function() {
                     a.href = URL.createObjectURL(blob);
                     a.download = fileName;
                     a.click();
-                    alert(`Downloaded Master Collection: ${fileName}`);
                 }
             } else {
-                alert("No saved matches found in vault! Complete and save games first.");
+                alert("No saved matches found in vault yet!");
             }
         })
         .catch(err => {
