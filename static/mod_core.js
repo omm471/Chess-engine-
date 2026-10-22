@@ -1100,6 +1100,7 @@ function showAnalysisStatus() {
 // AUTO-SAVE & AUTO-RESUME ENGINE
 // ============================================================================
 
+// Har move par sirf device ke local session me save karein (Cloud spamming band)
 function autoSaveCurrentState() {
     if (isMatchOver()) {
         localStorage.removeItem('chess_active_match');
@@ -1117,11 +1118,8 @@ function autoSaveCurrentState() {
         timerStarted: timerStarted
     };
     localStorage.setItem('chess_active_match', JSON.stringify(state));
-
-    if (gameHistory.length >= 2 && window.saveCurrentMatchToVault) {
-        window.saveCurrentMatchToVault("In Progress (Move " + historyIndex + ")");
-    }
 }
+
 
 function autoResumePreviousMatch() {
     let raw = localStorage.getItem('chess_active_match');
