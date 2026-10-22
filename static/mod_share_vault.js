@@ -1,5 +1,5 @@
 /* ============================================================================
-   static/mod_share_vault.js (v105 - PGN Management & Live Cloud Vault Engine)
+   static/mod_share_vault.js (Clean Vault, Resume/Replay Engine & Danger Zone)
    ============================================================================ */
 
 window.buildBrandedPGN = function() {
@@ -44,102 +44,106 @@ window.buildBrandedPGN = function() {
     return `${headers}\n\n${movesText.trim()} ${resCode}`.trim();
 };
 
-window.openShareModal = function() {
-    try { window.history.pushState({ modalOpen: true }, ""); } catch (e) {}
-    if (window.updateAccuracySummary) window.updateAccuracySummary();
-    let box = safeEl('branded-pgn-box');
-    if (box) box.value = window.buildBrandedPGN();
-    safeDisplay('share-modal', 'flex');
-};
-
-window.copyBrandedPGN = function() {
-    let box = safeEl('branded-pgn-box');
-    if (!box) return;
-    box.select();
-    navigator.clipboard.writeText(box.value).then(() => {
-        alert("Branded PGN copied to clipboard!");
-    }).catch(() => {
-        document.execCommand('copy');
-        alert("Branded PGN copied!");
-    });
-};
-
-window.shareBrandedGameNative = function() {
-    let pgn = window.buildBrandedPGN();
-    if (navigator.share) {
-        navigator.share({ title: 'Chess AI Pro Match PGN', text: pgn }).catch(() => {});
-    } else {
-        copyBrandedPGN();
-    }
-};
-
-window.copyCurrentFEN = function() {
-    let fen = (historyIndex >= 0 && gameHistory[historyIndex]) ? gameHistory[historyIndex].fen : game.fen();
-    navigator.clipboard.writeText(fen).then(() => {
-        alert("FEN copied: " + fen);
-    }).catch(() => {
-        prompt("Copy FEN:", fen);
-    });
-};
-
-// 1. SAVE SINGLE MATCH PGN -> Download/ChessAIPro/PGN_Matches/
-window.saveSingleMatchPGN = function() {
-    let pgnText = window.buildBrandedPGN();
-    let cleanWhite = getWhiteDisplayName().replace(/[^a-zA-Z0-9]/g, '_');
-    let cleanBlack = getBlackDisplayName().replace(/[^a-zA-Z0-9]/g, '_');
-    let timeStamp = new Date().toISOString().slice(0, 10).replace(/-/g, '') + "_" + Date.now().toString().slice(-4);
-    let fileName = `Match_${cleanWhite}_vs_${cleanBlack}_${timeStamp}.pgn`;
-
-    if (window.AndroidBridge && typeof window.AndroidBridge.savePgnNative === 'function') {
-        window.AndroidBridge.savePgnNative(pgnText, fileName, false);
-    } else {
-        let blob = new Blob([pgnText], { type: 'application/x-chess-pgn' });
-        let a = document.createElement('a');
-        a.href = URL.createObjectURL(blob);
-        a.download = fileName;
-        a.click();
-    }
-};
-
-// 2. EXPORT ALL MATCHES MULTI-PGN -> Download/ChessAIPro/ChessAIPro_All_Matches.pgn
-window.exportAllMatchesMultiPGN = function() {
-    safeText('status', 'Combining all matches into Master Multi-PGN...');
-    fetch('/api/export_all_pgn')
-        .then(res => res.json())
-        .then(data => {
-            if (data.status === 'success' && data.multi_pgn) {
-                let fileName = `ChessAIPro_All_Matches_${data.count}_Games.pgn`;
-                if (window.AndroidBridge && typeof window.AndroidBridge.savePgnNative === 'function') {
-                    window.AndroidBridge.savePgnNative(data.multi_pgn, fileName, true);
-                } else {
-                    let blob = new Blob([data.multi_pgn], { type: 'application/x-chess-pgn' });
-                    let a = document.createElement('a');
-                    a.href = URL.createObjectURL(blob);
-                    a.download = fileName;
-                    a.click();
-                }
-            } else {
-                alert("No saved matches found in vault yet!");
-            }
-        })
-        .catch(err => {
-            alert("Error exporting Multi-PGN: " + err);
-        });
-};
-
 window.openMatchVaultModal = function() {
     try { window.history.pushState({ modalOpen: true }, ""); } catch (e) {}
-    if (window.refreshMatchVaultList) window.refreshMatchVaultList();
+    window.refreshMatchVaultList();
     safeDisplay('vault-modal', 'flex');
 };
 
-window.manualSaveToVault = function() {
-    window.saveCurrentMatchToVault("Saved Match");
-    if (window.refreshMatchVaultList) window.refreshMatchVaultList();
-    alert("Current game saved to Archive!");
+// Vault List with Dynamic Resume / Replay Logic & Safe Clear All
+window.refreshMatchVaultList = function() {
+    let container = $('#vault-matches-list');
+    if (!container.length) return;
+    container.html('<div style="text-align:center;padding:20px;color:#aaa;">Loading Cloud Matches...</div>');
+
+    $.get('/get_matches', function(data) {
+        container.empty();
+        let matches = data.matches || [];
+        if (matches.length === 0) {
+            container.html('<div style="text-align:center;padding:24px;color:#777;">No saved games in your archive yet.</div>');
+            return;
+        }
+
+        matches.forEach(m => {
+            let isInProgress = m.result && m.result.toLowerCase().includes("in progress");
+            let actionBtnText = isInProgress ? "▶ Resume" : "▶ Replay";
+            let actionBtnColor = isInProgress ? "#2ea043" : "#81b64c";
+
+            let itemHtml = `
+            <div class="vault-card" style="background:#1e1e1e;border:1px solid #333;border-radius:8px;padding:12px;margin-bottom:10px;">
+                <div style="display:flex;justify-content:space-between;align-items:center;">
+                    <div style="font-weight:bold;color:#eee;">♔ ${m.white} <span style="color:#777;font-size:12px;">vs</span> ♚ ${m.black}</div>
+                    <span style="font-size:11px;background:#2a2b2e;padding:2px 8px;border-radius:4px;color:${isInProgress ? '#e3b341' : '#81b64c'};">${m.result}</span>
+                </div>
+                <div style="font-size:11px;color:#888;margin:4px 0;">${m.opening || 'Standard'} • ${m.date}</div>
+                <div style="margin-top:8px;display:flex;gap:6px;">
+                    <button onclick="window.loadVaultMatch('${m.id}', '${m.fen}', ${isInProgress})" style="flex:1;background:${actionBtnColor};color:#fff;border:none;padding:6px;border-radius:4px;font-weight:bold;cursor:pointer;">${actionBtnText}</button>
+                    <button onclick="window.deleteSingleMatch('${m.id}')" style="background:#da3633;color:#fff;border:none;padding:6px 12px;border-radius:4px;cursor:pointer;">✕</button>
+                </div>
+            </div>`;
+            container.append(itemHtml);
+        });
+
+        // Danger Zone: Chhupa hua Safe Delete All Button
+        let dangerZoneHtml = `
+        <div style="margin-top:20px;padding-top:14px;border-top:1px dashed #3a3b40;text-align:center;">
+            <button onclick="window.confirmDeleteAllMatches()" style="background:transparent;border:1px solid #da3633;color:#da3633;font-size:11px;padding:6px 12px;border-radius:4px;cursor:pointer;opacity:0.65;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.65'">
+                ⚠ Clear Entire Cloud Vault
+            </button>
+        </div>`;
+        container.append(dangerZoneHtml);
+    });
 };
 
-// Auto & Manual Cloud Vault Saver
+window.loadVaultMatch = function(id, fen, isResume) {
+    if (!fen) return;
+    closeModal('vault-modal');
+    if (isResume) {
+        // Active Game me Resume karein
+        game.load(fen);
+        gameHistory = [{ fen: fen, moveObj: null }];
+        historyIndex = 0;
+        matchEnded = false;
+        isAnalysisBranchMode = false;
+        renderBoard();
+        updateStatus();
+        startTimer();
+        $('#status').text("Resumed match from archive.");
+    } else {
+        // Finished Game: Replay Mode me load karein
+        game.load(fen);
+        gameHistory = [{ fen: fen, moveObj: null }];
+        historyIndex = 0;
+        matchEnded = true;
+        isAnalysisBranchMode = true;
+        stopAllActiveMatchProcesses();
+        renderBoard();
+        $('#status').text("Replay Mode (Finished Match)");
+    }
+};
+
+window.deleteSingleMatch = function(id) {
+    if (!confirm("Are you sure you want to delete this match?")) return;
+    $.post('/delete_match', { id: id }, function(res) {
+        window.refreshMatchVaultList();
+    });
+};
+
+// Complicated 2-Step Confirmation for Delete All
+window.confirmDeleteAllMatches = function() {
+    let firstConfirm = confirm("DANGER: Are you sure you want to delete ALL matches from cloud history?");
+    if (!firstConfirm) return;
+    let code = prompt("Please type 'DELETE' to confirm clearing all history:");
+    if (code && code.trim().toUpperCase() === "DELETE") {
+        $.post('/delete_all_matches', function(res) {
+            alert("All cloud games cleared.");
+            window.refreshMatchVaultList();
+        });
+    } else {
+        alert("Action cancelled. Input did not match.");
+    }
+};
+
 window.saveCurrentMatchToVault = function(resultTitle) {
     if (window.updateAccuracySummary) window.updateAccuracySummary();
     let whiteName = getWhiteDisplayName();
@@ -153,7 +157,7 @@ window.saveCurrentMatchToVault = function(resultTitle) {
     $.post('/save_match', {
         white: whiteName,
         black: blackName,
-        result: resultTitle || "In Progress",
+        result: resultTitle || "Match Over",
         w_acc: wAcc,
         b_acc: bAcc,
         opening: opening,
