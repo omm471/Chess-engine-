@@ -2,7 +2,6 @@ import os
 import math
 import random
 import shutil
-import sqlite3
 import subprocess
 import threading
 import urllib.request
@@ -26,6 +25,18 @@ from flask import Flask, render_template, request, jsonify, send_from_directory,
 
 app = Flask(__name__)
 engine_lock = threading.Lock()
+
+# ============================================================================
+# SUPABASE CLOUD DATABASE CONFIGURATION (LIVE 2-WAY SYNC)
+# ============================================================================
+SUPABASE_URL = "https://fgywwlynrzwmjjiezqbj.supabase.co"
+SUPABASE_KEY = "sb_publishable_L1C1cD_0p6L9qg0k4qHCZQ_UkJy_cGe"
+
+SUPABASE_HEADERS = {
+    "apikey": SUPABASE_KEY,
+    "Authorization": f"Bearer {SUPABASE_KEY}",
+    "Content-Type": "application/json"
+}
 
 ZIP_THEMES_PATH = os.path.join(os.path.abspath('static'), 'chessthemes.zip')
 BOARDS_DIR = os.path.join(os.path.abspath('static'), 'boards')
@@ -245,40 +256,89 @@ def score_to_cp_and_winpct(sc):
         text = f"{cp_val / 100.0:+.1f}"
     return cp_val, round(win_pct, 1), text
 
-def init_db():
-    conn = sqlite3.connect('matches.db')
-    c = conn.cursor()
-    c.execute('''CREATE TABLE IF NOT EXISTS matches (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        date TEXT, white TEXT, black TEXT, result TEXT,
-        w_acc TEXT, b_acc TEXT, opening TEXT, pgn TEXT, fen TEXT
-    )''')
-    conn.commit()
-    conn.close()
-
-init_db()
-
 @app.route('/')
 def index():
     return render_template('index.html')
 
-# Master Multi-Match PGN Vault Exporter
+# ============================================================================
+# SUPABASE DATABASE ROUTES (CLOUD MATCHES & ARCHIVES)
+# ============================================================================
+
+@app.route('/save_match', methods=['POST'])
+def save_match():
+    match_payload = {
+        "date": datetime.now().strftime("%d %b %Y • %I:%M %p"),
+        "white": request.form.get('white', 'White'),
+        "black": request.form.get('black', 'Black'),
+        "result": request.form.get('result', 'Match Over'),
+        "w_acc": request.form.get('w_acc', '--%'),
+        "b_acc": request.form.get('b_acc', '--%'),
+        "opening": request.form.get('opening', 'Standard'),
+        "pgn": request.form.get('pgn', ''),
+        "fen": request.form.get('fen', '')
+    }
+    try:
+        headers = {**SUPABASE_HEADERS, "Prefer": "return=minimal"}
+        res = requests.post(
+            f"{SUPABASE_URL}/rest/v1/matches",
+            headers=headers,
+            json=match_payload,
+            timeout=6
+        )
+        if res.status_code in [200, 201]:
+            return jsonify({"status": "saved", "cloud": True})
+        return jsonify({"status": "error", "message": res.text}), res.status_code
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@app.route('/get_matches', methods=['POST', 'GET'])
+def get_matches():
+    try:
+        res = requests.get(
+            f"{SUPABASE_URL}/rest/v1/matches?select=*&order=id.desc&limit=50",
+            headers=SUPABASE_HEADERS,
+            timeout=6
+        )
+        if res.status_code == 200:
+            return jsonify({"matches": res.json()})
+        return jsonify({"matches": []})
+    except Exception:
+        return jsonify({"matches": []})
+
+@app.route('/delete_match', methods=['POST'])
+def delete_match():
+    match_id = request.form.get('id', 0)
+    try:
+        res = requests.delete(
+            f"{SUPABASE_URL}/rest/v1/matches?id=eq.{match_id}",
+            headers=SUPABASE_HEADERS,
+            timeout=6
+        )
+        if res.status_code in [200, 204]:
+            return jsonify({"status": "deleted"})
+        return jsonify({"status": "error", "message": res.text}), res.status_code
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+# Cloud Multi-Match PGN Vault Exporter
 @app.route('/api/export_all_pgn', methods=['GET'])
 def export_all_pgn():
     try:
-        conn = sqlite3.connect('matches.db')
-        c = conn.cursor()
-        c.execute('SELECT pgn FROM matches ORDER BY id ASC')
-        rows = c.fetchall()
-        conn.close()
-
-        all_pgns = [r[0].strip() for r in rows if r[0] and r[0].strip()]
-        combined_text = "\n\n\n".join(all_pgns)
-        return jsonify({
-            "status": "success",
-            "count": len(all_pgns),
-            "multi_pgn": combined_text
-        })
+        res = requests.get(
+            f"{SUPABASE_URL}/rest/v1/matches?select=pgn&order=id.asc",
+            headers=SUPABASE_HEADERS,
+            timeout=8
+        )
+        if res.status_code == 200:
+            rows = res.json()
+            all_pgns = [r.get("pgn", "").strip() for r in rows if r.get("pgn", "").strip()]
+            combined_text = "\n\n\n".join(all_pgns)
+            return jsonify({
+                "status": "success",
+                "count": len(all_pgns),
+                "multi_pgn": combined_text
+            })
+        return jsonify({"status": "error", "message": "Failed to fetch cloud records"}), 500
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 
@@ -604,51 +664,6 @@ def install_extra_engines():
         subprocess.run(["apt-get", "update"], timeout=30)
         subprocess.run(["apt-get", "install", "-y", "fairy-stockfish", "toga2", "phalanx", "fruit"], timeout=90)
         return jsonify({"status": "success", "message": "Extra engines installed!"})
-    except Exception as e:
-        return jsonify({"status": "error", "message": str(e)})
-
-@app.route('/save_match', methods=['POST'])
-def save_match():
-    try:
-        conn = sqlite3.connect('matches.db')
-        c = conn.cursor()
-        c.execute('''INSERT INTO matches (date, white, black, result, w_acc, b_acc, opening, pgn, fen)
-                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)''', (
-            datetime.now().strftime("%d %b %Y • %I:%M %p"),
-            request.form.get('white', 'White'), request.form.get('black', 'Black'),
-            request.form.get('result', 'Match Over'), request.form.get('w_acc', '--%'),
-            request.form.get('b_acc', '--%'), request.form.get('opening', 'Standard'),
-            request.form.get('pgn', ''), request.form.get('fen', '')
-        ))
-        conn.commit()
-        conn.close()
-        return jsonify({"status": "saved"})
-    except Exception as e:
-        return jsonify({"status": "error", "message": str(e)})
-
-@app.route('/get_matches', methods=['POST', 'GET'])
-def get_matches():
-    try:
-        conn = sqlite3.connect('matches.db')
-        c = conn.cursor()
-        c.execute('SELECT id, date, white, black, result, w_acc, b_acc, opening, pgn, fen FROM matches ORDER BY id DESC LIMIT 50')
-        rows = c.fetchall()
-        conn.close()
-        matches = [{"id": r[0], "date": r[1], "white": r[2], "black": r[3], "result": r[4], "w_acc": r[5], "b_acc": r[6], "opening": r[7], "pgn": r[8], "fen": r[9] or ""} for r in rows]
-        return jsonify({"matches": matches})
-    except Exception:
-        return jsonify({"matches": []})
-
-@app.route('/delete_match', methods=['POST'])
-def delete_match():
-    try:
-        match_id = int(request.form.get('id', 0))
-        conn = sqlite3.connect('matches.db')
-        c = conn.cursor()
-        c.execute('DELETE FROM matches WHERE id = ?', (match_id,))
-        conn.commit()
-        conn.close()
-        return jsonify({"status": "deleted"})
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)})
 
