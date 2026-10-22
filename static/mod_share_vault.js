@@ -1,5 +1,5 @@
 /* ============================================================================
-   static/mod_share_vault.js (v104 - Complete PGN Management Engine)
+   static/mod_share_vault.js (v105 - PGN Management & Live Cloud Vault Engine)
    ============================================================================ */
 
 window.buildBrandedPGN = function() {
@@ -139,22 +139,21 @@ window.manualSaveToVault = function() {
     alert("Current game saved to Archive!");
 };
 
+// Auto & Manual Cloud Vault Saver
 window.saveCurrentMatchToVault = function(resultTitle) {
-    if (currentMatchSaved && resultTitle !== "Saved Match") return;
-    currentMatchSaved = true;
     if (window.updateAccuracySummary) window.updateAccuracySummary();
     let whiteName = getWhiteDisplayName();
     let blackName = getBlackDisplayName();
     let wAcc = getTextSafe('white-acc-text', '95%');
     let bAcc = getTextSafe('black-acc-text', '95%');
     let opening = getTextSafe('opening-bar', 'Standard Opening');
-    let pgn = window.buildBrandedPGN();
+    let pgn = window.buildBrandedPGN ? window.buildBrandedPGN() : game.pgn();
     let fen = game.fen();
 
     $.post('/save_match', {
         white: whiteName,
         black: blackName,
-        result: resultTitle || "Match Over",
+        result: resultTitle || "In Progress",
         w_acc: wAcc,
         b_acc: bAcc,
         opening: opening,
