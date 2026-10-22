@@ -1,16 +1,9 @@
 /* ============================================================================
-   static/mod_analysis.js (v103 - Fully Integrated Puzzle & Analysis Engine)
-   - Dynamic Perspective & Flipped Orientation (Player King Always at Bottom)
-   - Direction-Accurate Hint Arrows
-   - Interactive Opponent Auto-Reply Engine
-   - Victory Celebration Modal Trigger (Next Puzzle / Retry / Analyze)
+   static/mod_analysis.js (v104 - Complete Interactive Puzzle Engine)
    ============================================================================ */
 
 var matchAccuracyData = { wAcc: 100, bAcc: 100, wAcpl: 12, bAcpl: 15, counts: {} };
 
-// ============================================================================
-// ACTIVE PUZZLE STATE MANAGEMENT
-// ============================================================================
 window.activePuzzle = {
     isRunning: false,
     id: "",
@@ -19,12 +12,10 @@ window.activePuzzle = {
     plyIndex: 0,
     playerColor: 'w',
     initialFen: "",
-    theme: ""
+    theme: "",
+    currentTier: "1600"
 };
 
-// ============================================================================
-// ACCURACY & MOVE EVALUATION
-// ============================================================================
 window.classifyMoveByEval = function(idx) {
     if (idx <= 0 || idx >= gameHistory.length) return;
     let curr = gameHistory[idx];
@@ -68,9 +59,6 @@ window.updateAccuracySummary = function() {
     safeText(['black-acc-text', 'k-b-acc', 'modal-p2-acc'], bAvg + '%');
 };
 
-// ============================================================================
-// EVALUATION GRAPH ENGINE (CANVAS)
-// ============================================================================
 function renderChessComGraphOnCanvas(canvasId, isInteractive) {
     let canvas = safeEl(canvasId);
     if (!canvas) return;
@@ -99,15 +87,6 @@ function renderChessComGraphOnCanvas(canvasId, isInteractive) {
     ctx.fill();
 
     ctx.beginPath();
-    ctx.strokeStyle = 'rgba(129, 182, 76, 0.55)';
-    ctx.lineWidth = 1;
-    ctx.setLineDash([4, 3]);
-    ctx.moveTo(0, h / 2);
-    ctx.lineTo(w, h / 2);
-    ctx.stroke();
-    ctx.setLineDash([]);
-
-    ctx.beginPath();
     ctx.strokeStyle = '#81b64c';
     ctx.lineWidth = 2;
     for (let i = 0; i < len; i++) {
@@ -129,114 +108,94 @@ function renderChessComGraphOnCanvas(canvasId, isInteractive) {
         ctx.lineTo(cx, h);
         ctx.stroke();
     }
-
-    for (let i = 1; i < len; i++) {
-        let rec = gameHistory[i];
-        if (!rec || !rec.classification) continue;
-        let lbl = rec.classification.label;
-        if (lbl === 'Blunder' || lbl === 'Mistake' || lbl === 'Inaccuracy') {
-            let sc = rec.evalScore !== undefined ? rec.evalScore : 50.0;
-            let clamped = Math.max(6, Math.min(94, sc));
-            let x = i * step;
-            let y = h - (clamped / 100.0) * h;
-            ctx.beginPath();
-            ctx.arc(x, y, lbl === 'Blunder' ? 3.5 : 2.8, 0, Math.PI * 2);
-            ctx.fillStyle = rec.classification.color;
-            ctx.fill();
-            ctx.strokeStyle = '#141311';
-            ctx.lineWidth = 1;
-            ctx.stroke();
-        }
-    }
-
-    if (isInteractive && !canvas.dataset.boundClick) {
-        canvas.dataset.boundClick = "1";
-        canvas.addEventListener('click', function(e) {
-            if (gameHistory.length <= 1) return;
-            let rect = canvas.getBoundingClientRect();
-            let ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-            let targetIdx = Math.round(ratio * (gameHistory.length - 1));
-            historyIndex = targetIdx;
-            if (typeof playSoundForHistoryRec === 'function') playSoundForHistoryRec(gameHistory[historyIndex]);
-            if (typeof renderBoard === 'function') renderBoard();
-            if (typeof showAnalysisStatus === 'function') showAnalysisStatus();
-            drawAllEvalGraphs();
-            drawKundliEvalGraph();
-        });
-    }
 }
 
-window.drawKundliEvalGraph = function() {
-    renderChessComGraphOnCanvas('kundli-eval-graph', true);
-};
+window.drawKundliEvalGraph = function() { renderChessComGraphOnCanvas('kundli-eval-graph', true); };
+window.drawAllEvalGraphs = function() { renderChessComGraphOnCanvas('main-eval-graph', true); };
 
-window.drawAllEvalGraphs = function() {
-    renderChessComGraphOnCanvas('main-eval-graph', true);
-};
+// Helper to load any puzzle data packet
+function applyPuzzleDataPacket(data, defaultTier = "1600") {
+    game.reset();
+    game.load(data.fen);
+    
+    gameHistory = [{ fen: data.fen, moveObj: null }];
+    historyIndex = 0;
+    matchEnded = false;
 
-// ============================================================================
-// PROBLEM 1 & 2: PUZZLE CONTROLLER & VICTORY MODAL LOGIC
-// ============================================================================
+    let puzzleTurn = data.turn || 'w';
+
+    window.activePuzzle = {
+        isRunning: true,
+        id: data.id,
+        rating: data.rating,
+        solution: data.solution,
+        plyIndex: 0,
+        playerColor: puzzleTurn,
+        initialFen: data.fen,
+        theme: data.theme || (data.themes ? data.themes.join(', ') : 'Tactics'),
+        currentTier: defaultTier
+    };
+
+    // Problem 1 Fix: Player King hamesha neeche rahega
+    currentBoardOrientation = puzzleTurn;
+    playerColor = puzzleTurn;
+
+    if (puzzleTurn === 'b') {
+        safeText('bottom-player-label', 'Black');
+        safeText('bottom-player-name', 'You');
+        safeText('top-player-label', 'White');
+        safeText('top-player-name', `Opponent (${data.rating})`);
+    } else {
+        safeText('bottom-player-label', 'White');
+        safeText('bottom-player-name', 'You');
+        safeText('top-player-label', 'Black');
+        safeText('top-player-name', `Opponent (${data.rating})`);
+    }
+
+    clearArrows();
+    if (typeof renderBoard === 'function') renderBoard();
+
+    let turnName = (puzzleTurn === 'w') ? 'White to move' : 'Black to move';
+    safeText('opening-bar', `Puzzle #${data.id} • Rating: ${data.rating} ELO`);
+    safeText('status', `🧩 ${turnName} • Find the winning move!`);
+}
 
 window.loadDailyPuzzle = function() {
-    safeText('status', 'Fetching Daily Puzzle from Lichess...');
+    safeText('status', 'Fetching Daily Puzzle...');
     fetch('/api/daily_puzzle')
         .then(res => res.json())
         .then(data => {
             if (data.status === 'success' && data.fen && data.solution && data.solution.length > 0) {
-                game.reset();
-                game.load(data.fen);
-                
-                gameHistory = [{ fen: data.fen, moveObj: null }];
-                historyIndex = 0;
-                matchEnded = false;
-
-                let puzzleTurn = data.turn || 'w';
-
-                window.activePuzzle = {
-                    isRunning: true,
-                    id: data.id,
-                    rating: data.rating,
-                    solution: data.solution,
-                    plyIndex: 0,
-                    playerColor: puzzleTurn,
-                    initialFen: data.fen,
-                    theme: data.themes ? data.themes.join(', ') : 'Tactics'
-                };
-
-                // Problem 1 Fix: Player King hamesha neeche rahega
-                currentBoardOrientation = puzzleTurn;
-                playerColor = puzzleTurn;
-
-                // Player Labels swap
-                if (puzzleTurn === 'b') {
-                    safeText('bottom-player-label', 'Black');
-                    safeText('bottom-player-name', 'You');
-                    safeText('top-player-label', 'White');
-                    safeText('top-player-name', `Opponent (${data.rating})`);
-                } else {
-                    safeText('bottom-player-label', 'White');
-                    safeText('bottom-player-name', 'You');
-                    safeText('top-player-label', 'Black');
-                    safeText('top-player-name', `Opponent (${data.rating})`);
-                }
-
-                clearArrows();
-                if (typeof renderBoard === 'function') renderBoard();
-
-                let turnName = (puzzleTurn === 'w') ? 'White to move' : 'Black to move';
-                safeText('opening-bar', `Puzzle #${data.id} • Rating: ${data.rating} ELO`);
-                safeText('status', `🧩 ${turnName} • Find the winning move!`);
+                applyPuzzleDataPacket(data, "1600");
             } else {
-                alert('Puzzle fetch failed: ' + (data.message || 'Check Internet'));
+                alert('Puzzle fetch failed: ' + (data.message || 'Check connection'));
             }
         })
-        .catch(err => {
-            alert('Internet connection required to fetch daily puzzle.');
-        });
+        .catch(() => alert('Internet connection required.'));
 };
 
-// Arrow drawing helper (Direction accurate)
+window.loadPuzzleByLevel = function(level) {
+    safeText('status', `Loading ${level} ELO Puzzle...`);
+    fetch(`/api/puzzle_by_level?level=${level}`)
+        .then(res => res.json())
+        .then(data => {
+            if (data.status === 'success' && data.fen) {
+                applyPuzzleDataPacket(data, level);
+            }
+        })
+        .catch(() => alert('Could not load puzzle level.'));
+};
+
+window.selectTierAndLoad = function(level) {
+    closeModal('tactics-library-modal');
+    window.loadPuzzleByLevel(level);
+};
+
+window.openTacticsLibraryModal = function() {
+    safeDisplay('tactics-library-modal', 'flex');
+};
+
+// Accurate Hint Arrow Calculation
 window.drawArrow = function(fromSq, toSq, color = 'rgba(74, 143, 240, 0.85)') {
     let svg = safeEl('arrow-overlay');
     if (!svg) return;
@@ -263,7 +222,6 @@ window.drawArrow = function(fromSq, toSq, color = 'rgba(74, 143, 240, 0.85)') {
     svg.innerHTML = arrowSvg;
 };
 
-// Hint handler for puzzle
 window.requestHint = function() {
     if (window.activePuzzle && window.activePuzzle.isRunning) {
         let pz = window.activePuzzle;
@@ -279,7 +237,6 @@ window.requestHint = function() {
     if (typeof fetchEngineHint === 'function') fetchEngineHint();
 };
 
-// Problem 2 Fix: Celebratory Victory Popup Trigger
 window.triggerPuzzleVictory = function() {
     let pz = window.activePuzzle;
     pz.isRunning = false;
@@ -291,12 +248,9 @@ window.triggerPuzzleVictory = function() {
     safeText('puzzle-modal-rating', `Rating: ${pz.rating} ELO • Puzzle #${pz.id}`);
     safeText('puzzle-modal-theme', pz.theme || 'Tactics, Endgame');
     
-    setTimeout(() => {
-        safeDisplay('puzzle-modal', 'flex');
-    }, 450);
+    setTimeout(() => { safeDisplay('puzzle-modal', 'flex'); }, 400);
 };
 
-// Move Validator Interceptor with Opponent Reply
 window.checkPuzzlePlayerMove = function(userMoveUci) {
     if (!window.activePuzzle || !window.activePuzzle.isRunning) return false;
 
@@ -306,13 +260,11 @@ window.checkPuzzlePlayerMove = function(userMoveUci) {
     if (userMoveUci.startsWith(expectedUci) || userMoveUci === expectedUci) {
         pz.plyIndex++;
         
-        // Final move completed
         if (pz.plyIndex >= pz.solution.length) {
             window.triggerPuzzleVictory();
             return true;
         }
 
-        // Opponent automatic reply move
         safeText('status', '✓ Best move! Opponent replying...');
         let oppUci = pz.solution[pz.plyIndex];
         pz.plyIndex++;
@@ -339,7 +291,6 @@ window.checkPuzzlePlayerMove = function(userMoveUci) {
 
         return true;
     } else {
-        // Wrong Move: Undo move and warn
         setTimeout(() => {
             game.undo();
             if (gameHistory.length > 1) {
@@ -348,19 +299,22 @@ window.checkPuzzlePlayerMove = function(userMoveUci) {
             }
             if (typeof renderBoard === 'function') renderBoard();
             if (typeof playSound === 'function') playSound('illegal');
-            safeText('status', '✘ That is not the best move! Try again.');
+            safeText('status', '✘ Not the best move! Try again.');
         }, 250);
         return true;
     }
 };
 
-// Next Puzzle Action
 window.fetchNextPuzzle = function() {
     closeModal('puzzle-modal');
-    window.loadDailyPuzzle();
+    let pz = window.activePuzzle;
+    if (pz && pz.currentTier) {
+        window.loadPuzzleByLevel(pz.currentTier);
+    } else {
+        window.loadDailyPuzzle();
+    }
 };
 
-// Retry Current Puzzle Action
 window.retryCurrentPuzzle = function() {
     closeModal('puzzle-modal');
     let pz = window.activePuzzle;
@@ -377,7 +331,6 @@ window.retryCurrentPuzzle = function() {
     }
 };
 
-// Analyze Position in Free-Play Mode
 window.analyzeCurrentPuzzlePosition = function() {
     closeModal('puzzle-modal');
     window.activePuzzle.isRunning = false;
