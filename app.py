@@ -128,20 +128,30 @@ def save_hw_config():
         pass
 
 def open_any_chess_engine(bin_path):
-    try: os.chmod(bin_path, 0o755)
-    except Exception: pass
+    try: 
+        os.chmod(bin_path, 0o755)
+    except Exception: 
+        pass
     low_name = os.path.basename(bin_path).lower()
     prefer_xboard = any(k in low_name for k in ["phalanx", "fairymax", "xphalanx", "crafty", "gnuchess"])
     if not prefer_xboard:
-        try: return chess.engine.SimpleEngine.popen_uci(bin_path, timeout=8.0), "uci"
-        except Exception: pass
-        try: return chess.engine.SimpleEngine.popen_xboard(bin_path, timeout=8.0), "xboard"
-        except Exception as e: raise RuntimeError(f"Cannot load binary: {e}")
+        try: 
+            return chess.engine.SimpleEngine.popen_uci(bin_path, timeout=8.0), "uci"
+        except Exception: 
+            pass
+        try: 
+            return chess.engine.SimpleEngine.popen_xboard(bin_path, timeout=8.0), "xboard"
+        except Exception as e: 
+            raise RuntimeError(f"Cannot load binary: {e}")
     else:
-        try: return chess.engine.SimpleEngine.popen_xboard(bin_path, timeout=8.0), "xboard"
-        except Exception: pass
-        try: return chess.engine.SimpleEngine.popen_uci(bin_path, timeout=8.0), "uci"
-        except Exception as e: raise RuntimeError(f"Cannot load binary: {e}")
+        try: 
+            return chess.engine.SimpleEngine.popen_xboard(bin_path, timeout=8.0), "xboard"
+        except Exception: 
+            pass
+        try: 
+            return chess.engine.SimpleEngine.popen_uci(bin_path, timeout=8.0), "uci"
+        except Exception as e: 
+            raise RuntimeError(f"Cannot load binary: {e}")
 
 try:
     engine, proto = open_any_chess_engine(engine_state["path"])
@@ -191,8 +201,10 @@ def ensure_Engine_Loaded(req_path, req_preset):
     if target_path != engine_state["path"]:
         try:
             new_eng, proto = open_any_chess_engine(target_path)
-            try: engine.quit()
-            except Exception: pass
+            try: 
+                engine.quit()
+            except Exception: 
+                pass
             engine = new_eng
             engine_state["path"] = target_path
             engine_state["protocol"] = proto
@@ -249,95 +261,6 @@ init_db()
 def index():
     return render_template('index.html')
 
-# Lichess Daily Tactics Puzzle API
-@app.route('/api/daily_puzzle', methods=['GET'])
-def get_daily_puzzle():
-    if not requests:
-        return jsonify({"status": "error", "message": "requests package missing"}), 500
-    try:
-        import io
-        import chess.pgn
-
-        r = requests.get("https://lichess.org/api/puzzle/daily", timeout=8)
-        if r.status_code == 200:
-            data = r.json()
-            puzzle = data.get("puzzle", {})
-            game_data = data.get("game", {})
-            pgn_str = game_data.get("pgn", "")
-            initial_ply = int(puzzle.get("initialPly", 0))
-            solution = puzzle.get("solution", [])
-
-            pgn_io = io.StringIO(pgn_str)
-            parsed_game = chess.pgn.read_game(pgn_io)
-            board = parsed_game.board()
-            moves = list(parsed_game.mainline_moves())
-
-            for i, m in enumerate(moves):
-                if i < initial_ply:
-                    board.push(m)
-                else:
-                    break
-
-            if solution and initial_ply < len(moves):
-                first_sol = chess.Move.from_uci(solution[0])
-                if first_sol not in board.legal_moves and initial_ply < len(moves):
-                    board.push(moves[initial_ply])
-
-            return jsonify({
-                "status": "success",
-                "id": puzzle.get("id"),
-                "rating": puzzle.get("rating", 1500),
-                "themes": puzzle.get("themes", []),
-                "solution": solution,
-                "fen": board.fen(),
-                "turn": "w" if board.turn == chess.WHITE else "b"
-            })
-    except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 500
-    return jsonify({"status": "error", "message": "Failed to fetch puzzle"}), 502
-
-# UNLIMITED TACTICS LIBRARY API (CATEGORIZED BY ELO TIERS)
-@app.route('/api/puzzle_by_level', methods=['GET'])
-def get_puzzle_by_level():
-    level = request.args.get('level', '1600')
-    
-    curated_puzzles = {
-        "800": [
-            {"fen": "r1bqkb1r/pppp1ppp/2n5/4p3/2B1n3/5N2/PPPP1PPP/RNBQK2R w KQkq - 0 4", "solution": ["c4f7", "e8f7"], "theme": "Pin & King Hunt", "id": "B-801", "rating": 820},
-            {"fen": "r1bqk2r/pppp1ppp/2n2n2/2b1p3/2B1P3/3P1N2/PPP2PPP/RNBQK2R w KQkq - 1 5", "solution": ["c4f7", "e8f7"], "theme": "Hanging Piece / Sac", "id": "B-802", "rating": 850}
-        ],
-        "1200": [
-            {"fen": "r1b2rk1/ppp2ppp/2n5/3qp3/1b6/3B1N2/PPPP1PPP/R1BQR1K1 w - - 0 9", "solution": ["d3h7", "g8h7", "f3g5"], "theme": "Greek Gift Sacrifice", "id": "I-1201", "rating": 1240},
-            {"fen": "r1bq1rk1/pp2bppp/2n5/2p1p3/2B1n3/3P1N2/PPP2PPP/RNBQR1K1 w - - 0 9", "solution": ["d3e4", "d8d1", "e1d1"], "theme": "Tactical Fork", "id": "I-1202", "rating": 1280}
-        ],
-        "1600": [
-            {"fen": "r2q1rk1/pb1n1ppp/1p1bp3/2ppN3/3PnP2/2PBP3/PP1N2PP/R1BQR1K1 w - - 1 11", "solution": ["d3e4", "d5e4", "d2c4"], "theme": "Positional Pin", "id": "C-1601", "rating": 1630},
-            {"fen": "r4rk1/1pp2ppp/p1np4/4p3/2B1P3/P2PP1qP/1PP3P1/R2Q1RK1 w - - 0 14", "solution": ["f1f3", "g3g6", "c4d5"], "theme": "Queen Trap Tempo", "id": "C-1602", "rating": 1690}
-        ],
-        "2000": [
-            {"fen": "2r3k1/pp3ppp/4p3/3p4/8/1P1QP3/q1r2PPP/1R3RK1 b - - 0 21", "solution": ["a2b1", "f1b1", "c2c1"], "theme": "Back Rank Deflection", "id": "E-2001", "rating": 2040},
-            {"fen": "r1b2rk1/ppqn1ppp/2p5/3p4/3Pn3/1PNBPN2/PB3PPb/R2QR1K1 w - - 0 12", "solution": ["f3h2", "e4f2", "g1f2"], "theme": "Counter Deflection", "id": "E-2002", "rating": 2090}
-        ],
-        "2400": [
-            {"fen": "r1b2rk1/1pq1bppp/p1nppn2/8/3NPP2/2N1BB2/PPP3PP/R2Q1R1K b - - 1 11", "solution": ["c6d4", "d1d4", "e6e5"], "theme": "Grandmaster Center Break", "id": "GM-2401", "rating": 2430},
-            {"fen": "3r2k1/p4p1p/1p2p1p1/8/2PbNP2/1P4P1/P6P/3R1K2 b - - 2 27", "solution": ["d4f6", "d1d8", "f6d8"], "theme": "Pin Conversion", "id": "GM-2402", "rating": 2480}
-        ]
-    }
-
-    bucket = curated_puzzles.get(level, curated_puzzles["1600"])
-    chosen = random.choice(bucket)
-    board_check = chess.Board(chosen["fen"])
-
-    return jsonify({
-        "status": "success",
-        "id": chosen["id"],
-        "rating": chosen["rating"],
-        "theme": chosen["theme"],
-        "solution": chosen["solution"],
-        "fen": chosen["fen"],
-        "turn": "w" if board_check.turn == chess.WHITE else "b"
-    })
-
 # Master Multi-Match PGN Vault Exporter
 @app.route('/api/export_all_pgn', methods=['GET'])
 def export_all_pgn():
@@ -361,7 +284,8 @@ def export_all_pgn():
 @app.route('/sound/<path:filename>')
 def serve_sound(filename):
     direct = os.path.join(SOUND_DIR, filename)
-    if os.path.exists(direct): return send_from_directory(SOUND_DIR, filename)
+    if os.path.exists(direct): 
+        return send_from_directory(SOUND_DIR, filename)
     if os.path.exists(SOUND_DIR):
         files = os.listdir(SOUND_DIR)
         base_req = os.path.splitext(filename)[0].lower()
@@ -379,7 +303,8 @@ def serve_sound(filename):
         }
         for cand in aliases.get(base_req, [base_req]):
             for f in files:
-                if cand in f.lower(): return send_from_directory(SOUND_DIR, f)
+                if cand in f.lower(): 
+                    return send_from_directory(SOUND_DIR, f)
     return ('', 204)
 
 @app.route('/eco_book', methods=['GET'])
@@ -389,7 +314,8 @@ def get_eco_book():
             with open(OPENINGS_CACHE_FILE, 'r', encoding='utf-8') as f:
                 data = json.load(f)
             return jsonify({"count": len(data), "openings": data})
-        except Exception: pass
+        except Exception: 
+            pass
     return jsonify({"count": 0, "openings": []})
 
 @app.route('/ai_move', methods=['POST'])
@@ -403,7 +329,8 @@ def ai_move():
 
     config = ELO_CONFIG.get(level, ELO_CONFIG["2500"])
     board = chess.Board(fen)
-    if board.is_game_over(): return jsonify({'move': None})
+    if board.is_game_over(): 
+        return jsonify({'move': None})
 
     chosen_move, best_eval_move, prev_cp = None, None, None
 
@@ -417,14 +344,17 @@ def ai_move():
 
             if is_uci:
                 cfg = {}
-                if "Skill Level" in opts: cfg["Skill Level"] = config["skill"]
+                if "Skill Level" in opts: 
+                    cfg["Skill Level"] = config["skill"]
                 if "UCI_LimitStrength" in opts and "UCI_Elo" in opts:
                     cfg["UCI_LimitStrength"] = (int(level) < 2300)
                     if int(level) < 2300:
                         cfg["UCI_Elo"] = max(1320, min(2850, config["uci_elo"]))
                 if cfg:
-                    try: engine.configure(cfg)
-                    except Exception: pass
+                    try: 
+                        engine.configure(cfg)
+                    except Exception: 
+                        pass
 
             eff_depth = min(config["depth"], user_depth) if int(level) < 2300 else max(user_depth, config["depth"])
             eff_time = min(think_time, 0.25) if int(level) <= 1200 else think_time
@@ -433,9 +363,12 @@ def ai_move():
             if not is_uci or int(level) >= 2000:
                 if is_uci:
                     info = engine.analyse(board, chess.engine.Limit(time=eff_time, depth=eff_depth))
-                    if isinstance(info, list): info = info[0]
-                    if "nps" in info: engine_state["last_nps"] = info["nps"]
-                    if "depth" in info: engine_state["last_depth"] = info["depth"]
+                    if isinstance(info, list): 
+                        info = info[0]
+                    if "nps" in info: 
+                        engine_state["last_nps"] = info["nps"]
+                    if "depth" in info: 
+                        engine_state["last_depth"] = info["depth"]
                     if "pv" in info and len(info["pv"]) > 0:
                         chosen_move = info["pv"][0]
                         best_eval_move = chosen_move
@@ -447,11 +380,14 @@ def ai_move():
                     best_eval_move = res.move
             else:
                 info = engine.analyse(board, chess.engine.Limit(time=eff_time, depth=eff_depth), multipv=mpv if ("MultiPV" in opts and mpv > 1) else 1)
-                if isinstance(info, dict): info = [info]
+                if isinstance(info, dict): 
+                    info = [info]
                 if info and len(info) > 0:
                     top_info = info[0]
-                    if "nps" in top_info: engine_state["last_nps"] = top_info["nps"]
-                    if "depth" in top_info: engine_state["last_depth"] = top_info["depth"]
+                    if "nps" in top_info: 
+                        engine_state["last_nps"] = top_info["nps"]
+                    if "depth" in top_info: 
+                        engine_state["last_depth"] = top_info["depth"]
                     if "pv" in top_info and len(top_info["pv"]) > 0:
                         best_eval_move = top_info["pv"][0]
                     if "score" in top_info:
@@ -471,26 +407,36 @@ def ai_move():
 
             if is_uci:
                 if "Skill Level" in opts:
-                    try: engine.configure({"Skill Level": 20})
-                    except Exception: pass
+                    try: 
+                        engine.configure({"Skill Level": 20})
+                    except Exception: 
+                        pass
                 if "UCI_LimitStrength" in opts:
-                    try: engine.configure({"UCI_LimitStrength": False})
-                    except Exception: pass
-        except Exception as e:
+                    try: 
+                        engine.configure({"UCI_LimitStrength": False})
+                    except Exception: 
+                        pass
+        except Exception:
             try:
                 res = engine.play(board, chess.engine.Limit(time=0.3))
                 chosen_move = res.move
             except Exception:
-                if list(board.legal_moves): chosen_move = list(board.legal_moves)[0]
+                if list(board.legal_moves): 
+                    chosen_move = list(board.legal_moves)[0]
 
     if chosen_move:
         best_uci = best_eval_move.uci() if best_eval_move else chosen_move.uci()
         best_san = board.san(best_eval_move) if best_eval_move else board.san(chosen_move)
         resp = {
-            'move': chosen_move.uci(), 'best_uci': best_uci, 'best_san': best_san,
-            'engine': engine_state["real_name"], 'nps': engine_state["last_nps"], 'depth': engine_state["last_depth"]
+            'move': chosen_move.uci(), 
+            'best_uci': best_uci, 
+            'best_san': best_san,
+            'engine': engine_state["real_name"], 
+            'nps': engine_state["last_nps"], 
+            'depth': engine_state["last_depth"]
         }
-        if prev_cp is not None: resp['prev_cp'] = prev_cp
+        if prev_cp is not None: 
+            resp['prev_cp'] = prev_cp
         return jsonify(resp)
     return jsonify({'move': None})
 
@@ -510,13 +456,18 @@ def evaluate_position():
             return jsonify({'score': 50.0, 'text': '0.0', 'cp': 0, 'best_uci': '', 'best_san': '', 'depth': req_depth, 'nps': engine_state["last_nps"], 'engine': engine_state["real_name"]})
 
         with engine_lock:
-            if req_engine_path or req_engine_preset: ensure_Engine_Loaded(req_engine_path, req_engine_preset)
-            if engine_state["protocol"] != "uci": ensure_Engine_Loaded(DEFAULT_ENGINE_PATH, "sf19")
+            if req_engine_path or req_engine_preset: 
+                ensure_Engine_Loaded(req_engine_path, req_engine_preset)
+            if engine_state["protocol"] != "uci": 
+                ensure_Engine_Loaded(DEFAULT_ENGINE_PATH, "sf19")
             info = engine.analyse(board, chess.engine.Limit(time=req_time, depth=req_depth))
 
-        if isinstance(info, list): info = info[0]
-        if "nps" in info: engine_state["last_nps"] = info["nps"]
-        if "depth" in info: engine_state["last_depth"] = info["depth"]
+        if isinstance(info, list): 
+            info = info[0]
+        if "nps" in info: 
+            engine_state["last_nps"] = info["nps"]
+        if "depth" in info: 
+            engine_state["last_depth"] = info["depth"]
 
         best_uci, best_san = "", ""
         if "pv" in info and len(info["pv"]) > 0:
@@ -526,9 +477,13 @@ def evaluate_position():
 
         cp_val, score_pct, text = score_to_cp_and_winpct(info["score"].white())
         return jsonify({
-            'score': score_pct, 'text': text, 'cp': cp_val,
-            'best_uci': best_uci, 'best_san': best_san,
-            'nps': engine_state["last_nps"], 'depth': engine_state["last_depth"],
+            'score': score_pct, 
+            'text': text, 
+            'cp': cp_val,
+            'best_uci': best_uci, 
+            'best_san': best_san,
+            'nps': engine_state["last_nps"], 
+            'depth': engine_state["last_depth"],
             'engine': engine_state["real_name"]
         })
     except Exception:
@@ -541,38 +496,52 @@ def multipv():
     req_time = float(request.form.get('time', 0.20))
     try:
         board = chess.Board(fen)
-        if board.is_game_over(): return jsonify({"lines": []})
+        if board.is_game_over(): 
+            return jsonify({"lines": []})
         with engine_lock:
-            if engine_state["protocol"] != "uci": ensure_Engine_Loaded(DEFAULT_ENGINE_PATH, "sf19")
+            if engine_state["protocol"] != "uci": 
+                ensure_Engine_Loaded(DEFAULT_ENGINE_PATH, "sf19")
             supports_mpv = "MultiPV" in engine.options
             info = engine.analyse(board, chess.engine.Limit(time=req_time, depth=req_depth), multipv=3 if supports_mpv else 1)
         lines = []
-        if isinstance(info, dict): info = [info]
+        if isinstance(info, dict): 
+            info = [info]
         for item in info:
-            if "nps" in item: engine_state["last_nps"] = item["nps"]
-            if "depth" in item: engine_state["last_depth"] = item["depth"]
+            if "nps" in item: 
+                engine_state["last_nps"] = item["nps"]
+            if "depth" in item: 
+                engine_state["last_depth"] = item["depth"]
             if "pv" in item and len(item["pv"]) > 0:
                 move = item["pv"][0]
                 cp_val, win_pct, score_txt = score_to_cp_and_winpct(item["score"].white())
                 lines.append({"uci": move.uci(), "san": board.san(move), "score": score_txt, "cp": cp_val, "win_pct": win_pct})
         return jsonify({
-            "lines": lines, "engine": engine_state["real_name"],
-            "nps": engine_state["last_nps"], "depth": engine_state["last_depth"]
+            "lines": lines, 
+            "engine": engine_state["real_name"],
+            "nps": engine_state["last_nps"], 
+            "depth": engine_state["last_depth"]
         })
     except Exception:
         return jsonify({"lines": []})
 
 @app.route('/update_engine', methods=['POST'])
 def update_engine():
-    if 'hash' in request.form: engine_state["hash"] = min(4096, max(16, int(request.form.get('hash', 256))))
-    if 'threads' in request.form: engine_state["threads"] = min(32, max(1, int(request.form.get('threads', 4))))
-    if 'use_nnue' in request.form: engine_state["use_nnue"] = (str(request.form.get('use_nnue')).lower() in ['true', 'on', '1'])
+    if 'hash' in request.form: 
+        engine_state["hash"] = min(4096, max(16, int(request.form.get('hash', 256))))
+    if 'threads' in request.form: 
+        engine_state["threads"] = min(32, max(1, int(request.form.get('threads', 4))))
+    if 'use_nnue' in request.form: 
+        engine_state["use_nnue"] = (str(request.form.get('use_nnue')).lower() in ['true', 'on', '1'])
     with engine_lock:
         applied = apply_hardware_settings_to_engine()
         return jsonify({
-            "status": "success", "engine_name": engine_state["real_name"],
-            "protocol": engine_state["protocol"].upper(), "applied": applied,
-            "hash": engine_state["hash"], "threads": engine_state["threads"], "use_nnue": engine_state["use_nnue"]
+            "status": "success", 
+            "engine_name": engine_state["real_name"],
+            "protocol": engine_state["protocol"].upper(), 
+            "applied": applied,
+            "hash": engine_state["hash"], 
+            "threads": engine_state["threads"], 
+            "use_nnue": engine_state["use_nnue"]
         })
 
 @app.route('/list_engines', methods=['GET'])
@@ -591,7 +560,8 @@ def list_engines():
         if os.path.exists(sdir):
             for fname in sorted(os.listdir(sdir)):
                 low = fname.lower()
-                if low in ["xphalanx", "gamazons"]: continue
+                if low in ["xphalanx", "gamazons"]: 
+                    continue
                 if sdir == ENGINES_DIR or any(k in low for k in ["stockfish", "fairy", "toga", "phalanx", "fruit"]):
                     fpath = os.path.join(sdir, fname)
                     if os.path.isfile(fpath) and fpath not in seen:
@@ -599,9 +569,14 @@ def list_engines():
                         p_type = "XBoard" if any(x in low for x in ["phalanx", "fairymax"]) else "UCI"
                         found.append({"id": fname, "name": f"{fname.capitalize()}", "desc": f"{fpath} ({p_type})", "path": fpath, "proto": p_type, "preset": fname})
     return jsonify({
-        "engines": found, "current": engine_state["path"], "preset": engine_state["preset"],
-        "real_name": engine_state["real_name"], "protocol": engine_state["protocol"].upper(),
-        "hash": engine_state["hash"], "threads": engine_state["threads"], "use_nnue": engine_state["use_nnue"]
+        "engines": found, 
+        "current": engine_state["path"], 
+        "preset": engine_state["preset"],
+        "real_name": engine_state["real_name"], 
+        "protocol": engine_state["protocol"].upper(),
+        "hash": engine_state["hash"], 
+        "threads": engine_state["threads"], 
+        "use_nnue": engine_state["use_nnue"]
     })
 
 @app.route('/switch_engine', methods=['POST'])
@@ -610,8 +585,10 @@ def switch_engine():
     preset = request.form.get('preset', '').strip()
     if not os.path.exists(new_path):
         resolved = shutil.which(new_path)
-        if resolved: new_path = resolved
-        else: return jsonify({"status": "error", "message": f"Path not found: {new_path}"})
+        if resolved: 
+            new_path = resolved
+        else: 
+            return jsonify({"status": "error", "message": f"Path not found: {new_path}"})
     with engine_lock:
         try:
             ensure_Engine_Loaded(new_path, preset)
