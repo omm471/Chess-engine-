@@ -1,10 +1,11 @@
 /* ============================================================================
-   static/mod_core.js (v100 - Offline Themes & Pieces)
+   static/mod_core.js (v103 - Interactive Puzzle & Offline Engine Support)
    - Fixed Mobile Touch Drag-and-Drop (No DOM destruction during touchstart)
    - Captured Pieces Order: Pawn -> Knight -> Bishop -> Rook -> Queen
    - Chess.com Style Vertical Pawn Promotion (Touch-Optimized)
    - Local Offline Pieces (/static/img/chesspieces/wikipedia/)
    - Dynamic 10 Board Themes Support with LocalStorage Memory
+   - Full Integration for Lichess Daily Puzzle & Opponent Auto-Reply
    ============================================================================ */
 
 var game = new Chess();
@@ -162,8 +163,16 @@ function playSoundForHistoryRec(rec) {
     }
 }
 
+window.playSoundForMove = function(moveObj) {
+    let snd = detectMoveSoundType(game, moveObj);
+    playSnd(snd);
+};
+
 function isAutoBotMode() { return gameMode === 'bvb' || gameMode === 'eve'; }
-function isMatchOver() { return matchEnded || game.game_over(); }
+function isMatchOver() { 
+    if (window.activePuzzle && window.activePuzzle.isRunning) return false;
+    return matchEnded || game.game_over(); 
+}
 
 function stopAllActiveMatchProcesses() {
     clearInterval(timerInterval); timerInterval = null;
@@ -174,6 +183,7 @@ function stopAllActiveMatchProcesses() {
     }
     premoveQueue = [];
 }
+window.stopAllActiveMatchProcesses = stopAllActiveMatchProcesses;
 
 function safeEl(id) { return document.getElementById(id); }
 function safeText(ids, text) { (Array.isArray(ids) ? ids : [ids]).forEach(id => { let el = safeEl(id); if (el) el.innerText = text; }); }
@@ -385,7 +395,7 @@ function renderBoard() {
 }
 
 // ============================================================================
-// CHESS.COM STYLE VERTICAL PROMOTION POPUP (TOUCH BUG FIXED)
+// CHESS.COM STYLE VERTICAL PROMOTION POPUP
 // ============================================================================
 function showPromotionModal(color, toSq, onSelect) {
     let existing = document.getElementById('promotion-choice-modal');
@@ -587,6 +597,7 @@ function hideGhostPiece() {
 }
 
 function ensureBranchReadyForMove() {
+    if (window.activePuzzle && window.activePuzzle.isRunning) return true;
     if (historyIndex < gameHistory.length - 1) {
         if (!isMatchOver() && !isAnalysisBranchMode) {
             $('#status').text("Viewing past move — Tap 'Live' button to continue match");
@@ -613,8 +624,10 @@ function handleBoardPointerDown(sq, clientX, clientY) {
     if (!ensureBranchReadyForMove()) return false;
     if (isAutoBotMode() && !isAnalysisBranchMode) return false;
 
+    let inPuzzle = Boolean(window.activePuzzle && window.activePuzzle.isRunning);
+
     if (selectedSquare && sq !== selectedSquare && currentLegalMoves.find(m => m.to === sq)) {
-        if (!isAnalysisBranchMode && gameMode === 'pvb' && game.turn() !== playerColor) {
+        if (!isAnalysisBranchMode && !inPuzzle && gameMode === 'pvb' && game.turn() !== playerColor) {
             premoveQueue.push({ from: selectedSquare, to: sq });
             selectedSquare = null; currentLegalMoves = [];
             playSnd('move');
@@ -626,7 +639,7 @@ function handleBoardPointerDown(sq, clientX, clientY) {
         return true;
     }
 
-    if (!isAnalysisBranchMode && gameMode === 'pvb' && game.turn() !== playerColor) {
+    if (!isAnalysisBranchMode && !inPuzzle && gameMode === 'pvb' && game.turn() !== playerColor) {
         if (!premoveEnabled) return false;
         let vGame = getVirtualPremoveGame();
         let vp = vGame.get(sq);
@@ -651,7 +664,7 @@ function handleBoardPointerDown(sq, clientX, clientY) {
 
     let piece = game.get(sq);
     if (piece && piece.color === game.turn()) {
-        if (gameMode === 'pvb' && !isAnalysisBranchMode && piece.color !== playerColor) return false;
+        if (gameMode === 'pvb' && !isAnalysisBranchMode && !inPuzzle && piece.color !== playerColor) return false;
         selectedSquare = sq;
         currentLegalMoves = game.moves({ square: sq, verbose: true });
         updateSelectionAndDotsInPlace();
@@ -787,7 +800,7 @@ function parseAndApplyUciMove(uciStr) {
 }
 
 function executeHumanMove(fromSq, toSq, promoPiece = null) {
-    if (!isAnalysisBranchMode && isMatchOver()) return;
+    if (!isAnalysisBranchMode && !(window.activePuzzle && window.activePuzzle.isRunning) && isMatchOver()) return;
 
     let movingPiece = game.get(fromSq);
     let isPromotion = false;
@@ -815,8 +828,10 @@ function executeHumanMove(fromSq, toSq, promoPiece = null) {
     if (!moveObj) { playSnd('illegal'); return; }
     selectedSquare = null; currentLegalMoves = []; clearArrows();
 
-    if (!timerStarted && !isAnalysisBranchMode) { startTimer(); timerStarted = true; }
-    if (!isInfiniteTime && !isAnalysisBranchMode) {
+    let inPuzzle = Boolean(window.activePuzzle && window.activePuzzle.isRunning);
+
+    if (!timerStarted && !isAnalysisBranchMode && !inPuzzle) { startTimer(); timerStarted = true; }
+    if (!isInfiniteTime && !isAnalysisBranchMode && !inPuzzle) {
         if (moveObj.color === 'w') whiteTime += whiteIncrement; else blackTime += blackIncrement;
         updateTimer();
     }
@@ -832,6 +847,17 @@ function executeHumanMove(fromSq, toSq, promoPiece = null) {
     historyIndex = gameHistory.length - 1;
     let movedIdx = historyIndex;
 
+    // INTERCEPT PUZZLE MOVE: Validate move and auto-reply opponent
+    if (inPuzzle) {
+        playSoundForHistoryRec(gameHistory[movedIdx]);
+        renderBoard();
+        let uci = moveObj.from + moveObj.to + (moveObj.promotion || '');
+        if (window.checkPuzzlePlayerMove) {
+            window.checkPuzzlePlayerMove(uci);
+        }
+        return; // Halt AI engine and evaluation during puzzle
+    }
+
     processMoveVisuals(moveObj, movedIdx);
 
     if (gameMode === 'pvp' && autoFlipPvP && !isAnalysisBranchMode) {
@@ -845,7 +871,7 @@ function executeHumanMove(fromSq, toSq, promoPiece = null) {
 }
 
 function makeAiMove() {
-    if (isAnalysisBranchMode || isMatchOver()) return;
+    if (isAnalysisBranchMode || isMatchOver() || (window.activePuzzle && window.activePuzzle.isRunning)) return;
     let turnSide = game.turn();
     let botElo = isAutoBotMode() ? (turnSide === 'w' ? currentWhiteElo : currentBlackElo) : currentBlackElo;
     let sideName = (turnSide === 'w') ? getWhiteDisplayName() : getBlackDisplayName();
@@ -1064,6 +1090,7 @@ function updateTimer() {
 }
 
 function updateStatus() {
+    if (window.activePuzzle && window.activePuzzle.isRunning) return;
     if (matchEnded) return;
     if (game.in_checkmate()) {
         let winnerColor = (game.turn() === 'w') ? 'b' : 'w';
@@ -1105,6 +1132,9 @@ function triggerGameOverSequence(title, subtitle) {
 window.handleModalBtn = function() { closeModal('game-modal'); openSetupModal(); };
 
 window.startGame = function(fromSetup = false) {
+    if (window.activePuzzle) {
+        window.activePuzzle.isRunning = false;
+    }
     if (window.openingPracticeState) {
         if (openingPracticeState.demoTimer) clearInterval(openingPracticeState.demoTimer);
         openingPracticeState.active = false;
@@ -1147,6 +1177,16 @@ window.flipBoardUI = function() {
 };
 
 window.takebackMove = function() {
+    if (window.activePuzzle && window.activePuzzle.isRunning) {
+        if (gameHistory.length > 1) {
+            game.undo();
+            gameHistory.pop();
+            historyIndex = gameHistory.length - 1;
+            renderBoard();
+            safeText('status', 'Move undone. Find the winning move.');
+        }
+        return;
+    }
     if (gameHistory.length <= 1) return;
     premoveQueue = []; matchEnded = false; gameEndEffect = null;
     let steps = (gameMode === 'pvb' && game.turn() === playerColor && gameHistory.length >= 3) ? 2 : 1;
@@ -1215,7 +1255,6 @@ $(document).ready(function() {
     document.body.addEventListener('touchstart', () => getAudioCtx(), { once: true });
     document.body.addEventListener('click', () => getAudioCtx(), { once: true });
 
-    // Restore saved board theme and piece style automatically on startup
     let savedTheme = localStorage.getItem('saved_chess_theme');
     if (savedTheme) {
         let sel = safeEl('setting-board-theme');
