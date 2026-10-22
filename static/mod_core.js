@@ -1099,8 +1099,7 @@ function showAnalysisStatus() {
 // ============================================================================
 // AUTO-SAVE & AUTO-RESUME ENGINE
 // ============================================================================
-
-// Har move par sirf device ke local session me save karein (Cloud spamming band)
+// Har move chalne par local storage aur cloud dono me active game save karein
 function autoSaveCurrentState() {
     if (isMatchOver()) {
         localStorage.removeItem('chess_active_match');
@@ -1118,62 +1117,66 @@ function autoSaveCurrentState() {
         timerStarted: timerStarted
     };
     localStorage.setItem('chess_active_match', JSON.stringify(state));
+
+    // Move chalte hi Supabase me latest In-Progress entry save karein
+    if (gameHistory.length >= 2 && window.saveActiveMatchStateToCloud) {
+        window.saveActiveMatchStateToCloud();
+    }
 }
 
-
+// App khulte hi pehle local session dekhein, na mile toh cloud se latest match uthayein
 function autoResumePreviousMatch() {
     let raw = localStorage.getItem('chess_active_match');
-    if (!raw) return false;
-    try {
-        let state = JSON.parse(raw);
-        if (!state || !state.fen) return false;
-
-        game.load(state.fen);
-        gameHistory = state.gameHistory || [{ fen: state.fen, moveObj: null }];
-        historyIndex = state.historyIndex !== undefined ? state.historyIndex : gameHistory.length - 1;
-        whiteTime = state.whiteTime || 600;
-        blackTime = state.blackTime || 600;
-        playerColor = state.playerColor || 'w';
-        currentBoardOrientation = state.currentBoardOrientation || 'w';
-        gameMode = state.gameMode || 'pvb';
-        timerStarted = state.timerStarted || false;
-
-        renderBoard();
-        updateTimer();
-        updateEvalBar(historyIndex);
-        updateMaterial(game.fen());
-        updateStatus();
-        syncEloBadgeVisibility();
-
-        if (timerStarted && !isMatchOver()) {
-            startTimer();
-        }
-        $('#status').text("Resumed previous game session.");
-        return true;
-    } catch (e) {
-        return false;
+    if (raw) {
+        try {
+            let state = JSON.parse(raw);
+            if (state && state.fen) {
+                applyResumedGameState(state);
+                return;
+            }
+        } catch (e) {}
     }
+
+    // Cloud Fallback: Agar local clear ho gaya ho toh cloud se In Progress game restore karein
+    $.get('/get_matches', function(data) {
+        let matches = data.matches || [];
+        let inProgressGame = matches.find(m => m.result && m.result.includes("In Progress"));
+        if (inProgressGame && inProgressGame.fen) {
+            game.load(inProgressGame.fen);
+            gameHistory = [{ fen: inProgressGame.fen, moveObj: null }];
+            historyIndex = 0;
+            matchEnded = false;
+            isAnalysisBranchMode = false;
+            renderBoard();
+            updateTimer();
+            updateEvalBar(0);
+            updateMaterial(inProgressGame.fen);
+            updateStatus();
+            $('#status').text("Resumed active match from cloud.");
+        }
+    });
 }
 
-$(document).ready(function() {
-    preloadAllSounds();
-    bindPieceDragAndDropEvents();
-    document.body.addEventListener('touchstart', () => getAudioCtx(), { once: true });
-    document.body.addEventListener('click', () => getAudioCtx(), { once: true });
+function applyResumedGameState(state) {
+    game.load(state.fen);
+    gameHistory = state.gameHistory || [{ fen: state.fen, moveObj: null }];
+    historyIndex = state.historyIndex !== undefined ? state.historyIndex : gameHistory.length - 1;
+    whiteTime = state.whiteTime || 600;
+    blackTime = state.blackTime || 600;
+    playerColor = state.playerColor || 'w';
+    currentBoardOrientation = state.currentBoardOrientation || 'w';
+    gameMode = state.gameMode || 'pvb';
+    timerStarted = state.timerStarted || false;
 
-    let savedTheme = localStorage.getItem('saved_chess_theme');
-    if (savedTheme) {
-        let sel = safeEl('setting-board-theme');
-        if (sel) sel.value = savedTheme;
-        document.body.className = document.body.className.replace(/\btheme-[^\s]+\b/g, '').trim();
-        document.body.classList.add(savedTheme);
+    renderBoard();
+    updateTimer();
+    updateEvalBar(historyIndex);
+    updateMaterial(game.fen());
+    updateStatus();
+    syncEloBadgeVisibility();
+
+    if (timerStarted && !isMatchOver()) {
+        startTimer();
     }
-
-    let savedPieces = localStorage.getItem('saved_chess_piece_style');
-    if (savedPieces) {
-        let pSel = safeEl('setting-piece-style');
-        if (pSel) pSel.value = savedPieces;
-    }
-
-    autoResumePreviousMatch();
-});
+    $('#status').text("Game resumed successfully.");
+}
