@@ -1,5 +1,8 @@
 /* ============================================================================
-   static/mod_share_vault.js (v102 - Pure PGN & Multi-PGN Vault Exporter)
+   static/mod_share_vault.js (v104 - Complete PGN Management Engine)
+   - Individual Match PGN Saver
+   - Master Multi-PGN Exporter (All Matches in 1 File)
+   - Match-Over Direct Save Hook
    ============================================================================ */
 
 window.buildBrandedPGN = function() {
@@ -86,7 +89,7 @@ window.copyCurrentFEN = function() {
 };
 
 // ============================================================================
-// SINGLE MATCH PGN SAVER -> Download/ChessAIPro/PGN_Matches/
+// 1. SAVE INDIVIDUAL MATCH PGN -> Download/ChessAIPro/PGN_Matches/
 // ============================================================================
 window.saveSingleMatchPGN = function() {
     let pgnText = window.buildBrandedPGN();
@@ -98,20 +101,20 @@ window.saveSingleMatchPGN = function() {
     if (window.AndroidBridge && typeof window.AndroidBridge.savePgnNative === 'function') {
         window.AndroidBridge.savePgnNative(pgnText, fileName, false);
     } else {
-        // Fallback for browser testing
         let blob = new Blob([pgnText], { type: 'application/x-chess-pgn' });
         let a = document.createElement('a');
         a.href = URL.createObjectURL(blob);
         a.download = fileName;
         a.click();
+        alert(`Downloaded: ${fileName}`);
     }
 };
 
 // ============================================================================
-// MULTI-MATCH PGN COLLECTION -> Download/ChessAIPro/ChessAIPro_All_Matches.pgn
+// 2. EXPORT MASTER MULTI-PGN -> Download/ChessAIPro/ChessAIPro_All_Matches.pgn
 // ============================================================================
 window.exportAllMatchesMultiPGN = function() {
-    safeText('status', 'Gathering all matches into Multi-PGN...');
+    safeText('status', 'Combining all matches into Master Multi-PGN...');
     fetch('/api/export_all_pgn')
         .then(res => res.json())
         .then(data => {
@@ -125,9 +128,10 @@ window.exportAllMatchesMultiPGN = function() {
                     a.href = URL.createObjectURL(blob);
                     a.download = fileName;
                     a.click();
+                    alert(`Downloaded Master Collection: ${fileName}`);
                 }
             } else {
-                alert("No saved matches found in vault yet! Play and save games first.");
+                alert("No saved matches found in vault! Complete and save games first.");
             }
         })
         .catch(err => {
