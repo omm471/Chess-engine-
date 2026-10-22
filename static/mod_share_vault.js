@@ -106,14 +106,18 @@ window.downloadMatchPDF = function() {
     }
 
     let url = `/api/export_pdf?white=${wName}&black=${bName}&opening=${opening}&result=${encodeURIComponent(resCode)}&pgn=${pgnText}`;
-    
-    // Trigger download directly via hidden link
-    let downloadLink = document.createElement('a');
-    downloadLink.href = url;
-    downloadLink.setAttribute('download', `Match_ScoreSheet_${Date.now()}.pdf`);
-    document.body.appendChild(downloadLink);
-    downloadLink.click();
-    document.body.removeChild(downloadLink);
+    let fileName = `Match_Report_${Date.now()}.pdf`;
+
+    // Native Android Bridge Call (Bypasses WebView Download Restrictions)
+    if (window.AndroidBridge && typeof window.AndroidBridge.downloadPdfNative === 'function') {
+        window.AndroidBridge.downloadPdfNative(url, fileName);
+    } else {
+        window.open(url, '_blank');
+    }
+};
+
+window.downloadShareableKundliCard = function() {
+    window.downloadMatchPDF();
 };
 
 // Connect existing "Save Card" button to generate & download official PDF
