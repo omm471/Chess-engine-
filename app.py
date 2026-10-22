@@ -7,20 +7,13 @@ import subprocess
 import threading
 import urllib.request
 import zipfile
-from io import BytesIO
 from datetime import datetime
 
-# =========================================================
-# ULTRA-FAST C-BASED JSON (UJSON)
-# =========================================================
 try:
     import ujson as json
 except ImportError:
     import json
 
-# =========================================================
-# REQUESTS FOR ONLINE SYNC
-# =========================================================
 try:
     import requests
 except ImportError:
@@ -28,17 +21,11 @@ except ImportError:
 
 import chess
 import chess.engine
-from flask import Flask, render_template, request, jsonify, send_from_directory, send_file
+from flask import Flask, render_template, request, jsonify, send_from_directory
 
-# =========================================================
-# FLASK APP INITIALIZATION
-# =========================================================
 app = Flask(__name__)
 engine_lock = threading.Lock()
 
-# =========================================================
-# AUTO-EXTRACT BOARD THEMES
-# =========================================================
 ZIP_THEMES_PATH = os.path.join(os.path.abspath('static'), 'chessthemes.zip')
 BOARDS_DIR = os.path.join(os.path.abspath('static'), 'boards')
 
@@ -51,9 +38,6 @@ if os.path.exists(ZIP_THEMES_PATH) and not os.path.exists(BOARDS_DIR):
     except Exception as e:
         print("[!] Theme extraction error:", e, flush=True)
 
-# =========================================================
-# AUTO-DOWNLOAD OFFLINE JS DEPENDENCIES
-# =========================================================
 JS_DIR = os.path.join(os.path.abspath('static'), 'js')
 os.makedirs(JS_DIR, exist_ok=True)
 
@@ -71,9 +55,6 @@ for fname, url in deps.items():
         except Exception as e:
             print(f"[!] Could not download {fname}:", e, flush=True)
 
-# =========================================================
-# ENGINE CONFIGURATION & DIRECTORIES
-# =========================================================
 ENGINES_DIR = os.path.abspath('engines')
 os.makedirs(ENGINES_DIR, exist_ok=True)
 OPENINGS_CACHE_FILE = os.path.abspath('eco_openings_full.json')
@@ -274,15 +255,11 @@ def init_db():
 
 init_db()
 
-# =========================================================
-# ROUTES
-# =========================================================
-
 @app.route('/')
 def index():
     return render_template('index.html')
 
-# Lichess Daily Tactics API (Reconstructs Real FEN via python-chess)
+# Lichess Daily Tactics Puzzle API (Reconstructs valid FEN + solution moves)
 @app.route('/api/daily_puzzle', methods=['GET'])
 def get_daily_puzzle():
     if not requests:
@@ -300,7 +277,7 @@ def get_daily_puzzle():
             initial_ply = int(puzzle.get("initialPly", 0))
             solution = puzzle.get("solution", [])
 
-            # Parse PGN and advance board to puzzle state
+            # Replay moves to get exact position
             pgn_io = io.StringIO(pgn_str)
             parsed_game = chess.pgn.read_game(pgn_io)
             board = parsed_game.board()
@@ -312,14 +289,11 @@ def get_daily_puzzle():
                 else:
                     break
 
-            # Push opponent's blunder if initialPly sits right before it
+            # If initialPly is before opponent blunder, push blunder so player solves the reply
             if solution and initial_ply < len(moves):
                 first_sol = chess.Move.from_uci(solution[0])
-                if first_sol not in board.legal_moves:
+                if first_sol not in board.legal_moves and initial_ply < len(moves):
                     board.push(moves[initial_ply])
-
-            real_fen = board.fen()
-            player_turn = "w" if board.turn == chess.WHITE else "b"
 
             return jsonify({
                 "status": "success",
@@ -327,111 +301,36 @@ def get_daily_puzzle():
                 "rating": puzzle.get("rating"),
                 "themes": puzzle.get("themes", []),
                 "solution": solution,
-                "fen": real_fen,
-                "turn": player_turn
+                "fen": board.fen(),
+                "turn": "w" if board.turn == chess.WHITE else "b"
             })
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
     return jsonify({"status": "error", "message": "Failed to fetch puzzle"}), 502
 
-# FIDE Style Match Score Sheet PDF Exporter
-@app.route('/api/export_pdf', methods=['POST', 'GET'])
-def export_pdf():
+# Multi-Match PGN Vault Exporter: Combines all saved games into one Master PGN
+@app.route('/api/export_all_pgn', methods=['GET'])
+def export_all_pgn():
     try:
-        from reportlab.lib.pagesizes import letter
-        from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
-        from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-        from reportlab.lib import colors
+        conn = sqlite3.connect('matches.db')
+        c = conn.cursor()
+        c.execute('SELECT pgn FROM matches ORDER BY id ASC')
+        rows = c.fetchall()
+        conn.close()
 
-        white = request.args.get('white') or request.form.get('white', 'Player 1 (White)')
-        black = request.args.get('black') or request.form.get('black', 'Stockfish 16.1 (Black)')
-        result = request.args.get('result') or request.form.get('result', '1-0')
-        opening = request.args.get('opening') or request.form.get('opening', 'Standard Game')
-        pgn = request.args.get('pgn') or request.form.get('pgn', '1. e4 e5 2. Nf3 Nc6')
+        all_pgns = []
+        for r in rows:
+            if r[0] and r[0].strip():
+                all_pgns.append(r[0].strip())
 
-        pdf_buffer = BytesIO()
-        doc = SimpleDocTemplate(pdf_buffer, pagesize=letter, rightMargin=36, leftMargin=36, topMargin=36, bottomMargin=36)
-        elements = []
-        styles = getSampleStyleSheet()
-
-        title_style = ParagraphStyle(
-            'TitleStyle',
-            parent=styles['Heading1'],
-            fontSize=18,
-            leading=22,
-            textColor=colors.HexColor('#0F172A'),
-            alignment=1
-        )
-        sub_style = ParagraphStyle(
-            'SubStyle',
-            parent=styles['Normal'],
-            fontSize=10,
-            leading=14,
-            textColor=colors.HexColor('#64748B'),
-            alignment=1
-        )
-        pgn_style = ParagraphStyle(
-            'PgnStyle',
-            parent=styles['Code'],
-            fontSize=10,
-            leading=15,
-            textColor=colors.HexColor('#1E293B')
-        )
-
-        elements.append(Paragraph("OFFICIAL CHESS MATCH SCORE SHEET", title_style))
-        elements.append(Paragraph(f"Generated via Chess AI Engine — {datetime.now().strftime('%d %B %Y')}", sub_style))
-        elements.append(Spacer(1, 15))
-
-        meta_data = [
-            [Paragraph("<b>White:</b> " + white, styles['Normal']), Paragraph("<b>Black:</b> " + black, styles['Normal'])],
-            [Paragraph("<b>Opening:</b> " + opening, styles['Normal']), Paragraph("<b>Result:</b> " + result, styles['Normal'])],
-            [Paragraph("<b>Engine:</b> Stockfish 16.1 NNUE", styles['Normal']), Paragraph("<b>Time:</b> " + datetime.now().strftime('%I:%M %p'), styles['Normal'])]
-        ]
-        meta_table = Table(meta_data, colWidths=[270, 270])
-        meta_table.setStyle(TableStyle([
-            ('BACKGROUND', (0,0), (-1,-1), colors.HexColor('#F8FAFC')),
-            ('BOX', (0,0), (-1,-1), 1, colors.HexColor('#CBD5E1')),
-            ('INNERGRID', (0,0), (-1,-1), 0.5, colors.HexColor('#E2E8F0')),
-            ('TOPPADDING', (0,0), (-1,-1), 6),
-            ('BOTTOMPADDING', (0,0), (-1,-1), 6),
-        ]))
-        elements.append(meta_table)
-        elements.append(Spacer(1, 15))
-
-        elements.append(Paragraph("<b>COMPLETE MATCH NOTATION (PGN):</b>", styles['Heading3']))
-        elements.append(Spacer(1, 6))
-
-        pgn_box = Table([[Paragraph(pgn, pgn_style)]], colWidths=[540])
-        pgn_box.setStyle(TableStyle([
-            ('BACKGROUND', (0,0), (-1,-1), colors.HexColor('#F1F5F9')),
-            ('BOX', (0,0), (-1,-1), 0.8, colors.HexColor('#94A3B8')),
-            ('TOPPADDING', (0,0), (-1,-1), 10),
-            ('BOTTOMPADDING', (0,0), (-1,-1), 10),
-            ('LEFTPADDING', (0,0), (-1,-1), 10),
-            ('RIGHTPADDING', (0,0), (-1,-1), 10),
-        ]))
-        elements.append(pgn_box)
-        elements.append(Spacer(1, 25))
-
-        sig_data = [["_______________________", "_______________________"], ["White Player Signature", "Black Player / Arbiter Signature"]]
-        sig_table = Table(sig_data, colWidths=[270, 270])
-        sig_table.setStyle(TableStyle([
-            ('ALIGN', (0,0), (-1,-1), 'CENTER'),
-            ('TEXTCOLOR', (0,1), (-1,1), colors.HexColor('#64748B')),
-            ('FONTSIZE', (0,1), (-1,1), 9),
-        ]))
-        elements.append(sig_table)
-
-        doc.build(elements)
-        pdf_buffer.seek(0)
-        return send_file(
-            pdf_buffer,
-            mimetype='application/pdf',
-            as_attachment=True,
-            download_name=f"Match_Report_{datetime.now().strftime('%Y%m%d_%H%M')}.pdf"
-        )
+        combined_text = "\n\n\n".join(all_pgns)
+        return jsonify({
+            "status": "success",
+            "count": len(all_pgns),
+            "multi_pgn": combined_text
+        })
     except Exception as e:
-        return f"PDF Generator Error: {str(e)}", 500
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 @app.route('/sound/<path:filename>')
 def serve_sound(filename):
@@ -783,9 +682,6 @@ def delete_match():
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)})
 
-# =========================================================
-# WSGI SERVER RUNNER
-# =========================================================
 if __name__ == '__main__':
     try:
         import logging
