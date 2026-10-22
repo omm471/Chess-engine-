@@ -160,7 +160,7 @@ window.drawAllEvalGraphs = function() {
 };
 
 // ============================================================================
-// 100% INTERACTIVE PUZZLE ENGINE (VERIFIES MOVES & REPLIES AS OPPONENT)
+// PROBLEM 1 FIX: DYNAMIC PERSPECTIVE & ARROW ORIENTATION FOR PUZZLES
 // ============================================================================
 window.loadDailyPuzzle = function() {
     safeText('status', 'Fetching Daily Puzzle from Lichess...');
@@ -175,28 +175,43 @@ window.loadDailyPuzzle = function() {
                 historyIndex = 0;
                 matchEnded = false;
 
+                let puzzleTurn = data.turn || 'w'; // 'w' ya 'b'
+
                 window.activePuzzle = {
                     isRunning: true,
                     id: data.id,
                     rating: data.rating,
                     solution: data.solution,
-                    plyIndex: 0
+                    plyIndex: 0,
+                    playerColor: puzzleTurn
                 };
 
-                // Orient board to player perspective
-                if (data.turn && typeof isBoardFlipped !== 'undefined' && typeof flipBoardUI === 'function') {
-                    if ((data.turn === 'b' && !isBoardFlipped) || (data.turn === 'w' && isBoardFlipped)) {
-                        flipBoardUI();
-                    }
+                // 1. Perspective Flip Fix: Player ka color hamesha neeche rahega
+                currentBoardOrientation = puzzleTurn;
+                playerColor = puzzleTurn;
+
+                // 2. Player Names & Labels Swap
+                if (puzzleTurn === 'b') {
+                    safeText('bottom-player-label', 'Black');
+                    safeText('bottom-player-name', 'You');
+                    safeText('top-player-label', 'White');
+                    safeText('top-player-name', `Opponent (${data.rating})`);
+                } else {
+                    safeText('bottom-player-label', 'White');
+                    safeText('bottom-player-name', 'You');
+                    safeText('top-player-label', 'Black');
+                    safeText('top-player-name', `Opponent (${data.rating})`);
                 }
 
+                // 3. Clear old arrows and re-render board
+                clearArrows();
                 if (typeof renderBoard === 'function') renderBoard();
-                let turnName = (data.turn === 'w') ? 'White to move' : 'Black to move';
+
+                let turnName = (puzzleTurn === 'w') ? 'White to move' : 'Black to move';
                 let themes = data.themes ? data.themes.slice(0, 3).join(', ') : 'Tactics';
 
                 safeText('opening-bar', `Puzzle #${data.id} • Rating: ${data.rating} ELO`);
-                safeText('status', `🧩 ${turnName} • Find the winning move!`);
-                alert(`🧩 Puzzle Loaded (${data.rating} ELO)\n${turnName}!\nThemes: ${themes}`);
+                safeText('status', `🧩 ${turnName} • Your King is at the bottom!`);
             } else {
                 alert('Puzzle fetch failed: ' + (data.message || 'Check Internet'));
             }
@@ -205,6 +220,54 @@ window.loadDailyPuzzle = function() {
             alert('Internet connection required to fetch daily puzzle.');
         });
 };
+
+// 4. Fixed Hint Arrow: Hamesha source (from) se target (to) point karega
+window.drawArrow = function(fromSq, toSq, color = 'rgba(74, 143, 240, 0.85)') {
+    let svg = safeEl('arrow-overlay');
+    if (!svg) return;
+
+    let p1 = sqToSvgCoords(fromSq);
+    let p2 = sqToSvgCoords(toSq);
+
+    // Arrow shaft and head calculation
+    let angle = Math.atan2(p2.y - p1.y, p2.x - p1.x);
+    let arrowLength = Math.hypot(p2.x - p1.x, p2.y - p1.y);
+    let headLen = 14;
+
+    // Shorten line slightly so arrow head sits right on square center
+    let endX = p1.x + (arrowLength - 6) * Math.cos(angle);
+    let endY = p1.y + (arrowLength - 6) * Math.sin(angle);
+
+    let arrowSvg = `
+        <defs>
+            <marker id="hint-arrowhead" markerWidth="6" markerHeight="6" refX="4" refY="3" orient="auto">
+                <path d="M 0 0 L 6 3 L 0 6 z" fill="${color}" />
+            </marker>
+        </defs>
+        <line x1="${p1.x}" y1="${p1.y}" x2="${endX}" y2="${endY}" 
+              stroke="${color}" stroke-width="6" stroke-linecap="round" 
+              marker-end="url(#hint-arrowhead)" />
+    `;
+    svg.innerHTML = arrowSvg;
+};
+
+// 5. Fixed Hint Action for Puzzle Mode
+window.requestHint = function() {
+    if (window.activePuzzle && window.activePuzzle.isRunning) {
+        let pz = window.activePuzzle;
+        let expectedUci = pz.solution[pz.plyIndex];
+        if (expectedUci && expectedUci.length >= 4) {
+            let from = expectedUci.slice(0, 2);
+            let to = expectedUci.slice(2, 4);
+            window.drawArrow(from, to, 'rgba(129, 182, 76, 0.9)');
+            safeText('status', `Hint: Move piece from ${from.toUpperCase()} to ${to.toUpperCase()}`);
+            return;
+        }
+    }
+    // Normal match hint logic continues below...
+    if (typeof fetchEngineHint === 'function') fetchEngineHint();
+};
+
 
 // Puzzle Move Validator Interceptor
 window.checkPuzzlePlayerMove = function(userMoveUci) {
