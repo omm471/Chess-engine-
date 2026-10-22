@@ -209,8 +209,8 @@
             display: flex;
             justify-content: center;
             align-items: center;
-            width: 100% !important;   /* <--- Fixed Alignment */
-            height: 100% !important;  /* <--- Fixed Alignment */
+            width: 100% !important;
+            height: 100% !important;
             font-size: 32px;
             cursor: pointer;
         }
@@ -273,6 +273,10 @@
             <span style="color:#5c9ded; font-size:10.5px; cursor:pointer;" onclick="resetCareerRating()">Reset</span>
         </div>
         <button class="sidebar-nav-item" style="background:#81b64c; color:#fff; border-color:#81b64c;" onclick="toggleSidebarDrawer(false); openSetupModal();"><span>♟ New Game Setup</span><span>→</span></button>
+        <!-- Lichess Daily Puzzle Hook -->
+        <button class="sidebar-nav-item" style="border-color:#5c9ded; color:#90c2ff;" onclick="toggleSidebarDrawer(false); window.loadDailyPuzzle();"><span>🧩 Lichess Daily Puzzle</span><span>→</span></button>
+        <!-- Direct PDF Download Hook -->
+        <button class="sidebar-nav-item" style="border-color:#e67e22; color:#f39c12;" onclick="toggleSidebarDrawer(false); window.downloadMatchPDF();"><span>📄 Download Match PDF</span><span>→</span></button>
         <button class="sidebar-nav-item" onclick="toggleSidebarDrawer(false); openSettingsModal();"><span>⚙ Engine & UI Settings</span><span>→</span></button>
         <button class="sidebar-nav-item" onclick="toggleSidebarDrawer(false); openDeepReport();"><span>📊 Full Game Report</span><span>→</span></button>
         <button class="sidebar-nav-item" id="sidebar-premove-btn" onclick="togglePremoveMode()"><span>⚡ Multi-Premove</span><span id="sidebar-premove-val" style="color:#81b64c;">ON</span></button>
@@ -308,8 +312,8 @@
             <p id="modal-subtitle" style="margin: 4px 0 10px 0; font-size: 12px;">Game completed.</p>
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px;">
                 <button onclick="closeModal('game-modal'); openDeepReport();" style="background: #81b64c; padding: 9px;">Game Report</button>
+                <button onclick="window.downloadMatchPDF();" style="background: #e67e22; color:#fff; padding: 9px;">📄 Export PDF</button>
                 <button onclick="closeModal('game-modal'); openShareModal();" style="background: #4b7399; padding: 9px;">Share PGN</button>
-                <button onclick="closeModal('game-modal'); goToStart();" style="background: #363431; padding: 9px;">Review Board</button>
                 <button id="modal-btn" onclick="handleModalBtn()" style="background: #363431; padding: 9px;">New Match</button>
             </div>
         </div>
@@ -327,12 +331,12 @@
                 <button onclick="copyBrandedPGN()" style="background:#81b64c; padding:9px;">Copy PGN</button>
                 <button onclick="shareBrandedGameNative()" style="background:#4b7399; padding:9px;">Share</button>
                 <button onclick="copyCurrentFEN()" style="background:#363431; padding:9px;">Copy FEN</button>
-                <button onclick="downloadShareableKundliCard()" style="background:#363431; padding:9px;">Save Card</button>
+                <button onclick="window.downloadMatchPDF()" style="background:#e67e22; color:#fff; font-weight:bold; padding:9px;">📄 Save PDF</button>
             </div>
         </div>
     </div>
 
-    <!-- 3. NEW GAME SETUP MODAL (With 4 Modes including Engine vs Engine) -->
+    <!-- 3. NEW GAME SETUP MODAL -->
     <div id="setup-modal" class="modal-overlay" style="display: none;">
         <div class="modal-content setup-box">
             <div class="sticky-top-bar">
@@ -450,7 +454,7 @@
         </div>
     </div>
 
-    <!-- 4. GAME REPORT MODAL (With Engine & Depth Selector) -->
+    <!-- 4. GAME REPORT MODAL -->
     <div id="kundli-modal" class="modal-overlay" style="display: none;">
         <div class="modal-content kundli-box">
             <div class="sticky-top-bar">
@@ -458,7 +462,6 @@
                 <button class="big-close-btn" onclick="closeModal('kundli-modal')">Close</button>
             </div>
 
-            <!-- Deep Analysis Engine & Depth Configuration Bar -->
             <div style="background:#181715; border:1px solid #312f2c; border-radius:6px; padding:8px; margin-bottom:8px; text-align:left;">
                 <div style="font-size:10.5px; color:#5c9ded; font-weight:700; margin-bottom:5px; text-transform:uppercase;">Analysis Engine & Depth Settings</div>
                 <div style="display:flex; flex-wrap:wrap; gap:5px; align-items:center; width:100%;">
@@ -507,8 +510,9 @@
                 <div id="kundli-blunder-list" class="blunder-list"></div>
             </div>
             <div style="display: flex; gap: 6px; margin-top: 10px;">
-                <button onclick="runDeepKundliScan(true)" style="flex: 1; background: #81b64c; padding: 9px;">Re-Scan at Selected Depth</button>
-                <button onclick="closeModal('kundli-modal'); openShareModal();" style="flex: 1; background: #4b7399; padding: 9px;">Share PGN</button>
+                <button onclick="runDeepKundliScan(true)" style="flex: 1; background: #81b64c; padding: 9px;">Re-Scan Depth</button>
+                <button onclick="window.downloadMatchPDF();" style="flex: 1; background: #e67e22; color:#fff; font-weight:bold; padding: 9px;">📄 PDF Report</button>
+                <button onclick="closeModal('kundli-modal'); openShareModal();" style="flex: 0.8; background: #4b7399; padding: 9px;">Share PGN</button>
             </div>
         </div>
     </div>
@@ -739,7 +743,6 @@
     <script src="/static/mod_share_vault.js?v=101"></script>
     <script src="/static/mod_extras.js?v=101"></script>
 
-
     <!-- Clean Dynamic Theme Switcher for Custom Boards -->
     <script>
         (function() {
@@ -747,7 +750,6 @@
                 let themeSel = document.getElementById('setting-board-theme');
                 let theme = themeSel ? themeSel.value : 'theme-green';
                 
-                // Remove all existing theme classes
                 document.body.className = document.body.className.replace(/\btheme-[^\s]+\b/g, '').trim();
                 document.body.classList.add(theme);
                 
