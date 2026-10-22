@@ -1,5 +1,4 @@
 import os
-import json
 import math
 import random
 import shutil
@@ -8,11 +7,28 @@ import subprocess
 import threading
 import urllib.request
 import zipfile
+from io import BytesIO
 from datetime import datetime
+
+# =========================================================
+# FEATURE 4: ULTRA-FAST C-BASED JSON (UJSON)
+# =========================================================
+try:
+    import ujson as json
+except ImportError:
+    import json
+
+# =========================================================
+# FEATURE 2: REQUESTS FOR ONLINE SYNC
+# =========================================================
+try:
+    import requests
+except ImportError:
+    requests = None
 
 import chess
 import chess.engine
-from flask import Flask, render_template, request, jsonify, send_from_directory
+from flask import Flask, render_template, request, jsonify, send_from_directory, send_file
 
 # =========================================================
 # FLASK APP INITIALIZATION
@@ -265,6 +281,135 @@ init_db()
 @app.route('/')
 def index():
     return render_template('index.html')
+
+# ---------------------------------------------------------
+# FEATURE 2: LICHESS DAILY TACTICS / PUZZLE API
+# ---------------------------------------------------------
+@app.route('/api/daily_puzzle', methods=['GET'])
+def get_daily_puzzle():
+    if not requests:
+        return jsonify({"status": "error", "message": "requests package missing"}), 500
+    try:
+        # Fetch Lichess official daily puzzle
+        r = requests.get("https://lichess.org/api/puzzle/daily", timeout=6)
+        if r.status_code == 200:
+            data = r.json()
+            puzzle = data.get("puzzle", {})
+            game = data.get("game", {})
+            return jsonify({
+                "status": "success",
+                "id": puzzle.get("id"),
+                "rating": puzzle.get("rating"),
+                "themes": puzzle.get("themes", []),
+                "solution": puzzle.get("solution", []),
+                "fen": game.get("tree", [{}])[0].get("fen") or game.get("pgn", "")
+            })
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+    return jsonify({"status": "error", "message": "Failed to fetch puzzle"}), 502
+
+# ---------------------------------------------------------
+# FEATURE 3: REPORTLAB TOURNAMENT PDF EXPORTER
+# ---------------------------------------------------------
+@app.route('/api/export_pdf', methods=['POST', 'GET'])
+def export_pdf():
+    try:
+        from reportlab.lib.pagesizes import letter
+        from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+        from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+        from reportlab.lib import colors
+
+        white = request.args.get('white') or request.form.get('white', 'Player 1 (White)')
+        black = request.args.get('black') or request.form.get('black', 'Stockfish 16.1 (Black)')
+        result = request.args.get('result') or request.form.get('result', '1-0')
+        opening = request.args.get('opening') or request.form.get('opening', 'Standard Game')
+        pgn = request.args.get('pgn') or request.form.get('pgn', '1. e4 e5 2. Nf3 Nc6')
+
+        pdf_buffer = BytesIO()
+        doc = SimpleDocTemplate(pdf_buffer, pagesize=letter, rightMargin=36, leftMargin=36, topMargin=36, bottomMargin=36)
+        elements = []
+        styles = getSampleStyleSheet()
+
+        title_style = ParagraphStyle(
+            'TitleStyle',
+            parent=styles['Heading1'],
+            fontSize=18,
+            leading=22,
+            textColor=colors.HexColor('#0F172A'),
+            alignment=1
+        )
+        sub_style = ParagraphStyle(
+            'SubStyle',
+            parent=styles['Normal'],
+            fontSize=10,
+            leading=14,
+            textColor=colors.HexColor('#64748B'),
+            alignment=1
+        )
+        pgn_style = ParagraphStyle(
+            'PgnStyle',
+            parent=styles['Code'],
+            fontSize=10,
+            leading=15,
+            textColor=colors.HexColor('#1E293B')
+        )
+
+        elements.append(Paragraph("OFFICIAL CHESS MATCH SCORE SHEET", title_style))
+        elements.append(Paragraph(f"Generated via Chess AI Engine — {datetime.now().strftime('%d %B %Y')}", sub_style))
+        elements.append(Spacer(1, 15))
+
+        # Tournament Header Table
+        meta_data = [
+            [Paragraph("<b>White:</b> " + white, styles['Normal']), Paragraph("<b>Black:</b> " + black, styles['Normal'])],
+            [Paragraph("<b>Opening:</b> " + opening, styles['Normal']), Paragraph("<b>Result:</b> " + result, styles['Normal'])],
+            [Paragraph("<b>Engine:</b> Stockfish 16.1 NNUE", styles['Normal']), Paragraph("<b>Time:</b> " + datetime.now().strftime('%I:%M %p'), styles['Normal'])]
+        ]
+        meta_table = Table(meta_data, colWidths=[270, 270])
+        meta_table.setStyle(TableStyle([
+            ('BACKGROUND', (0,0), (-1,-1), colors.HexColor('#F8FAFC')),
+            ('BOX', (0,0), (-1,-1), 1, colors.HexColor('#CBD5E1')),
+            ('INNERGRID', (0,0), (-1,-1), 0.5, colors.HexColor('#E2E8F0')),
+            ('TOPPADDING', (0,0), (-1,-1), 6),
+            ('BOTTOMPADDING', (0,0), (-1,-1), 6),
+        ]))
+        elements.append(meta_table)
+        elements.append(Spacer(1, 15))
+
+        elements.append(Paragraph("<b>COMPLETE MATCH NOTATION (PGN):</b>", styles['Heading3']))
+        elements.append(Spacer(1, 6))
+
+        pgn_box = Table([[Paragraph(pgn, pgn_style)]], colWidths=[540])
+        pgn_box.setStyle(TableStyle([
+            ('BACKGROUND', (0,0), (-1,-1), colors.HexColor('#F1F5F9')),
+            ('BOX', (0,0), (-1,-1), 0.8, colors.HexColor('#94A3B8')),
+            ('TOPPADDING', (0,0), (-1,-1), 10),
+            ('BOTTOMPADDING', (0,0), (-1,-1), 10),
+            ('LEFTPADDING', (0,0), (-1,-1), 10),
+            ('RIGHTPADDING', (0,0), (-1,-1), 10),
+        ]))
+        elements.append(pgn_box)
+        elements.append(Spacer(1, 25))
+
+        # Signatures
+        sig_data = [["_______________________", "_______________________"], ["White Player Signature", "Black Player / Arbiter Signature"]]
+        sig_table = Table(sig_data, colWidths=[270, 270])
+        sig_table.setStyle(TableStyle([
+            ('ALIGN', (0,0), (-1,-1), 'CENTER'),
+            ('TEXTCOLOR', (0,1), (-1,1), colors.HexColor('#64748B')),
+            ('FONTSIZE', (0,1), (-1,1), 9),
+        ]))
+        elements.append(sig_table)
+
+        doc.build(elements)
+        pdf_buffer.seek(0)
+        return send_file(
+            pdf_buffer,
+            mimetype='application/pdf',
+            as_attachment=True,
+            download_name=f"Match_Report_{datetime.now().strftime('%Y%m%d_%H%M')}.pdf"
+        )
+    except Exception as e:
+        return f"PDF Generator Error: {str(e)}", 500
 
 @app.route('/sound/<path:filename>')
 def serve_sound(filename):
