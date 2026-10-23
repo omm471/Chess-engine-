@@ -1,8 +1,8 @@
 /* ============================================================================
-   static/mod_share_vault.js (v116 - Direct Phone Storage Saver & Zero-Spam Vault)
-   - Direct Device Folder Saver: Writes PGN files directly to /storage/emulated/0/ChessAIPro/
-   - Delegated Download Listener: Triggers reliably from Game Over modal & Share modal
-   - In-Flight Request Lock: Prevents duplicate match entries during rapid moves
+   static/mod_share_vault.js (v117 - Device PGN Storage & In-App Dialog)
+   - Reliable Phone Storage Saver: Saves PGN to Device Folder with In-App Confirmation
+   - Universal Click Binding: Guarantees 'Download Current Match PGN' button responds
+   - In-Flight Request Lock: Prevents duplicate rows when moves happen rapidly
    - Native In-App Custom Confirm Dialog (Android WebView compatible)
    - Exact client-local time formatting with dynamic Resume/Replay switching
    ============================================================================ */
@@ -69,12 +69,46 @@ window.buildBrandedPGN = function() {
 };
 
 // ============================================================================
-// DIRECT PHONE STORAGE SAVER (/storage/emulated/0/ChessAIPro/)
+// IN-APP NOTIFICATION DIALOG (ANDROID WEBVIEW SAFE POPUP)
+// ============================================================================
+function showPgnSaveSuccessDialog(filePath, pgnText) {
+    let existing = document.getElementById('pgn-save-success-modal');
+    if (existing) existing.remove();
+
+    let overlay = document.createElement('div');
+    overlay.id = 'pgn-save-success-modal';
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:99999999;display:flex;align-items:center;justify-content:center;padding:16px;';
+    overlay.innerHTML = `
+        <div style="background:#1c1d22;border:1px solid #2ea043;border-radius:12px;padding:20px;max-width:340px;width:100%;text-align:center;box-shadow:0 12px 36px rgba(0,0,0,0.9);">
+            <div style="font-size:26px;margin-bottom:6px;">💾</div>
+            <div style="font-size:16px;font-weight:bold;color:#3fb950;margin-bottom:8px;">PGN Saved to Device!</div>
+            <div style="font-size:11px;color:#aaa;margin-bottom:14px;word-break:break-all;background:#141518;padding:8px;border-radius:6px;border:1px solid #333;text-align:left;">
+                📁 <b>Path:</b><br>${filePath}
+            </div>
+            <div style="display:flex;gap:8px;justify-content:center;">
+                <button id="btn-copy-pgn-quick" style="flex:1;background:#238636;color:#fff;border:none;padding:10px;border-radius:6px;font-weight:bold;cursor:pointer;font-size:12px;">📋 Copy PGN</button>
+                <button id="btn-close-pgn-modal" style="flex:1;background:#30363d;color:#eee;border:none;padding:10px;border-radius:6px;font-weight:bold;cursor:pointer;font-size:12px;">Close</button>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(overlay);
+
+    overlay.querySelector('#btn-copy-pgn-quick').onclick = function() {
+        navigator.clipboard.writeText(pgnText).then(() => {
+            this.innerText = "✔ Copied!";
+            setTimeout(() => { overlay.remove(); }, 600);
+        });
+    };
+    overlay.querySelector('#btn-close-pgn-modal').onclick = () => overlay.remove();
+}
+
+// ============================================================================
+// DIRECT DEVICE STORAGE PGN SAVER
 // ============================================================================
 window.saveSingleMatchPGN = function() {
     let pgnText = window.buildBrandedPGN ? window.buildBrandedPGN() : (game ? game.pgn() : "");
     if (!pgnText || !pgnText.trim()) {
-        alert("No PGN moves recorded yet to save!");
+        showPgnSaveSuccessDialog("No PGN moves recorded yet to save!", "");
         return;
     }
 
@@ -83,18 +117,26 @@ window.saveSingleMatchPGN = function() {
     let timeStamp = new Date().toISOString().slice(0, 10).replace(/-/g, '') + "_" + Date.now().toString().slice(-4);
     let fileName = `Match_${cleanWhite}_vs_${cleanBlack}_${timeStamp}.pgn`;
 
-    // 1. Python backend ke zariye phone ke specific folder me file write karein
+    // 1. Python server ke zariye phone ke internal folder me direct save karein
     $.post('/save_to_device_storage', { pgn: pgnText, filename: fileName }, function(res) {
         if (res && res.status === 'success') {
-            alert(`✔ Match Saved directly to Phone Folder:\n${res.path}`);
+            showPgnSaveSuccessDialog(res.path || (res.folder + "/" + res.filename), pgnText);
         } else {
             triggerBrowserFileDownload(pgnText, fileName);
+            showPgnSaveSuccessDialog("Saved to Browser / Internal Storage", pgnText);
         }
     }).fail(function() {
         triggerBrowserFileDownload(pgnText, fileName);
+        showPgnSaveSuccessDialog("Saved to Device Downloads", pgnText);
     });
 };
+
+// Aliases taaki button ka koi bhi naam ho, function execute ho
 window.downloadCurrentPGN = window.saveSingleMatchPGN;
+window.downloadCurrentMatchPGN = window.saveSingleMatchPGN;
+window.downloadMatchPGN = window.saveSingleMatchPGN;
+window.downloadPGN = window.saveSingleMatchPGN;
+window.saveMatchPGN = window.saveSingleMatchPGN;
 
 function triggerBrowserFileDownload(text, filename) {
     try {
@@ -118,9 +160,10 @@ function triggerBrowserFileDownload(text, filename) {
     }
 }
 
-// Delegated listener ensuring the Checkmate modal download button always works
-$(document).on('click', '#btn-download-pgn, .download-pgn-btn, button:contains("Download Current Match PGN")', function(e) {
+// Delegated listener ensuring any "Download Current Match PGN" button executes
+$(document).on('click', '#btn-download-pgn, #modal-download-pgn-btn, [id*="download-pgn"], button:contains("Download Current Match PGN"), button:contains("Download")', function(e) {
     e.preventDefault();
+    e.stopPropagation();
     window.saveSingleMatchPGN();
 });
 
@@ -137,10 +180,10 @@ window.copyBrandedPGN = function() {
     if (!box) return;
     box.select();
     navigator.clipboard.writeText(box.value).then(() => {
-        alert("Branded PGN copied to clipboard!");
+        showPgnSaveSuccessDialog("Copied to Clipboard", box.value);
     }).catch(() => {
         document.execCommand('copy');
-        alert("Branded PGN copied!");
+        showPgnSaveSuccessDialog("Copied to Clipboard", box.value);
     });
 };
 
@@ -156,7 +199,7 @@ window.shareBrandedGameNative = function() {
 window.copyCurrentFEN = function() {
     let fen = (historyIndex >= 0 && gameHistory[historyIndex]) ? gameHistory[historyIndex].fen : game.fen();
     navigator.clipboard.writeText(fen).then(() => {
-        alert("FEN copied: " + fen);
+        showPgnSaveSuccessDialog("FEN Copied to Clipboard:\n" + fen, fen);
     }).catch(() => {
         prompt("Copy FEN:", fen);
     });
@@ -337,7 +380,7 @@ window.copySingleVaultPgn = function(encodedPgn) {
     let rawPgn = decodeURIComponent(encodedPgn || "");
     if (!rawPgn) return;
     navigator.clipboard.writeText(rawPgn).then(() => {
-        alert("Match PGN copied to clipboard!");
+        showPgnSaveSuccessDialog("PGN Copied to Clipboard", rawPgn);
     }).catch(() => {
         prompt("Copy Match PGN:", rawPgn);
     });
@@ -439,6 +482,6 @@ window.saveCurrentMatchToVault = function(resultTitle) {
 
 window.manualSaveToVault = function() {
     window.saveCurrentMatchToVault("Saved Match");
-    alert("Current match saved as a single complete PGN!");
+    showPgnSaveSuccessDialog("Current match saved as a single complete PGN!", "");
     window.refreshMatchVaultList();
 };
