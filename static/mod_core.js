@@ -1,5 +1,5 @@
 /* ============================================================================
-   static/mod_core.js (v107 - Bulletproof Touch Engine & Clean Single PGN Saver)
+   static/mod_core.js (v108 - Zero-Drift Touch Engine & Single Match Session)
    - Real-time Depth, NPS (kN/s), Hardware and Engine Telemetry restored
    - Clocks, Increments, Sounds, Material Advantage (+X)
    - Vertical Pawn Promotion & Dual Tap/Drag Touch Controls
@@ -461,13 +461,13 @@ function showPromotionModal(color, toSq, onSelect) {
 }
 
 // ============================================================================
-// BULLETPROOF DUAL TOUCH CONTROLLER (TAP-TO-MOVE + FLUID DRAG-AND-DROP)
+// ZERO-DRIFT TOUCH ENGINE (DIRECT DOM MAPPING & PERFECT CENTER GHOST)
 // ============================================================================
 
-var dragPieceState = { active: false, fromSq: null, currentSq: null, movedDistance: 0, startX: 0, startY: 0 };
+var dragPieceState = { active: false, fromSq: null, currentSq: null, startX: 0, startY: 0, isDragging: false };
 
 function getSquareAtPoint(clientX, clientY) {
-    if (!clientX && !clientY) return null;
+    if (clientX === undefined || clientY === undefined) return null;
     let el = document.elementFromPoint(clientX, clientY);
     if (el) {
         let sqEl = el.closest('.square');
@@ -492,10 +492,28 @@ function showGhostPiece(imgUrl, clientX, clientY) {
         ghost.id = 'drag-ghost-piece';
         document.body.appendChild(ghost);
     }
-    ghost.style.cssText = 'position:fixed;pointer-events:none !important;z-index:999999;display:block;width:52px;height:52px;background-size:contain;background-repeat:no-repeat;background-position:center;transform:translate(-50%, -50%);';
+    let anySq = document.querySelector('.square');
+    let sqSize = anySq ? anySq.clientWidth : 46;
+
+    ghost.style.cssText = `
+        position: fixed !important;
+        pointer-events: none !important;
+        z-index: 999999 !important;
+        display: block !important;
+        width: ${sqSize}px !important;
+        height: ${sqSize}px !important;
+        background-size: contain !important;
+        background-repeat: no-repeat !important;
+        background-position: center !important;
+        transform: translate(-50%, -50%) !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        top: ${clientY}px !important;
+        left: ${clientX}px !important;
+        opacity: 0.92 !important;
+        filter: drop-shadow(0 8px 14px rgba(0,0,0,0.45)) !important;
+    `;
     if (imgUrl) ghost.style.backgroundImage = `url('${imgUrl}')`;
-    ghost.style.left = clientX + 'px';
-    ghost.style.top = clientY + 'px';
 }
 
 function hideGhostPiece() {
@@ -530,7 +548,7 @@ function handlePieceTouchStart(sq, clientX, clientY) {
     if (!ensureBranchReadyForMove()) return;
     if (isAutoBotMode() && !isAnalysisBranchMode) return;
 
-    // 1. Agar user ne target legal move square par tap kiya -> Move Execute
+    // 1. Agar koi piece pehle se selected hai aur target legal move hai -> Execute Move
     if (selectedSquare && sq !== selectedSquare) {
         let validMove = currentLegalMoves.find(m => m.to === sq);
         if (validMove) {
@@ -554,6 +572,7 @@ function handlePieceTouchStart(sq, clientX, clientY) {
         currentLegalMoves = [];
         updateSelectionAndDotsInPlace();
         dragPieceState.active = false;
+        hideGhostPiece();
         return;
     }
 
@@ -571,7 +590,7 @@ function handlePieceTouchStart(sq, clientX, clientY) {
             dragPieceState.currentSq = sq;
             dragPieceState.startX = clientX;
             dragPieceState.startY = clientY;
-            dragPieceState.movedDistance = 0;
+            dragPieceState.isDragging = false;
             showGhostPiece(getPieceImageUrl(vp.color, vp.type), clientX, clientY);
             $(`.square[data-square="${sq}"] .piece`).addClass('dragging-source-piece');
         } else {
@@ -595,7 +614,7 @@ function handlePieceTouchStart(sq, clientX, clientY) {
         dragPieceState.currentSq = sq;
         dragPieceState.startX = clientX;
         dragPieceState.startY = clientY;
-        dragPieceState.movedDistance = 0;
+        dragPieceState.isDragging = false;
 
         showGhostPiece(getPieceImageUrl(piece.color, piece.type), clientX, clientY);
         $(`.square[data-square="${sq}"] .piece`).addClass('dragging-source-piece');
@@ -604,6 +623,7 @@ function handlePieceTouchStart(sq, clientX, clientY) {
         currentLegalMoves = [];
         updateSelectionAndDotsInPlace();
         dragPieceState.active = false;
+        hideGhostPiece();
     }
 }
 
@@ -611,7 +631,10 @@ function handlePieceTouchMove(clientX, clientY) {
     if (!dragPieceState.active) return;
     let dx = clientX - dragPieceState.startX;
     let dy = clientY - dragPieceState.startY;
-    dragPieceState.movedDistance = Math.sqrt(dx * dx + dy * dy);
+    let dist = Math.hypot(dx, dy);
+    if (dist > 8) {
+        dragPieceState.isDragging = true;
+    }
 
     let ghost = document.getElementById('drag-ghost-piece');
     if (ghost) {
@@ -631,12 +654,11 @@ function handlePieceTouchEnd(clientX, clientY) {
     if (!dragPieceState.active) return;
     let fromSq = dragPieceState.fromSq;
     let dropSq = getSquareAtPoint(clientX, clientY) || dragPieceState.currentSq;
-    let wasDragged = dragPieceState.movedDistance > 12;
+    let wasDragged = dragPieceState.isDragging;
 
     dragPieceState.active = false;
     hideGhostPiece();
 
-    // Agar user ne drag karke doosre square par chhora
     if (wasDragged && dropSq && dropSq !== fromSq) {
         let validMove = currentLegalMoves.find(m => m.to === dropSq);
         if (validMove) {
@@ -652,7 +674,7 @@ function handlePieceTouchEnd(clientX, clientY) {
             return;
         }
     }
-    // Agar drag nahi tha (sirf tap tha), toh selectedSquare intact rahega taaki user next tap se move kar sake
+    // Agar sirf tap kiya tha bina drag kiye, dots intact rahengi taaki agle tap se move ho sake
     updateSelectionAndDotsInPlace();
 }
 
@@ -893,7 +915,7 @@ function processMoveVisuals(moveObj, targetIndex) {
         }
     });
 
-    // Har move par sirf session update karein (Cloud me multiple spam entries band)
+    // Har move par sirf local session update hoga (Cloud multiple spam band)
     autoSaveCurrentState();
 }
 
