@@ -1,9 +1,9 @@
 /* ============================================================================
-   static/mod_core.js (v109 - Tactile Enlarge Touch Engine & Stable Session)
+   static/mod_core.js (v110 - Ultra-Enlarged 1.45x Touch Core & Stable Session)
    - Real-time Depth, NPS (kN/s), Hardware and Engine Telemetry restored
    - Clocks, Increments, Sounds, Material Advantage (+X)
-   - Vertical Pawn Promotion & 1.25x Enlarged Tactile Dual Controls
-   - Session Auto-Resume without Database Spamming
+   - Vertical Pawn Promotion & 1.45x Enlarged Tactile Dual Controls (Zero-Drift)
+   - Local Session Auto-Resume without Database Spamming
    ============================================================================ */
 
 var game = new Chess();
@@ -486,7 +486,7 @@ function getSquareAtPoint(clientX, clientY) {
 }
 
 // ============================================================================
-// ENLARGED TACTILE GHOST PIECE (1.25x ZOOM & FLOATING ELEVATION)
+// ULTRA-ENLARGED GHOST PIECE (1.45x ZOOM WITH THUMB ELEVATION CLEARANCE)
 // ============================================================================
 
 function showGhostPiece(imgUrl, clientX, clientY) {
@@ -499,6 +499,7 @@ function showGhostPiece(imgUrl, clientX, clientY) {
     let anySq = document.querySelector('.square');
     let sqSize = anySq ? anySq.clientWidth : 46;
 
+    // 1.45x Scale + Shift upward (-65% Y) so the finger doesn't obscure the piece
     ghost.style.cssText = `
         position: fixed !important;
         pointer-events: none !important;
@@ -509,14 +510,14 @@ function showGhostPiece(imgUrl, clientX, clientY) {
         background-size: contain !important;
         background-repeat: no-repeat !important;
         background-position: center !important;
-        transform: translate(-50%, -50%) scale(1.25) !important;
+        transform: translate(-50%, -65%) scale(1.45) !important;
         margin: 0 !important;
         padding: 0 !important;
         top: ${clientY}px !important;
         left: ${clientX}px !important;
-        opacity: 0.95 !important;
-        filter: drop-shadow(0 14px 22px rgba(0,0,0,0.65)) !important;
-        transition: transform 0.08s ease-out !important;
+        opacity: 0.98 !important;
+        filter: drop-shadow(0 16px 28px rgba(0,0,0,0.75)) !important;
+        transition: transform 0.06s ease-out !important;
     `;
     if (imgUrl) ghost.style.backgroundImage = `url('${imgUrl}')`;
 }
@@ -553,7 +554,7 @@ function handlePieceTouchStart(sq, clientX, clientY) {
     if (!ensureBranchReadyForMove()) return;
     if (isAutoBotMode() && !isAnalysisBranchMode) return;
 
-    // 1. Agar piece pehle se selected hai aur target legal move hai -> Direct Move Execute (Tap-to-Move)
+    // 1. Tap-to-Move: Pehle piece selected tha aur user ne legal destination tap kiya -> Execute Move
     if (selectedSquare && sq !== selectedSquare) {
         let validMove = currentLegalMoves.find(m => m.to === sq);
         if (validMove) {
@@ -572,7 +573,7 @@ function handlePieceTouchStart(sq, clientX, clientY) {
         }
     }
 
-    // 2. Agar user ne same piece par dubara tap kiya -> Deselect
+    // 2. Same piece re-tap -> Deselect
     if (selectedSquare === sq) {
         selectedSquare = null;
         currentLegalMoves = [];
@@ -1244,13 +1245,13 @@ $(document).ready(function() {
     $('head').append(`
         <style>
             .square.selected .piece {
-                transform: scale(1.12);
-                transition: transform 0.12s cubic-bezier(0.2, 0.9, 0.3, 1.3);
-                filter: drop-shadow(0 4px 8px rgba(0,0,0,0.4));
+                transform: scale(1.20) !important;
+                transition: transform 0.12s cubic-bezier(0.2, 0.9, 0.3, 1.4) !important;
+                filter: drop-shadow(0 6px 12px rgba(0,0,0,0.55)) !important;
             }
             .dragging-source-piece {
-                opacity: 0.28 !important;
-                filter: grayscale(40%);
+                opacity: 0.20 !important;
+                filter: grayscale(60%) !important;
             }
         </style>
     `);
