@@ -1,10 +1,10 @@
 /* ============================================================================
-   static/mod_share_vault.js (v115 - Working PGN Downloader & Zero-Spam Cloud)
-   - Restored & Android-optimized `saveSingleMatchPGN` for direct phone file download
-   - In-Flight Request Lock: Prevents duplicate rows when moves happen rapidly
-   - Robust 'In Progress' detection ensuring '▶ Resume' button is active
+   static/mod_share_vault.js (v116 - Direct Phone Storage Saver & Zero-Spam Vault)
+   - Direct Device Folder Saver: Writes PGN files directly to /storage/emulated/0/ChessAIPro/
+   - Delegated Download Listener: Triggers reliably from Game Over modal & Share modal
+   - In-Flight Request Lock: Prevents duplicate match entries during rapid moves
    - Native In-App Custom Confirm Dialog (Android WebView compatible)
-   - Exact client-local time formatting for all matches
+   - Exact client-local time formatting with dynamic Resume/Replay switching
    ============================================================================ */
 
 window.currentActiveMatchDbId = localStorage.getItem('chess_current_db_id') || null;
@@ -68,6 +68,9 @@ window.buildBrandedPGN = function() {
     return `${headers}\n\n${movesText.trim()} ${resCode}`.trim();
 };
 
+// ============================================================================
+// DIRECT PHONE STORAGE SAVER (/storage/emulated/0/ChessAIPro/)
+// ============================================================================
 window.saveSingleMatchPGN = function() {
     let pgnText = window.buildBrandedPGN ? window.buildBrandedPGN() : (game ? game.pgn() : "");
     if (!pgnText || !pgnText.trim()) {
@@ -80,32 +83,46 @@ window.saveSingleMatchPGN = function() {
     let timeStamp = new Date().toISOString().slice(0, 10).replace(/-/g, '') + "_" + Date.now().toString().slice(-4);
     let fileName = `Match_${cleanWhite}_vs_${cleanBlack}_${timeStamp}.pgn`;
 
-    // Phone ke internal folder me direct save karein
+    // 1. Python backend ke zariye phone ke specific folder me file write karein
     $.post('/save_to_device_storage', { pgn: pgnText, filename: fileName }, function(res) {
         if (res && res.status === 'success') {
             alert(`✔ Match Saved directly to Phone Folder:\n${res.path}`);
         } else {
-            // Fallback download if storage permissions are restricted
-            let blob = new Blob([pgnText], { type: 'application/x-chess-pgn;charset=utf-8' });
-            let link = document.createElement('a');
-            link.href = URL.createObjectURL(blob);
-            link.download = fileName;
-            document.body.appendChild(link);
-            link.click();
-            setTimeout(() => document.body.removeChild(link), 500);
+            triggerBrowserFileDownload(pgnText, fileName);
         }
     }).fail(function() {
-        let blob = new Blob([pgnText], { type: 'application/x-chess-pgn;charset=utf-8' });
-        let link = document.createElement('a');
-        link.href = URL.createObjectURL(blob);
-        link.download = fileName;
-        document.body.appendChild(link);
-        link.click();
-        setTimeout(() => document.body.removeChild(link), 500);
+        triggerBrowserFileDownload(pgnText, fileName);
     });
 };
 window.downloadCurrentPGN = window.saveSingleMatchPGN;
 
+function triggerBrowserFileDownload(text, filename) {
+    try {
+        let blob = new Blob([text], { type: 'application/x-chess-pgn;charset=utf-8' });
+        let link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = filename;
+        document.body.appendChild(link);
+        link.click();
+        setTimeout(() => {
+            document.body.removeChild(link);
+            URL.revokeObjectURL(link.href);
+        }, 500);
+    } catch (e) {
+        let link = document.createElement('a');
+        link.href = 'data:text/plain;charset=utf-8,' + encodeURIComponent(text);
+        link.download = filename;
+        document.body.appendChild(link);
+        link.click();
+        setTimeout(() => document.body.removeChild(link), 500);
+    }
+}
+
+// Delegated listener ensuring the Checkmate modal download button always works
+$(document).on('click', '#btn-download-pgn, .download-pgn-btn, button:contains("Download Current Match PGN")', function(e) {
+    e.preventDefault();
+    window.saveSingleMatchPGN();
+});
 
 window.openShareModal = function() {
     try { window.history.pushState({ modalOpen: true }, ""); } catch (e) {}
