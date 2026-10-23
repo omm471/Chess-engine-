@@ -68,13 +68,10 @@ window.buildBrandedPGN = function() {
     return `${headers}\n\n${movesText.trim()} ${resCode}`.trim();
 };
 
-// ============================================================================
-// DIRECT PGN FILE DOWNLOADER (WORKS IN ANDROID WEBVIEW & DESKTOP)
-// ============================================================================
 window.saveSingleMatchPGN = function() {
     let pgnText = window.buildBrandedPGN ? window.buildBrandedPGN() : (game ? game.pgn() : "");
     if (!pgnText || !pgnText.trim()) {
-        alert("No PGN moves recorded yet to download!");
+        alert("No PGN moves recorded yet to save!");
         return;
     }
 
@@ -83,45 +80,32 @@ window.saveSingleMatchPGN = function() {
     let timeStamp = new Date().toISOString().slice(0, 10).replace(/-/g, '') + "_" + Date.now().toString().slice(-4);
     let fileName = `Match_${cleanWhite}_vs_${cleanBlack}_${timeStamp}.pgn`;
 
-    // 1. Agar phone me native bridge support ho
-    if (window.AndroidBridge && typeof window.AndroidBridge.savePgnNative === 'function') {
-        window.AndroidBridge.savePgnNative(pgnText, fileName, false);
-        alert("PGN saved to phone storage: " + fileName);
-        return;
-    }
-
-    // 2. Direct Blob File Download
-    try {
+    // Phone ke internal folder me direct save karein
+    $.post('/save_to_device_storage', { pgn: pgnText, filename: fileName }, function(res) {
+        if (res && res.status === 'success') {
+            alert(`✔ Match Saved directly to Phone Folder:\n${res.path}`);
+        } else {
+            // Fallback download if storage permissions are restricted
+            let blob = new Blob([pgnText], { type: 'application/x-chess-pgn;charset=utf-8' });
+            let link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.download = fileName;
+            document.body.appendChild(link);
+            link.click();
+            setTimeout(() => document.body.removeChild(link), 500);
+        }
+    }).fail(function() {
         let blob = new Blob([pgnText], { type: 'application/x-chess-pgn;charset=utf-8' });
         let link = document.createElement('a');
         link.href = URL.createObjectURL(blob);
         link.download = fileName;
         document.body.appendChild(link);
         link.click();
-        setTimeout(() => {
-            document.body.removeChild(link);
-            URL.revokeObjectURL(link.href);
-        }, 500);
-        return;
-    } catch (e) {}
-
-    // 3. Fallback Data-URI Download for Android WebView
-    try {
-        let link = document.createElement('a');
-        link.href = 'data:text/plain;charset=utf-8,' + encodeURIComponent(pgnText);
-        link.download = fileName;
-        document.body.appendChild(link);
-        link.click();
         setTimeout(() => document.body.removeChild(link), 500);
-        return;
-    } catch (e) {}
-
-    // 4. Clipboard backup
-    navigator.clipboard.writeText(pgnText).then(() => {
-        alert("PGN copied to clipboard! (Download not allowed by device)");
     });
 };
 window.downloadCurrentPGN = window.saveSingleMatchPGN;
+
 
 window.openShareModal = function() {
     try { window.history.pushState({ modalOpen: true }, ""); } catch (e) {}
