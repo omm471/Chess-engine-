@@ -1,9 +1,10 @@
 /* ============================================================================
-   static/mod_analysis.js (v106 - Red Baseline & Live Blunder/Mistake Markers)
-   - Sharp Red Dashed Baseline (0.0 Equal Eval) on both Live and Report graphs
-   - Live Blunder (Red ??), Mistake (Orange ?), and Inaccuracy (Yellow ?!) markers
+   static/mod_analysis.js (v107 - Robust Graph, Red 0.0 Baseline & Blunder Dots)
+   - Guaranteed Graph Rendering: Chess.com style eval fill + green trendline
+   - Red Dashed Baseline at 0.0 (equal position) with "0.0" indicator
+   - Blunder (Red ??), Mistake (Orange ?), and Inaccuracy (Yellow ?!) markers
    - Interactive Scrubber: Tap anywhere on the graph to jump to that move
-   - Complete Accuracy, Move Quality Summary & Puzzle Tactics Engine
+   - Accuracy, Move Quality Summary & Tactics Puzzle Engine
    ============================================================================ */
 
 var matchAccuracyData = { wAcc: 100, bAcc: 100, wAcpl: 12, bAcpl: 15, counts: {} };
@@ -21,32 +22,32 @@ window.activePuzzle = {
 };
 
 // ============================================================================
-// MOVE EVALUATION & CLASSIFICATION ENGINE
+// MOVE EVALUATION & CLASSIFICATION ENGINE (NULL-SAFE)
 // ============================================================================
 window.classifyMoveByEval = function(idx) {
-    if (idx <= 0 || idx >= gameHistory.length) return null;
+    if (idx <= 0 || !gameHistory || idx >= gameHistory.length) return null;
     let curr = gameHistory[idx];
     let prev = gameHistory[idx - 1];
-    if (!curr || !prev || !curr.moveObj) return null;
+    if (!curr || !prev) return null;
 
-    let side = curr.moveObj.color;
-    let prevCp = (prev.cp !== undefined) ? prev.cp : 0;
-    let currCp = (curr.cp !== undefined) ? curr.cp : prevCp;
+    let side = (curr.moveObj && curr.moveObj.color) ? curr.moveObj.color : (idx % 2 === 1 ? 'w' : 'b');
+    let prevCp = (prev.cp !== undefined && !isNaN(prev.cp)) ? Number(prev.cp) : 0;
+    let currCp = (curr.cp !== undefined && !isNaN(curr.cp)) ? Number(curr.cp) : prevCp;
     let loss = (side === 'w') ? (prevCp - currCp) : (currCp - prevCp);
 
     if (loss <= 0 && prev.evalScore !== undefined && curr.evalScore !== undefined) {
-        let scoreLoss = (side === 'w') ? (prev.evalScore - curr.evalScore) : (curr.evalScore - prev.evalScore);
-        if (scoreLoss > 0) loss = scoreLoss * 16;
+        let scoreLoss = (side === 'w') ? (Number(prev.evalScore) - Number(curr.evalScore)) : (Number(curr.evalScore) - Number(prev.evalScore));
+        if (scoreLoss > 0) loss = scoreLoss * 15;
     }
 
     let classification = { label: "Good", symbol: "✓", color: "#739552" };
-    if ((curr.bestMoveSan && curr.moveObj.san === curr.bestMoveSan) || loss <= 15) {
+    if ((curr.bestMoveSan && curr.moveObj && curr.moveObj.san === curr.bestMoveSan) || loss <= 15) {
         classification = { label: "Best", symbol: "★", color: "#81b64c" };
-    } else if (loss > 220) {
+    } else if (loss > 200) {
         classification = { label: "Blunder", symbol: "??", color: "#fa4141" };
-    } else if (loss > 110) {
+    } else if (loss > 100) {
         classification = { label: "Mistake", symbol: "?", color: "#fa8c16" };
-    } else if (loss > 45) {
+    } else if (loss > 40) {
         classification = { label: "Inaccuracy", symbol: "?!", color: "#fadb14" };
     }
     curr.classification = classification;
@@ -73,84 +74,77 @@ window.updateAccuracySummary = function() {
 };
 
 // ============================================================================
-// UNIFIED GRAPH RENDERER WITH RED BASELINE & BLUNDER/MISTAKE DOTS
+// CHESS.COM EVALUATION GRAPH WITH RED BASELINE & BLUNDER/MISTAKE DOTS
 // ============================================================================
-function drawUnifiedEvalGraph(canvasTarget, customHistory) {
-    let canvas = (typeof canvasTarget === 'string') ? document.getElementById(canvasTarget) : canvasTarget;
+function renderChessComGraphOnCanvas(canvasId, isInteractive) {
+    let canvas = document.getElementById(canvasId);
     if (!canvas) return;
     let ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    let parent = canvas.parentElement;
-    let W = canvas.width = (parent && parent.clientWidth > 50) ? parent.clientWidth : (canvas.width || 340);
-    let H = canvas.height = (canvas.height > 50) ? canvas.height : 140;
+    let w = canvas.width || 340;
+    let h = canvas.height || 110;
+    if (canvas.clientWidth && canvas.clientWidth > 50) {
+        w = canvas.clientWidth;
+        canvas.width = w;
+    }
+    if (canvas.clientHeight && canvas.clientHeight > 30) {
+        h = canvas.clientHeight;
+        canvas.height = h;
+    }
 
-    let points = (customHistory && customHistory.length > 0) ? customHistory : gameHistory;
-    if (!points || points.length === 0) {
-        ctx.clearRect(0, 0, W, H);
+    let len = gameHistory ? gameHistory.length : 0;
+    if (len === 0) {
+        ctx.clearRect(0, 0, w, h);
         return;
     }
 
-    let len = points.length;
+    // 1. Dark Background
+    ctx.fillStyle = '#262421';
+    ctx.fillRect(0, 0, w, h);
 
-    // Dark Background
-    ctx.fillStyle = '#1c1b18';
-    ctx.fillRect(0, 0, W, H);
+    let midY = h / 2;
+    let step = len <= 1 ? w : (w / (len - 1));
 
-    let midY = H / 2;
-
-    function getYForPoint(rec) {
-        if (!rec) return midY;
-        let score = rec.evalScore;
-        if (score === undefined && rec.cp !== undefined) {
-            score = 50.0 + 50.0 * (2.0 / (1.0 + Math.exp(-0.00368208 * rec.cp)) - 1.0);
-        }
-        if (score === undefined) score = 50.0;
-        let clamped = Math.max(4, Math.min(96, score));
-        return H - (clamped / 100.0) * H;
-    }
-
-    let stepX = len <= 1 ? W : (W / (len - 1));
-
-    // 1. White Advantage Fill (Upper layer)
+    // 2. White Advantage Fill (Under the curve)
     ctx.beginPath();
-    ctx.moveTo(0, H);
+    ctx.moveTo(0, h);
     for (let i = 0; i < len; i++) {
-        let x = i * stepX;
-        let y = getYForPoint(points[i]);
+        let sc = (gameHistory[i] && gameHistory[i].evalScore !== undefined && !isNaN(gameHistory[i].evalScore)) ? Number(gameHistory[i].evalScore) : 50.0;
+        let clamped = Math.max(4, Math.min(96, sc));
+        let x = (len === 1) ? w : (i * step);
+        let y = h - (clamped / 100.0) * h;
         ctx.lineTo(x, y);
     }
-    ctx.lineTo(W, H);
+    ctx.lineTo(w, h);
     ctx.closePath();
     ctx.fillStyle = 'rgba(238, 238, 238, 0.88)';
     ctx.fill();
 
-    // 2. Black Advantage Tint (Lower half below baseline)
-    ctx.fillStyle = 'rgba(26, 25, 22, 0.76)';
-    ctx.fillRect(0, midY, W, H - midY);
-
     // 3. RED BASELINE (0.0 Center Equal Line)
     ctx.beginPath();
-    ctx.strokeStyle = '#ff3b30'; // Sharp Red Baseline
-    ctx.lineWidth = 1.8;
-    ctx.setLineDash([5, 4]); // Dashed line
+    ctx.strokeStyle = '#ff3b30'; // Sharp Red Line
+    ctx.lineWidth = 1.6;
+    ctx.setLineDash([4, 3]); // Dashed line
     ctx.moveTo(0, midY);
-    ctx.lineTo(W, midY);
+    ctx.lineTo(w, midY);
     ctx.stroke();
     ctx.setLineDash([]); // Reset to solid
 
-    // Red Baseline Label "0.0"
+    // Red "0.0" indicator text
     ctx.fillStyle = '#ff3b30';
-    ctx.font = 'bold 10px sans-serif';
-    ctx.fillText('0.0', 6, midY - 4);
+    ctx.font = 'bold 9px sans-serif';
+    ctx.fillText('0.0', 4, midY - 3);
 
-    // 4. Smooth Eval Curve
+    // 4. Green Curve Stroke on Top
     ctx.beginPath();
     ctx.strokeStyle = '#81b64c';
-    ctx.lineWidth = 2.4;
+    ctx.lineWidth = 2.2;
     for (let i = 0; i < len; i++) {
-        let x = i * stepX;
-        let y = getYForPoint(points[i]);
+        let sc = (gameHistory[i] && gameHistory[i].evalScore !== undefined && !isNaN(gameHistory[i].evalScore)) ? Number(gameHistory[i].evalScore) : 50.0;
+        let clamped = Math.max(4, Math.min(96, sc));
+        let x = (len === 1) ? w : (i * step);
+        let y = h - (clamped / 100.0) * h;
         if (i === 0) ctx.moveTo(x, y);
         else ctx.lineTo(x, y);
     }
@@ -159,41 +153,43 @@ function drawUnifiedEvalGraph(canvasTarget, customHistory) {
     // 5. Current Move Scrubber Line
     let activeIdx = (typeof historyIndex !== 'undefined') ? historyIndex : (len - 1);
     if (activeIdx >= 0 && activeIdx < len && len > 1) {
-        let cx = activeIdx * stepX;
+        let cx = activeIdx * step;
         ctx.beginPath();
         ctx.strokeStyle = '#f0c15c';
-        ctx.lineWidth = 1.8;
+        ctx.lineWidth = 1.5;
         ctx.moveTo(cx, 0);
-        ctx.lineTo(cx, H);
+        ctx.lineTo(cx, h);
         ctx.stroke();
     }
 
-    // 6. BLUNDER, MISTAKE & INACCURACY DOTS
+    // 6. BLUNDER (Red), MISTAKE (Orange) & INACCURACY (Yellow) DOTS
     for (let i = 1; i < len; i++) {
-        let rec = points[i];
+        let rec = gameHistory[i];
         if (!rec) continue;
 
-        if (!rec.classification && window.classifyMoveByEval) {
-            window.classifyMoveByEval(i);
-        }
-
         let cls = rec.classification;
+        if (!cls && window.classifyMoveByEval) {
+            cls = window.classifyMoveByEval(i);
+        }
         if (!cls) continue;
 
-        let dotX = i * stepX;
-        let dotY = getYForPoint(rec);
+        let sc = (rec.evalScore !== undefined && !isNaN(rec.evalScore)) ? Number(rec.evalScore) : 50.0;
+        let clamped = Math.max(4, Math.min(96, sc));
+        let dotX = i * step;
+        let dotY = h - (clamped / 100.0) * h;
+
         let dotColor = null;
         let radius = 4;
 
         if (cls.label === 'Blunder' || cls.symbol === '??') {
             dotColor = '#fa4141'; // Red Dot for Blunder
-            radius = 5.2;
+            radius = 5.0;
         } else if (cls.label === 'Mistake' || cls.symbol === '?') {
             dotColor = '#fa8c16'; // Orange Dot for Mistake
-            radius = 4.4;
+            radius = 4.2;
         } else if (cls.label === 'Inaccuracy' || cls.symbol === '?!') {
             dotColor = '#fadb14'; // Yellow Dot for Inaccuracy
-            radius = 3.6;
+            radius = 3.4;
         }
 
         if (dotColor) {
@@ -202,12 +198,12 @@ function drawUnifiedEvalGraph(canvasTarget, customHistory) {
             ctx.fillStyle = dotColor;
             ctx.fill();
             ctx.strokeStyle = '#ffffff';
-            ctx.lineWidth = 1.4;
+            ctx.lineWidth = 1.2;
             ctx.stroke();
         }
     }
 
-    // Interactive Tap to Jump to Move
+    // 7. Interactive Scrubber Tap (Jump to Move)
     if (!canvas.dataset.graphBound) {
         canvas.dataset.graphBound = "1";
         canvas.style.cursor = "pointer";
@@ -234,20 +230,14 @@ function drawUnifiedEvalGraph(canvasTarget, customHistory) {
     }
 }
 
-// Dono global function hooks ko unified engine se connect kiya gaya hai
-function renderChessComGraphOnCanvas(canvasId, isInteractive) {
-    drawUnifiedEvalGraph(canvasId, gameHistory);
-}
-
-window.renderEvaluationGraphWithBaseline = function(canvasId, historyData) {
-    drawUnifiedEvalGraph(canvasId, historyData || gameHistory);
-};
-
+// Global Hooks connecting all callers to the same reliable graph engine
+window.renderChessComGraphOnCanvas = renderChessComGraphOnCanvas;
+window.renderEvaluationGraphWithBaseline = function(canvasId) { renderChessComGraphOnCanvas(canvasId); };
 window.drawAllEvalGraphs = function() {
-    let ids = ['main-eval-canvas', 'report-eval-canvas', 'eval-graph-canvas', 'review-eval-canvas', 'analysis-eval-canvas'];
+    let ids = ['report-eval-canvas', 'main-eval-canvas', 'eval-graph-canvas', 'review-eval-canvas', 'analysis-eval-canvas'];
     ids.forEach(id => {
         let el = document.getElementById(id);
-        if (el) drawUnifiedEvalGraph(el, gameHistory);
+        if (el) renderChessComGraphOnCanvas(id);
     });
 };
 
