@@ -1,9 +1,9 @@
 /* ============================================================================
-   static/mod_core.js (v111 - 1.45x Tactile Zoom, In-Place Cloud Sync & Resume)
+   static/mod_core.js (v113 - Auto-Play Glitch Fix & Single Match ID Lock)
+   - Glitch Fix: AI strictly prevented from playing human's turn in PvB
+   - Single Match ID Session: Eliminates multiple duplicate match rows
+   - 1.45x Enlarged Floating Tactile Touch Controls (Zero-Drift)
    - Real-time Depth, NPS (kN/s), Hardware and Engine Telemetry restored
-   - Clocks, Increments, Sounds, Material Advantage (+X)
-   - 1.45x Enlarged Tactile Dual Touch Controls (Zero-Drift)
-   - Auto-Saves In-Progress Game to Cloud In-Place (Safe from Recent-Task Kills)
    ============================================================================ */
 
 var game = new Chess();
@@ -30,6 +30,10 @@ var aiMoveTimerId = null;
 var activeAiXhr = null;
 var gameOverModalTimerId = null;
 var gameEndEffect = null;
+var saveDebounceTimer = null;
+
+// Unique Session ID for current match to prevent duplicate database rows
+window.currentMatchSessionId = localStorage.getItem('chess_current_session_id') || ("match_" + Date.now());
 
 var gameHistory = [{
     fen: game.fen(), move: null, moveObj: null, soundType: 'move',
@@ -485,10 +489,7 @@ function getSquareAtPoint(clientX, clientY) {
     return files[boardCol] + (8 - boardRow);
 }
 
-// ============================================================================
-// ULTRA-ENLARGED GHOST PIECE (1.45x ZOOM WITH THUMB ELEVATION CLEARANCE)
-// ============================================================================
-
+// 1.45x Floating Tactile Piece Zoom
 function showGhostPiece(imgUrl, clientX, clientY) {
     let ghost = document.getElementById('drag-ghost-piece');
     if (!ghost) {
@@ -799,6 +800,7 @@ function executeHumanMove(fromSq, toSq, promoPiece = null) {
         setTimeout(() => flipBoardUI(), 150);
     }
 
+    // Only trigger AI if it's NOT human turn!
     if (!isAnalysisBranchMode && !isMatchOver() && (isAutoBotMode() || (gameMode === 'pvb' && game.turn() !== playerColor))) {
         if (aiMoveTimerId) clearTimeout(aiMoveTimerId);
         aiMoveTimerId = setTimeout(makeAiMove, 120);
@@ -807,6 +809,12 @@ function executeHumanMove(fromSq, toSq, promoPiece = null) {
 
 function makeAiMove() {
     if (isAnalysisBranchMode || isMatchOver()) return;
+
+    // CRITICAL GLITCH FIX: Player vs Bot mode me AI kabhi bhi human ka turn nahi chalega!
+    if (gameMode === 'pvb' && game.turn() === playerColor) {
+        return;
+    }
+
     let turnSide = game.turn();
     let botElo = isAutoBotMode() ? (turnSide === 'w' ? currentWhiteElo : currentBlackElo) : currentBlackElo;
     let sideName = (turnSide === 'w') ? getWhiteDisplayName() : getBlackDisplayName();
@@ -866,7 +874,7 @@ function makeAiMove() {
 
             if (!isMatchOver() && !isAnalysisBranchMode && isAutoBotMode()) {
                 if (aiMoveTimerId) clearTimeout(aiMoveTimerId);
-                aiMoveTimerId = setTimeout(makeAiMove, 200);
+                aiMoveTimerId = setTimeout(makeAiMove, 250);
                 return;
             }
 
@@ -882,7 +890,7 @@ function makeAiMove() {
         },
         error: function() {
             activeAiXhr = null;
-            if (!isMatchOver() && !isAnalysisBranchMode && (isAutoBotMode() || (gameMode === 'pvb' && game.turn() !== playerColor))) {
+            if (!isMatchOver() && !isAnalysisBranchMode && isAutoBotMode()) {
                 aiMoveTimerId = setTimeout(makeAiMove, 500);
             }
         }
@@ -1074,6 +1082,16 @@ window.startGame = function(fromSetup = false) {
     selectedSquare = null; currentLegalMoves = []; premoveQueue = []; clearArrows();
     hideGhostPiece();
 
+    // Reset to Player vs Bot if started directly from New Game
+    if (!fromSetup) {
+        gameMode = 'pvb';
+        playerColor = 'w';
+        currentBoardOrientation = 'w';
+    }
+
+    // Naye match ka unique session ID lock
+    window.currentMatchSessionId = "match_" + Date.now();
+    localStorage.setItem('chess_current_session_id', window.currentMatchSessionId);
     localStorage.removeItem('chess_active_match');
     window.currentActiveMatchDbId = null;
     localStorage.removeItem('chess_current_db_id');
@@ -1091,6 +1109,7 @@ window.startGame = function(fromSetup = false) {
     updateTimer(); updateEvalBar(0); updateMaterial(game.fen()); renderBoard();
     if (window.drawAllEvalGraphs) window.drawAllEvalGraphs();
     updateStatus(); playSnd('start');
+
     if (isAutoBotMode() || (gameMode === 'pvb' && game.turn() !== playerColor)) {
         timerStarted = true; startTimer();
         aiMoveTimerId = setTimeout(makeAiMove, 300);
@@ -1172,7 +1191,7 @@ function showAnalysisStatus() {
 }
 
 // ============================================================================
-// AUTO-SAVE ENGINE (LOCAL + CLOUD IN-PLACE SYNC WITHOUT SPAM)
+// SINGLE-MATCH IN-PLACE STATE SAVE (NO CLOUD DUPLICATE SPAM)
 // ============================================================================
 
 function autoSaveCurrentState() {
@@ -1181,6 +1200,7 @@ function autoSaveCurrentState() {
         return;
     }
     let state = {
+        sessionId: window.currentMatchSessionId || ("match_" + Date.now()),
         fen: game.fen(),
         gameHistory: gameHistory,
         historyIndex: historyIndex,
@@ -1191,70 +1211,64 @@ function autoSaveCurrentState() {
         gameMode: gameMode,
         timerStarted: timerStarted
     };
+    window.currentMatchSessionId = state.sessionId;
+    localStorage.setItem('chess_current_session_id', state.sessionId);
     localStorage.setItem('chess_active_match', JSON.stringify(state));
 
-    // 2 moves ke baad Cloud me bhi usi single record ko sync karein
+    // Debounce save: fast moves hone par multiple cloud calls nahi hongi, sirf 1 clean call jayegi
     if (gameHistory.length >= 2 && window.saveCurrentMatchToVault) {
-        window.saveCurrentMatchToVault("In Progress");
+        if (saveDebounceTimer) clearTimeout(saveDebounceTimer);
+        saveDebounceTimer = setTimeout(() => {
+            window.saveCurrentMatchToVault("In Progress");
+        }, 700);
     }
 }
 
 function autoResumePreviousMatch() {
     let raw = localStorage.getItem('chess_active_match');
-    if (raw) {
-        try {
-            let state = JSON.parse(raw);
-            if (state && state.fen) {
-                applyGameState(state);
-                return true;
-            }
-        } catch (e) {}
-    }
+    if (!raw) return false;
+    try {
+        let state = JSON.parse(raw);
+        if (!state || !state.fen) return false;
 
-    // Recent task se kill hone ke baad Cloud Fallback check karein
-    $.get('/get_matches', function(data) {
-        let matches = data.matches || [];
-        let activeMatch = matches.find(m => m.result && m.result.toLowerCase().includes("in progress"));
-        if (activeMatch && activeMatch.fen) {
-            window.currentActiveMatchDbId = activeMatch.id;
-            localStorage.setItem('chess_current_db_id', activeMatch.id);
-            game.load(activeMatch.fen);
-            gameHistory = [{ fen: activeMatch.fen, moveObj: null }];
-            historyIndex = 0;
-            renderBoard();
-            updateTimer();
-            updateEvalBar(0);
-            updateMaterial(activeMatch.fen);
-            updateStatus();
-            syncEloBadgeVisibility();
-            $('#status').text("Resumed active match from cloud.");
+        gameMode = state.gameMode || 'pvb';
+        playerColor = state.playerColor || 'w';
+        currentBoardOrientation = state.currentBoardOrientation || playerColor;
+
+        game.load(state.fen);
+        gameHistory = state.gameHistory || [{ fen: state.fen, moveObj: null }];
+        historyIndex = state.historyIndex !== undefined ? state.historyIndex : gameHistory.length - 1;
+        whiteTime = state.whiteTime || 600;
+        blackTime = state.blackTime || 600;
+        timerStarted = state.timerStarted || false;
+        window.currentMatchSessionId = state.sessionId || ("match_" + Date.now());
+        localStorage.setItem('chess_current_session_id', window.currentMatchSessionId);
+
+        renderBoard();
+        updateTimer();
+        updateEvalBar(historyIndex);
+        updateMaterial(game.fen());
+        updateStatus();
+        syncEloBadgeVisibility();
+
+        if (timerStarted && !isMatchOver()) {
+            startTimer();
         }
-    });
-    return false;
-}
+        $('#status').text("Game resumed from active session.");
 
-function applyGameState(state) {
-    game.load(state.fen);
-    gameHistory = state.gameHistory || [{ fen: state.fen, moveObj: null }];
-    historyIndex = state.historyIndex !== undefined ? state.historyIndex : gameHistory.length - 1;
-    whiteTime = state.whiteTime || 600;
-    blackTime = state.blackTime || 600;
-    playerColor = state.playerColor || 'w';
-    currentBoardOrientation = state.currentBoardOrientation || 'w';
-    gameMode = state.gameMode || 'pvb';
-    timerStarted = state.timerStarted || false;
-
-    renderBoard();
-    updateTimer();
-    updateEvalBar(historyIndex);
-    updateMaterial(game.fen());
-    updateStatus();
-    syncEloBadgeVisibility();
-
-    if (timerStarted && !isMatchOver()) {
-        startTimer();
+        // AI move ONLY if it's bot's turn!
+        if (!isMatchOver() && !isAnalysisBranchMode) {
+            if (isAutoBotMode()) {
+                aiMoveTimerId = setTimeout(makeAiMove, 600);
+            } else if (gameMode === 'pvb' && game.turn() !== playerColor) {
+                aiMoveTimerId = setTimeout(makeAiMove, 600);
+            }
+        }
+        return true;
+    } catch (e) {
+        localStorage.removeItem('chess_active_match');
+        return false;
     }
-    $('#status').text("Game resumed from active session.");
 }
 
 // ============================================================================
