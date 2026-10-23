@@ -1,8 +1,8 @@
 /* ============================================================================
-   static/mod_core.js (v108 - Zero-Drift Touch Engine & Single Match Session)
+   static/mod_core.js (v109 - Tactile Enlarge Touch Engine & Stable Session)
    - Real-time Depth, NPS (kN/s), Hardware and Engine Telemetry restored
    - Clocks, Increments, Sounds, Material Advantage (+X)
-   - Vertical Pawn Promotion & Dual Tap/Drag Touch Controls
+   - Vertical Pawn Promotion & 1.25x Enlarged Tactile Dual Controls
    - Session Auto-Resume without Database Spamming
    ============================================================================ */
 
@@ -461,7 +461,7 @@ function showPromotionModal(color, toSq, onSelect) {
 }
 
 // ============================================================================
-// ZERO-DRIFT TOUCH ENGINE (DIRECT DOM MAPPING & PERFECT CENTER GHOST)
+// ZERO-DRIFT TOUCH ENGINE (DOM COORDINATES + DIRECT SQUARE EXTRACTION)
 // ============================================================================
 
 var dragPieceState = { active: false, fromSq: null, currentSq: null, startX: 0, startY: 0, isDragging: false };
@@ -486,7 +486,7 @@ function getSquareAtPoint(clientX, clientY) {
 }
 
 // ============================================================================
-// ENLARGED TACTILE GHOST PIECE (CHESS.COM STYLE 1.25x ZOOM & LIFT)
+// ENLARGED TACTILE GHOST PIECE (1.25x ZOOM & FLOATING ELEVATION)
 // ============================================================================
 
 function showGhostPiece(imgUrl, clientX, clientY) {
@@ -499,7 +499,6 @@ function showGhostPiece(imgUrl, clientX, clientY) {
     let anySq = document.querySelector('.square');
     let sqSize = anySq ? anySq.clientWidth : 46;
 
-    // 25% Enlarge + Deep Elevation Shadow
     ghost.style.cssText = `
         position: fixed !important;
         pointer-events: none !important;
@@ -511,9 +510,11 @@ function showGhostPiece(imgUrl, clientX, clientY) {
         background-repeat: no-repeat !important;
         background-position: center !important;
         transform: translate(-50%, -50%) scale(1.25) !important;
+        margin: 0 !important;
+        padding: 0 !important;
         top: ${clientY}px !important;
         left: ${clientX}px !important;
-        opacity: 0.96 !important;
+        opacity: 0.95 !important;
         filter: drop-shadow(0 14px 22px rgba(0,0,0,0.65)) !important;
         transition: transform 0.08s ease-out !important;
     `;
@@ -552,7 +553,7 @@ function handlePieceTouchStart(sq, clientX, clientY) {
     if (!ensureBranchReadyForMove()) return;
     if (isAutoBotMode() && !isAnalysisBranchMode) return;
 
-    // 1. Agar koi piece pehle se selected hai aur target legal move hai -> Execute Move
+    // 1. Agar piece pehle se selected hai aur target legal move hai -> Direct Move Execute (Tap-to-Move)
     if (selectedSquare && sq !== selectedSquare) {
         let validMove = currentLegalMoves.find(m => m.to === sq);
         if (validMove) {
@@ -566,11 +567,12 @@ function handlePieceTouchStart(sq, clientX, clientY) {
                 executeHumanMove(selectedSquare, sq);
             }
             dragPieceState.active = false;
+            hideGhostPiece();
             return;
         }
     }
 
-    // 2. Agar user ne wahi piece dubara tap kiya -> Deselect
+    // 2. Agar user ne same piece par dubara tap kiya -> Deselect
     if (selectedSquare === sq) {
         selectedSquare = null;
         currentLegalMoves = [];
@@ -678,7 +680,6 @@ function handlePieceTouchEnd(clientX, clientY) {
             return;
         }
     }
-    // Agar sirf tap kiya tha bina drag kiye, dots intact rahengi taaki agle tap se move ho sake
     updateSelectionAndDotsInPlace();
 }
 
@@ -1196,10 +1197,10 @@ function autoSaveCurrentState() {
 
 function autoResumePreviousMatch() {
     let raw = localStorage.getItem('chess_active_match');
-    if (!raw) return;
+    if (!raw) return false;
     try {
         let state = JSON.parse(raw);
-        if (!state || !state.fen) return;
+        if (!state || !state.fen) return false;
 
         game.load(state.fen);
         gameHistory = state.gameHistory || [{ fen: state.fen, moveObj: null }];
@@ -1222,12 +1223,24 @@ function autoResumePreviousMatch() {
             startTimer();
         }
         $('#status').text("Game resumed from active session.");
+        return true;
     } catch (e) {
         localStorage.removeItem('chess_active_match');
+        return false;
     }
 }
 
-    // Tactile piece selection zoom & pick-up fading
+// ============================================================================
+// INITIALIZATION ON DOCUMENT READY (EVENT BINDING & BOARD LAUNCH)
+// ============================================================================
+
+$(document).ready(function() {
+    preloadAllSounds();
+    bindPieceDragAndDropEvents();
+    document.body.addEventListener('touchstart', () => getAudioCtx(), { once: true });
+    document.body.addEventListener('click', () => getAudioCtx(), { once: true });
+
+    // Tactile piece selection zoom & pick-up fading styles
     $('head').append(`
         <style>
             .square.selected .piece {
@@ -1241,3 +1254,27 @@ function autoResumePreviousMatch() {
             }
         </style>
     `);
+
+    let savedTheme = localStorage.getItem('saved_chess_theme');
+    if (savedTheme) {
+        let sel = safeEl('setting-board-theme');
+        if (sel) sel.value = savedTheme;
+        document.body.className = document.body.className.replace(/\btheme-[^\s]+\b/g, '').trim();
+        document.body.classList.add(savedTheme);
+    }
+
+    let savedPieces = localStorage.getItem('saved_chess_piece_style');
+    if (savedPieces) {
+        let pSel = safeEl('setting-piece-style');
+        if (pSel) pSel.value = savedPieces;
+    }
+
+    let resumed = autoResumePreviousMatch();
+    if (!resumed) {
+        renderBoard();
+        updateTimer();
+        updateEvalBar(0);
+        updateMaterial(game.fen());
+        updateStatus();
+    }
+});
