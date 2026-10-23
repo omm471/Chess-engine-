@@ -1,5 +1,6 @@
 /* ============================================================================
-   static/mod_share_vault.js (v114 - Zero-Duplicate Vault & In-Flight Save Lock)
+   static/mod_share_vault.js (v115 - Working PGN Downloader & Zero-Spam Cloud)
+   - Restored & Android-optimized `saveSingleMatchPGN` for direct phone file download
    - In-Flight Request Lock: Prevents duplicate rows when moves happen rapidly
    - Robust 'In Progress' detection ensuring '▶ Resume' button is active
    - Native In-App Custom Confirm Dialog (Android WebView compatible)
@@ -66,6 +67,61 @@ window.buildBrandedPGN = function() {
 
     return `${headers}\n\n${movesText.trim()} ${resCode}`.trim();
 };
+
+// ============================================================================
+// DIRECT PGN FILE DOWNLOADER (WORKS IN ANDROID WEBVIEW & DESKTOP)
+// ============================================================================
+window.saveSingleMatchPGN = function() {
+    let pgnText = window.buildBrandedPGN ? window.buildBrandedPGN() : (game ? game.pgn() : "");
+    if (!pgnText || !pgnText.trim()) {
+        alert("No PGN moves recorded yet to download!");
+        return;
+    }
+
+    let cleanWhite = getWhiteDisplayName().replace(/[^a-zA-Z0-9]/g, '_');
+    let cleanBlack = getBlackDisplayName().replace(/[^a-zA-Z0-9]/g, '_');
+    let timeStamp = new Date().toISOString().slice(0, 10).replace(/-/g, '') + "_" + Date.now().toString().slice(-4);
+    let fileName = `Match_${cleanWhite}_vs_${cleanBlack}_${timeStamp}.pgn`;
+
+    // 1. Agar phone me native bridge support ho
+    if (window.AndroidBridge && typeof window.AndroidBridge.savePgnNative === 'function') {
+        window.AndroidBridge.savePgnNative(pgnText, fileName, false);
+        alert("PGN saved to phone storage: " + fileName);
+        return;
+    }
+
+    // 2. Direct Blob File Download
+    try {
+        let blob = new Blob([pgnText], { type: 'application/x-chess-pgn;charset=utf-8' });
+        let link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = fileName;
+        document.body.appendChild(link);
+        link.click();
+        setTimeout(() => {
+            document.body.removeChild(link);
+            URL.revokeObjectURL(link.href);
+        }, 500);
+        return;
+    } catch (e) {}
+
+    // 3. Fallback Data-URI Download for Android WebView
+    try {
+        let link = document.createElement('a');
+        link.href = 'data:text/plain;charset=utf-8,' + encodeURIComponent(pgnText);
+        link.download = fileName;
+        document.body.appendChild(link);
+        link.click();
+        setTimeout(() => document.body.removeChild(link), 500);
+        return;
+    } catch (e) {}
+
+    // 4. Clipboard backup
+    navigator.clipboard.writeText(pgnText).then(() => {
+        alert("PGN copied to clipboard! (Download not allowed by device)");
+    });
+};
+window.downloadCurrentPGN = window.saveSingleMatchPGN;
 
 window.openShareModal = function() {
     try { window.history.pushState({ modalOpen: true }, ""); } catch (e) {}
@@ -227,7 +283,6 @@ window.refreshMatchVaultList = function() {
         }
 
         matches.forEach(m => {
-            // Robust check for in-progress status
             let resultLower = (m.result || "").toString().toLowerCase();
             let isInProgress = resultLower.includes("in progress") || resultLower.includes("progress");
             let actionBtnText = isInProgress ? "▶ Resume" : "▶ Replay";
@@ -304,7 +359,7 @@ window.loadVaultMatch = function(id, fen, isResume) {
         renderBoard();
         updateStatus();
         startTimer();
-        $('#status').text("Resumed match from cloud.");
+        $('#status').text("Resumed match from archive.");
     } else {
         matchEnded = true;
         isAnalysisBranchMode = true;
@@ -351,7 +406,6 @@ window.saveCurrentMatchToVault = function(resultTitle) {
         fen: fen
     };
 
-    // Agar server par pehle se save request chal rahi hai, toh agle move ko queue me daalein
     if (window.isSavingToCloud) {
         window.pendingCloudSave = payload;
         return;
@@ -371,7 +425,6 @@ window.saveCurrentMatchToVault = function(resultTitle) {
             localStorage.removeItem('chess_current_db_id');
         }
 
-        // Agar queue me naya move pending tha, toh wahi payload ID ke sath execute karein
         if (window.pendingCloudSave) {
             let next = window.pendingCloudSave;
             window.pendingCloudSave = null;
