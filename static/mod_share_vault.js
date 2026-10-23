@@ -1,14 +1,15 @@
 /* ============================================================================
-   static/mod_share_vault.js (v113 - Single-Match Vault & Native 3-Dot Delete)
-   - Real-time client timezone formatting (Universal local time)
-   - In-place single game cloud updating (prevents duplicate move files)
-   - Native In-App Custom Modal for 100% reliable "Delete All Game History"
-   - Complete card actions: Resume/Replay, Report, Copy PGN, and Delete
+   static/mod_share_vault.js (v114 - Zero-Duplicate Vault & In-Flight Save Lock)
+   - In-Flight Request Lock: Prevents duplicate rows when moves happen rapidly
+   - Robust 'In Progress' detection ensuring '▶ Resume' button is active
+   - Native In-App Custom Confirm Dialog (Android WebView compatible)
+   - Exact client-local time formatting for all matches
    ============================================================================ */
 
 window.currentActiveMatchDbId = localStorage.getItem('chess_current_db_id') || null;
+window.isSavingToCloud = false;
+window.pendingCloudSave = null;
 
-// User ke phone/country ka local date aur time format
 function getUserDeviceFormattedDate() {
     let now = new Date();
     let datePart = now.toLocaleDateString(undefined, {
@@ -112,7 +113,7 @@ window.openMatchVaultModal = function() {
 };
 
 // ============================================================================
-// ANDROID-SAFE CUSTOM IN-APP CONFIRMATION POPUP (NO BROWSER ALERT CRASH)
+// ANDROID-SAFE IN-APP CONFIRMATION DIALOG
 // ============================================================================
 function showInAppConfirmDialog(title, message, onConfirm) {
     let existing = document.getElementById('vault-custom-confirm-modal');
@@ -120,7 +121,7 @@ function showInAppConfirmDialog(title, message, onConfirm) {
 
     let overlay = document.createElement('div');
     overlay.id = 'vault-custom-confirm-modal';
-    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.8);z-index:99999999;display:flex;align-items:center;justify-content:center;padding:18px;';
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:99999999;display:flex;align-items:center;justify-content:center;padding:18px;';
     overlay.innerHTML = `
         <div style="background:#1b1c20;border:1px solid #da3633;border-radius:12px;padding:22px;max-width:320px;width:100%;text-align:center;box-shadow:0 12px 36px rgba(0,0,0,0.9);">
             <div style="font-size:16px;font-weight:bold;color:#ff6b6b;margin-bottom:8px;">${title}</div>
@@ -141,7 +142,7 @@ function showInAppConfirmDialog(title, message, onConfirm) {
 }
 
 // ============================================================================
-// THREE-DOT (⋮) MENU SETUP NEXT TO REFRESH BUTTON
+// THREE-DOT (⋮) MENU INJECTION
 // ============================================================================
 function setupVaultThreeDotMenu() {
     if ($('#vault-threedot-wrap').length) return;
@@ -205,7 +206,7 @@ window.triggerDeleteAllHistoryAction = function() {
 };
 
 // ============================================================================
-// ARCHIVE MATCH LIST RENDERER
+// ARCHIVE MATCH LIST RENDERER WITH DYNAMIC RESUME / REPLAY
 // ============================================================================
 window.refreshMatchVaultList = function() {
     let container = $('#vault-matches-list');
@@ -226,7 +227,9 @@ window.refreshMatchVaultList = function() {
         }
 
         matches.forEach(m => {
-            let isInProgress = m.result && m.result.toLowerCase().includes("in progress");
+            // Robust check for in-progress status
+            let resultLower = (m.result || "").toString().toLowerCase();
+            let isInProgress = resultLower.includes("in progress") || resultLower.includes("progress");
             let actionBtnText = isInProgress ? "▶ Resume" : "▶ Replay";
             let actionBtnColor = isInProgress ? "#2ea043" : "#81b64c";
 
@@ -301,7 +304,7 @@ window.loadVaultMatch = function(id, fen, isResume) {
         renderBoard();
         updateStatus();
         startTimer();
-        $('#status').text("Resumed match from archive.");
+        $('#status').text("Resumed match from cloud.");
     } else {
         matchEnded = true;
         isAnalysisBranchMode = true;
@@ -328,7 +331,7 @@ window.deleteSingleMatch = function(id) {
 };
 
 // ============================================================================
-// SINGLE MATCH SAVER (IN-PLACE CLOUD UPDATING, NO DUPLICATE SPAM)
+// SINGLE MATCH SAVER WITH IN-FLIGHT QUEUE (ZERO DUPLICATE ROW GUARANTEE)
 // ============================================================================
 window.saveCurrentMatchToVault = function(resultTitle) {
     let pgn = window.buildBrandedPGN ? window.buildBrandedPGN() : game.pgn();
@@ -348,7 +351,16 @@ window.saveCurrentMatchToVault = function(resultTitle) {
         fen: fen
     };
 
+    // Agar server par pehle se save request chal rahi hai, toh agle move ko queue me daalein
+    if (window.isSavingToCloud) {
+        window.pendingCloudSave = payload;
+        return;
+    }
+
+    window.isSavingToCloud = true;
+
     $.post('/save_match', payload, function(data) {
+        window.isSavingToCloud = false;
         if (data && data.id) {
             window.currentActiveMatchDbId = data.id;
             localStorage.setItem('chess_current_db_id', data.id);
@@ -358,6 +370,16 @@ window.saveCurrentMatchToVault = function(resultTitle) {
             window.currentActiveMatchDbId = null;
             localStorage.removeItem('chess_current_db_id');
         }
+
+        // Agar queue me naya move pending tha, toh wahi payload ID ke sath execute karein
+        if (window.pendingCloudSave) {
+            let next = window.pendingCloudSave;
+            window.pendingCloudSave = null;
+            next.id = window.currentActiveMatchDbId || "";
+            window.saveCurrentMatchToVault(next.result);
+        }
+    }).fail(function() {
+        window.isSavingToCloud = false;
     });
 };
 
