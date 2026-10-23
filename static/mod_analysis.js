@@ -1,9 +1,9 @@
 /* ============================================================================
-   static/mod_analysis.js (v105 - Red Baseline & Blunder/Mistake Graph Engine)
-   - Red 0.0 Eval Baseline with center equality marker
-   - Real-time Blunder (Red), Mistake (Orange) & Inaccuracy (Yellow) Graph Dots
-   - Interactive Canvas Scrubber: Tap on graph to jump directly to any move
-   - Interactive Tactics & Puzzle Engine with Hint Arrows
+   static/mod_analysis.js (v106 - Red Baseline & Live Blunder/Mistake Markers)
+   - Sharp Red Dashed Baseline (0.0 Equal Eval) on both Live and Report graphs
+   - Live Blunder (Red ??), Mistake (Orange ?), and Inaccuracy (Yellow ?!) markers
+   - Interactive Scrubber: Tap anywhere on the graph to jump to that move
+   - Complete Accuracy, Move Quality Summary & Puzzle Tactics Engine
    ============================================================================ */
 
 var matchAccuracyData = { wAcc: 100, bAcc: 100, wAcpl: 12, bAcpl: 15, counts: {} };
@@ -20,21 +20,23 @@ window.activePuzzle = {
     currentTier: "1600"
 };
 
+// ============================================================================
+// MOVE EVALUATION & CLASSIFICATION ENGINE
+// ============================================================================
 window.classifyMoveByEval = function(idx) {
-    if (idx <= 0 || idx >= gameHistory.length) return;
+    if (idx <= 0 || idx >= gameHistory.length) return null;
     let curr = gameHistory[idx];
     let prev = gameHistory[idx - 1];
-    if (!curr || !prev || !curr.moveObj) return;
+    if (!curr || !prev || !curr.moveObj) return null;
 
     let side = curr.moveObj.color;
     let prevCp = (prev.cp !== undefined) ? prev.cp : 0;
     let currCp = (curr.cp !== undefined) ? curr.cp : prevCp;
     let loss = (side === 'w') ? (prevCp - currCp) : (currCp - prevCp);
 
-    // Score fallback agar CP flat ho
     if (loss <= 0 && prev.evalScore !== undefined && curr.evalScore !== undefined) {
         let scoreLoss = (side === 'w') ? (prev.evalScore - curr.evalScore) : (curr.evalScore - prev.evalScore);
-        if (scoreLoss > 0) loss = scoreLoss * 15;
+        if (scoreLoss > 0) loss = scoreLoss * 16;
     }
 
     let classification = { label: "Good", symbol: "✓", color: "#739552" };
@@ -71,9 +73,8 @@ window.updateAccuracySummary = function() {
 };
 
 // ============================================================================
-// UNIFIED EVALUATION GRAPH ENGINE (RED BASELINE + BLUNDER & MISTAKE MARKERS)
+// UNIFIED GRAPH RENDERER WITH RED BASELINE & BLUNDER/MISTAKE DOTS
 // ============================================================================
-
 function drawUnifiedEvalGraph(canvasTarget, customHistory) {
     let canvas = (typeof canvasTarget === 'string') ? document.getElementById(canvasTarget) : canvasTarget;
     if (!canvas) return;
@@ -93,12 +94,11 @@ function drawUnifiedEvalGraph(canvasTarget, customHistory) {
     let len = points.length;
 
     // Dark Background
-    ctx.fillStyle = '#21201d';
+    ctx.fillStyle = '#1c1b18';
     ctx.fillRect(0, 0, W, H);
 
     let midY = H / 2;
 
-    // Coordinate mapping: 50% / 0.0 eval is exactly at midY
     function getYForPoint(rec) {
         if (!rec) return midY;
         let score = rec.evalScore;
@@ -106,13 +106,13 @@ function drawUnifiedEvalGraph(canvasTarget, customHistory) {
             score = 50.0 + 50.0 * (2.0 / (1.0 + Math.exp(-0.00368208 * rec.cp)) - 1.0);
         }
         if (score === undefined) score = 50.0;
-        let clamped = Math.max(3, Math.min(97, score));
+        let clamped = Math.max(4, Math.min(96, score));
         return H - (clamped / 100.0) * H;
     }
 
     let stepX = len <= 1 ? W : (W / (len - 1));
 
-    // 1. Advantage Fill
+    // 1. White Advantage Fill (Upper layer)
     ctx.beginPath();
     ctx.moveTo(0, H);
     for (let i = 0; i < len; i++) {
@@ -122,29 +122,29 @@ function drawUnifiedEvalGraph(canvasTarget, customHistory) {
     }
     ctx.lineTo(W, H);
     ctx.closePath();
-    ctx.fillStyle = 'rgba(235, 235, 235, 0.88)'; // White advantage fill
+    ctx.fillStyle = 'rgba(238, 238, 238, 0.88)';
     ctx.fill();
 
-    // Dark tint below baseline for Black advantage
-    ctx.fillStyle = 'rgba(33, 32, 29, 0.75)';
+    // 2. Black Advantage Tint (Lower half below baseline)
+    ctx.fillStyle = 'rgba(26, 25, 22, 0.76)';
     ctx.fillRect(0, midY, W, H - midY);
 
-    // 2. RED BASELINE (0.0 Center Equal Line)
+    // 3. RED BASELINE (0.0 Center Equal Line)
     ctx.beginPath();
-    ctx.strokeStyle = '#ff3b30'; // Sharp Red Line
-    ctx.lineWidth = 1.6;
-    ctx.setLineDash([5, 4]);
+    ctx.strokeStyle = '#ff3b30'; // Sharp Red Baseline
+    ctx.lineWidth = 1.8;
+    ctx.setLineDash([5, 4]); // Dashed line
     ctx.moveTo(0, midY);
     ctx.lineTo(W, midY);
     ctx.stroke();
     ctx.setLineDash([]); // Reset to solid
 
-    // Red Baseline Label: "0.0"
+    // Red Baseline Label "0.0"
     ctx.fillStyle = '#ff3b30';
     ctx.font = 'bold 10px sans-serif';
     ctx.fillText('0.0', 6, midY - 4);
 
-    // 3. Green Eval Trend Curve
+    // 4. Smooth Eval Curve
     ctx.beginPath();
     ctx.strokeStyle = '#81b64c';
     ctx.lineWidth = 2.4;
@@ -156,7 +156,7 @@ function drawUnifiedEvalGraph(canvasTarget, customHistory) {
     }
     ctx.stroke();
 
-    // 4. Current Move Scrubber
+    // 5. Current Move Scrubber Line
     let activeIdx = (typeof historyIndex !== 'undefined') ? historyIndex : (len - 1);
     if (activeIdx >= 0 && activeIdx < len && len > 1) {
         let cx = activeIdx * stepX;
@@ -168,7 +168,7 @@ function drawUnifiedEvalGraph(canvasTarget, customHistory) {
         ctx.stroke();
     }
 
-    // 5. BLUNDER, MISTAKE & INACCURACY DOTS ON GRAPH
+    // 6. BLUNDER, MISTAKE & INACCURACY DOTS
     for (let i = 1; i < len; i++) {
         let rec = points[i];
         if (!rec) continue;
@@ -186,13 +186,13 @@ function drawUnifiedEvalGraph(canvasTarget, customHistory) {
         let radius = 4;
 
         if (cls.label === 'Blunder' || cls.symbol === '??') {
-            dotColor = '#fa4141'; // Bright Red
+            dotColor = '#fa4141'; // Red Dot for Blunder
             radius = 5.2;
         } else if (cls.label === 'Mistake' || cls.symbol === '?') {
-            dotColor = '#fa8c16'; // Orange
+            dotColor = '#fa8c16'; // Orange Dot for Mistake
             radius = 4.4;
         } else if (cls.label === 'Inaccuracy' || cls.symbol === '?!') {
-            dotColor = '#fadb14'; // Yellow
+            dotColor = '#fadb14'; // Yellow Dot for Inaccuracy
             radius = 3.6;
         }
 
@@ -207,7 +207,7 @@ function drawUnifiedEvalGraph(canvasTarget, customHistory) {
         }
     }
 
-    // Interactive Tap to Jump
+    // Interactive Tap to Jump to Move
     if (!canvas.dataset.graphBound) {
         canvas.dataset.graphBound = "1";
         canvas.style.cursor = "pointer";
@@ -234,7 +234,7 @@ function drawUnifiedEvalGraph(canvasTarget, customHistory) {
     }
 }
 
-// Dono purane functions ko naye engine se link kar diya gaya hai
+// Dono global function hooks ko unified engine se connect kiya gaya hai
 function renderChessComGraphOnCanvas(canvasId, isInteractive) {
     drawUnifiedEvalGraph(canvasId, gameHistory);
 }
@@ -244,7 +244,8 @@ window.renderEvaluationGraphWithBaseline = function(canvasId, historyData) {
 };
 
 window.drawAllEvalGraphs = function() {
-    ['main-eval-canvas', 'report-eval-canvas', 'eval-graph-canvas', 'review-eval-canvas'].forEach(id => {
+    let ids = ['main-eval-canvas', 'report-eval-canvas', 'eval-graph-canvas', 'review-eval-canvas', 'analysis-eval-canvas'];
+    ids.forEach(id => {
         let el = document.getElementById(id);
         if (el) drawUnifiedEvalGraph(el, gameHistory);
     });
@@ -253,7 +254,6 @@ window.drawAllEvalGraphs = function() {
 // ============================================================================
 // HINTS, ARROWS & PUZZLE ENGINE
 // ============================================================================
-
 window.drawArrow = function(fromSq, toSq, color = 'rgba(74, 143, 240, 0.85)') {
     let svg = safeEl('arrow-overlay');
     if (!svg) return;
