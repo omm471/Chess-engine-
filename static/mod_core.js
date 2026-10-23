@@ -1,9 +1,9 @@
 /* ============================================================================
-   static/mod_core.js (v110 - Ultra-Enlarged 1.45x Touch Core & Stable Session)
+   static/mod_core.js (v111 - 1.45x Tactile Zoom, In-Place Cloud Sync & Resume)
    - Real-time Depth, NPS (kN/s), Hardware and Engine Telemetry restored
    - Clocks, Increments, Sounds, Material Advantage (+X)
-   - Vertical Pawn Promotion & 1.45x Enlarged Tactile Dual Controls (Zero-Drift)
-   - Local Session Auto-Resume without Database Spamming
+   - 1.45x Enlarged Tactile Dual Touch Controls (Zero-Drift)
+   - Auto-Saves In-Progress Game to Cloud In-Place (Safe from Recent-Task Kills)
    ============================================================================ */
 
 var game = new Chess();
@@ -499,7 +499,6 @@ function showGhostPiece(imgUrl, clientX, clientY) {
     let anySq = document.querySelector('.square');
     let sqSize = anySq ? anySq.clientWidth : 46;
 
-    // 1.45x Scale + Shift upward (-65% Y) so the finger doesn't obscure the piece
     ghost.style.cssText = `
         position: fixed !important;
         pointer-events: none !important;
@@ -554,7 +553,6 @@ function handlePieceTouchStart(sq, clientX, clientY) {
     if (!ensureBranchReadyForMove()) return;
     if (isAutoBotMode() && !isAnalysisBranchMode) return;
 
-    // 1. Tap-to-Move: Pehle piece selected tha aur user ne legal destination tap kiya -> Execute Move
     if (selectedSquare && sq !== selectedSquare) {
         let validMove = currentLegalMoves.find(m => m.to === sq);
         if (validMove) {
@@ -573,7 +571,6 @@ function handlePieceTouchStart(sq, clientX, clientY) {
         }
     }
 
-    // 2. Same piece re-tap -> Deselect
     if (selectedSquare === sq) {
         selectedSquare = null;
         currentLegalMoves = [];
@@ -583,7 +580,6 @@ function handlePieceTouchStart(sq, clientX, clientY) {
         return;
     }
 
-    // 3. Premove Selection
     if (!isAnalysisBranchMode && gameMode === 'pvb' && game.turn() !== playerColor) {
         if (!premoveEnabled) return;
         let vGame = getVirtualPremoveGame();
@@ -608,7 +604,6 @@ function handlePieceTouchStart(sq, clientX, clientY) {
         return;
     }
 
-    // 4. Normal Move Selection
     let piece = game.get(sq);
     if (piece && piece.color === game.turn()) {
         if (gameMode === 'pvb' && !isAnalysisBranchMode && piece.color !== playerColor) return;
@@ -921,7 +916,6 @@ function processMoveVisuals(moveObj, targetIndex) {
         }
     });
 
-    // Har move par sirf local session update hoga (Cloud multiple spam band)
     autoSaveCurrentState();
 }
 
@@ -1079,7 +1073,11 @@ window.startGame = function(fromSetup = false) {
     matchEnded = false; gameEndEffect = null;
     selectedSquare = null; currentLegalMoves = []; premoveQueue = []; clearArrows();
     hideGhostPiece();
+
     localStorage.removeItem('chess_active_match');
+    window.currentActiveMatchDbId = null;
+    localStorage.removeItem('chess_current_db_id');
+
     game.reset();
     let initEv = window.computeInstantEvalFromFen ? window.computeInstantEvalFromFen(game.fen()) : { score: 50.0, text: "0.0", cp: 0 };
     gameHistory = [{
@@ -1174,7 +1172,7 @@ function showAnalysisStatus() {
 }
 
 // ============================================================================
-// CLEAN SESSION AUTO-SAVE (SAVES LOCAL SESSION ONLY - NO CLOUD SPAMMING)
+// AUTO-SAVE ENGINE (LOCAL + CLOUD IN-PLACE SYNC WITHOUT SPAM)
 // ============================================================================
 
 function autoSaveCurrentState() {
@@ -1194,45 +1192,73 @@ function autoSaveCurrentState() {
         timerStarted: timerStarted
     };
     localStorage.setItem('chess_active_match', JSON.stringify(state));
+
+    // 2 moves ke baad Cloud me bhi usi single record ko sync karein
+    if (gameHistory.length >= 2 && window.saveCurrentMatchToVault) {
+        window.saveCurrentMatchToVault("In Progress");
+    }
 }
 
 function autoResumePreviousMatch() {
     let raw = localStorage.getItem('chess_active_match');
-    if (!raw) return false;
-    try {
-        let state = JSON.parse(raw);
-        if (!state || !state.fen) return false;
-
-        game.load(state.fen);
-        gameHistory = state.gameHistory || [{ fen: state.fen, moveObj: null }];
-        historyIndex = state.historyIndex !== undefined ? state.historyIndex : gameHistory.length - 1;
-        whiteTime = state.whiteTime || 600;
-        blackTime = state.blackTime || 600;
-        playerColor = state.playerColor || 'w';
-        currentBoardOrientation = state.currentBoardOrientation || 'w';
-        gameMode = state.gameMode || 'pvb';
-        timerStarted = state.timerStarted || false;
-
-        renderBoard();
-        updateTimer();
-        updateEvalBar(historyIndex);
-        updateMaterial(game.fen());
-        updateStatus();
-        syncEloBadgeVisibility();
-
-        if (timerStarted && !isMatchOver()) {
-            startTimer();
-        }
-        $('#status').text("Game resumed from active session.");
-        return true;
-    } catch (e) {
-        localStorage.removeItem('chess_active_match');
-        return false;
+    if (raw) {
+        try {
+            let state = JSON.parse(raw);
+            if (state && state.fen) {
+                applyGameState(state);
+                return true;
+            }
+        } catch (e) {}
     }
+
+    // Recent task se kill hone ke baad Cloud Fallback check karein
+    $.get('/get_matches', function(data) {
+        let matches = data.matches || [];
+        let activeMatch = matches.find(m => m.result && m.result.toLowerCase().includes("in progress"));
+        if (activeMatch && activeMatch.fen) {
+            window.currentActiveMatchDbId = activeMatch.id;
+            localStorage.setItem('chess_current_db_id', activeMatch.id);
+            game.load(activeMatch.fen);
+            gameHistory = [{ fen: activeMatch.fen, moveObj: null }];
+            historyIndex = 0;
+            renderBoard();
+            updateTimer();
+            updateEvalBar(0);
+            updateMaterial(activeMatch.fen);
+            updateStatus();
+            syncEloBadgeVisibility();
+            $('#status').text("Resumed active match from cloud.");
+        }
+    });
+    return false;
+}
+
+function applyGameState(state) {
+    game.load(state.fen);
+    gameHistory = state.gameHistory || [{ fen: state.fen, moveObj: null }];
+    historyIndex = state.historyIndex !== undefined ? state.historyIndex : gameHistory.length - 1;
+    whiteTime = state.whiteTime || 600;
+    blackTime = state.blackTime || 600;
+    playerColor = state.playerColor || 'w';
+    currentBoardOrientation = state.currentBoardOrientation || 'w';
+    gameMode = state.gameMode || 'pvb';
+    timerStarted = state.timerStarted || false;
+
+    renderBoard();
+    updateTimer();
+    updateEvalBar(historyIndex);
+    updateMaterial(game.fen());
+    updateStatus();
+    syncEloBadgeVisibility();
+
+    if (timerStarted && !isMatchOver()) {
+        startTimer();
+    }
+    $('#status').text("Game resumed from active session.");
 }
 
 // ============================================================================
-// INITIALIZATION ON DOCUMENT READY (EVENT BINDING & BOARD LAUNCH)
+// INITIALIZATION ON READY
 // ============================================================================
 
 $(document).ready(function() {
@@ -1241,7 +1267,6 @@ $(document).ready(function() {
     document.body.addEventListener('touchstart', () => getAudioCtx(), { once: true });
     document.body.addEventListener('click', () => getAudioCtx(), { once: true });
 
-    // Tactile piece selection zoom & pick-up fading styles
     $('head').append(`
         <style>
             .square.selected .piece {
