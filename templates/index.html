@@ -222,6 +222,179 @@
             color: rgba(255, 255, 255, 0.90) !important; font-weight: 800 !important;
             text-shadow: 0 0 2px rgba(0, 0, 0, 0.8) !important;
         }
+
+/* ==========================================================================
+   ONBOARDING WIZARD STYLING (DARK, CLEAN & MOBILE FRIENDLY)
+   ========================================================================== */
+#onboarding-modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(8, 8, 10, 0.92);
+    backdrop-filter: blur(8px);
+    z-index: 9999999;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 18px;
+}
+
+.onboarding-card {
+    background: #18191c;
+    border: 1px solid #2d2f36;
+    border-radius: 16px;
+    width: 100%;
+    max-width: 380px;
+    padding: 24px 20px;
+    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.85);
+    color: #e0e0e0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    animation: obFadeIn 0.22s ease-out;
+}
+
+@keyframes obFadeIn {
+    from { opacity: 0; transform: translateY(12px) scale(0.97); }
+    to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.ob-icon {
+    font-size: 34px;
+    margin-bottom: 8px;
+    text-align: center;
+}
+
+.ob-title {
+    font-size: 19px;
+    font-weight: 700;
+    color: #ffffff;
+    margin: 0 0 6px 0;
+    text-align: center;
+}
+
+.ob-subtitle {
+    font-size: 12.5px;
+    color: #9da1ad;
+    line-height: 1.45;
+    margin: 0 0 16px 0;
+    text-align: center;
+}
+
+.ob-shield-box {
+    background: #111a14;
+    border: 1px solid #1f3b25;
+    border-radius: 10px;
+    padding: 12px;
+    font-size: 11.5px;
+    color: #a3e635;
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    margin-bottom: 18px;
+    line-height: 1.4;
+}
+
+.ob-shield-icon {
+    font-size: 20px;
+}
+
+.ob-info-box {
+    background: #121316;
+    border: 1px solid #27282e;
+    border-radius: 10px;
+    padding: 12px;
+    font-size: 11.5px;
+    color: #c4c7d0;
+    line-height: 1.5;
+    margin-bottom: 18px;
+    text-align: left;
+}
+
+.ob-info-box p {
+    margin: 0 0 8px 0;
+}
+.ob-info-box p:last-child {
+    margin: 0;
+}
+
+.ob-btn-row {
+    display: flex;
+    gap: 10px;
+}
+.ob-btn-row.single {
+    justify-content: stretch;
+}
+
+.ob-btn {
+    flex: 1;
+    border: none;
+    border-radius: 8px;
+    padding: 12px;
+    font-size: 13.5px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: transform 0.08s ease, filter 0.1s ease;
+}
+.ob-btn:active {
+    transform: scale(0.97);
+}
+
+.ob-primary {
+    background: #3b82f6;
+    color: #ffffff;
+}
+
+.ob-secondary {
+    background: #27282e;
+    color: #c4c7d0;
+}
+
+.ob-launch {
+    background: #81b64c;
+    color: #ffffff;
+    font-weight: 700;
+}
+
+/* Optional Live Terminal Box inside Slide 3 */
+.ob-toggle-term-btn {
+    background: #1e2025;
+    color: #a1a7b8;
+    border: 1px dashed #3a3d47;
+    border-radius: 6px;
+    padding: 7px 12px;
+    font-size: 11px;
+    cursor: pointer;
+    width: 100%;
+    font-weight: 500;
+}
+
+#ob-terminal-preview-wrap {
+    background: #090a0d;
+    border: 1px solid #22242c;
+    border-radius: 8px;
+    margin-bottom: 16px;
+    text-align: left;
+    overflow: hidden;
+}
+
+.ob-terminal-header {
+    background: #14151a;
+    padding: 5px 10px;
+    font-size: 10px;
+    color: #646977;
+    display: flex;
+    justify-content: space-between;
+    font-family: monospace;
+}
+
+#ob-live-terminal-content {
+    padding: 10px;
+    font-family: "Courier New", Courier, monospace;
+    font-size: 10.5px;
+    color: #81b64c;
+    max-height: 110px;
+    overflow-y: auto;
+    line-height: 1.4;
+}
+        
     </style>
 </head>
 <body class="theme-green">
@@ -726,6 +899,131 @@
                 }
             };
         })();
+/* ============================================================================
+   ONBOARDING CONTROLLER (3-SLIDE FLOW + OPTIONAL TERMINAL SWITCH)
+   ============================================================================ */
+
+window.goToOnboardingSlide = function(slideNum) {
+    $('.onboarding-slide').hide();
+    $('#ob-slide-' + slideNum).show();
+};
+
+window.toggleOnboardingTerminalView = function() {
+    let wrap = $('#ob-terminal-preview-wrap');
+    let txt = $('#ob-term-toggle-text');
+    
+    if (wrap.is(':visible')) {
+        wrap.hide();
+        txt.text('View Live Terminal / Installation');
+    } else {
+        wrap.show();
+        txt.text('Hide Terminal View');
+        
+        // Agar main terminal me koi logs chal rahe hain toh use yahan copy kar lo
+        let mainTerm = $('#terminal-logs, #daemon-log, .terminal-window');
+        if (mainTerm.length && mainTerm.text().trim()) {
+            $('#ob-live-terminal-content').html(mainTerm.html());
+        }
+    }
+};
+
+window.finishOnboardingAndStart = function() {
+    localStorage.setItem('chess_onboarding_done', 'true');
+    $('#onboarding-modal-overlay').fadeOut(180);
+};
+
+// Check karo ki user pehli baar aaya hai ya pehle aa chuka hai
+function checkOnboardingStatus() {
+    let isDone = localStorage.getItem('chess_onboarding_done');
+    if (!isDone) {
+        goToOnboardingSlide(1);
+        $('#onboarding-modal-overlay').css('display', 'flex');
+    }
+}
+
+$(document).ready(function() {
+    checkOnboardingStatus();
+});
+
+        
     </script>
+
+<!-- ==========================================================================
+     FIRST-TIME ONBOARDING & SETUP WIZARD (3-STEP WITH LIVE TERMINAL TOGGLE)
+     ========================================================================== -->
+<div id="onboarding-modal-overlay" style="display: none;">
+    <div class="onboarding-card">
+        
+        <!-- SLIDE 1: WELCOME & TRUST -->
+        <div class="onboarding-slide" id="ob-slide-1">
+            <div class="ob-icon">👋</div>
+            <h2 class="ob-title">Welcome to Chess AI Pro</h2>
+            <p class="ob-subtitle">Aapka private Grandmaster playground, jo bina kisi internet ke 100% aapke phone par locally run hota hai.</p>
+            
+            <div class="ob-shield-box">
+                <span class="ob-shield-icon">🔒</span>
+                <div>
+                    <b>100% Private & Safe:</b> Yeh koi cloud tracking app nahi hai. Saara chess engine aur data aapke device ke andar hi rehta hai.
+                </div>
+            </div>
+
+            <div class="ob-btn-row single">
+                <button class="ob-btn ob-primary" onclick="goToOnboardingSlide(2)">Aage Badhein ➔</button>
+            </div>
+        </div>
+
+        <!-- SLIDE 2: ENGINE & TERMINAL EXPLANATION -->
+        <div class="onboarding-slide" id="ob-slide-2" style="display: none;">
+            <div class="ob-icon">⚙️</div>
+            <h2 class="ob-title">Yeh Setup Kyon Hota Hai?</h2>
+            <p class="ob-subtitle">Pehli baar app open hone par phone ke processor ke mutabiq local engine ready kiya jata hai.</p>
+            
+            <div class="ob-info-box">
+                <p>🔹 <b>Local Python & Stockfish:</b> Internet par server se khelne ke bajaye Stockfish engine direct aapke phone me install hota hai, taaki offline bhi 0-ping aur zero lag mile.</p>
+                <p>🔹 <b>Koi Hack Ya Virus Nahi Hai:</b> Background me jo packages load hote hain, wo chess engine ki calculations aur board sound ke liye zaroori system files hain.</p>
+            </div>
+
+            <div class="ob-btn-row">
+                <button class="ob-btn ob-secondary" onclick="goToOnboardingSlide(1)">← Back</button>
+                <button class="ob-btn ob-primary" onclick="goToOnboardingSlide(3)">Samajh Gaya ➔</button>
+            </div>
+        </div>
+
+        <!-- SLIDE 3: SERVER STATUS & OPTIONAL LIVE TERMINAL TOGGLE -->
+        <div class="onboarding-slide" id="ob-slide-3" style="display: none;">
+            <div class="ob-icon">🚀</div>
+            <h2 class="ob-title">App Ready Ho Raha Hai</h2>
+            <p class="ob-subtitle">Local engine handshake aur setup complete ho chuka hai.</p>
+
+            <!-- Optional Terminal Toggle Button -->
+            <div style="margin: 14px 0;">
+                <button type="button" class="ob-toggle-term-btn" onclick="toggleOnboardingTerminalView()">
+                    👁 <span id="ob-term-toggle-text">View Live Terminal / Installation</span>
+                </button>
+            </div>
+
+            <!-- Optional Embedded Terminal Window -->
+            <div id="ob-terminal-preview-wrap" style="display: none;">
+                <div class="ob-terminal-header">
+                    <span>● ● ● Live Daemon Log</span>
+                    <span style="color:#81b64c;font-size:10px;">PROOT ACTIVE</span>
+                </div>
+                <div id="ob-live-terminal-content">
+                    Connecting to local server daemon...<br>
+                    Stockfish engine: Loaded<br>
+                    Waitress WSGI: Running on 127.0.0.1:5000
+                </div>
+            </div>
+
+            <div class="ob-btn-row">
+                <button class="ob-btn ob-secondary" onclick="goToOnboardingSlide(2)">← Back</button>
+                <button class="ob-btn ob-launch" onclick="finishOnboardingAndStart()">Let's Play ♔</button>
+            </div>
+        </div>
+
+    </div>
+</div>
+
+    
 </body>
 </html>
