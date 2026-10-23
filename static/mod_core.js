@@ -1,9 +1,9 @@
 /* ============================================================================
-   static/mod_core.js (v106 - Full Feature Engine, Touch Core & Auto-Resume)
+   static/mod_core.js (v107 - Bulletproof Touch Engine & Clean Single PGN Saver)
    - Real-time Depth, NPS (kN/s), Hardware and Engine Telemetry restored
    - Clocks, Increments, Sounds, Material Advantage (+X)
-   - Vertical Pawn Promotion & Touch-Drag controls
-   - Auto-Save & Auto-Resume Session Engine with Cloud Sync
+   - Vertical Pawn Promotion & Dual Tap/Drag Touch Controls
+   - Session Auto-Resume without Database Spamming
    ============================================================================ */
 
 var game = new Chess();
@@ -291,7 +291,8 @@ function getPieceImageUrl(color, type) {
 }
 
 function updateSelectionAndDotsInPlace() {
-    $('.square').removeClass('selected');$('.legal-dot, .legal-capture').remove();
+    $('.square').removeClass('selected drag-target-hover');
+    $('.legal-dot, .legal-capture').remove();
     if (selectedSquare) {
         $(`.square[data-square="${selectedSquare}"]`).addClass('selected');
     }
@@ -459,11 +460,19 @@ function showPromotionModal(color, toSq, onSelect) {
     boardEl.appendChild(modal);
 }
 
-// Touch Drag and Drop Controller
-var dragPieceState = { active: false, fromSq: null, currentSq: null, isPremoveDrag: false };
-var lastPieceTouchTime = 0;
+// ============================================================================
+// BULLETPROOF DUAL TOUCH CONTROLLER (TAP-TO-MOVE + FLUID DRAG-AND-DROP)
+// ============================================================================
 
-function getBoardSquareFromPoint(clientX, clientY) {
+var dragPieceState = { active: false, fromSq: null, currentSq: null, movedDistance: 0, startX: 0, startY: 0 };
+
+function getSquareAtPoint(clientX, clientY) {
+    if (!clientX && !clientY) return null;
+    let el = document.elementFromPoint(clientX, clientY);
+    if (el) {
+        let sqEl = el.closest('.square');
+        if (sqEl) return sqEl.getAttribute('data-square');
+    }
     let boardEl = document.getElementById('board');
     if (!boardEl) return null;
     let rect = boardEl.getBoundingClientRect();
@@ -483,8 +492,8 @@ function showGhostPiece(imgUrl, clientX, clientY) {
         ghost.id = 'drag-ghost-piece';
         document.body.appendChild(ghost);
     }
+    ghost.style.cssText = 'position:fixed;pointer-events:none !important;z-index:999999;display:block;width:52px;height:52px;background-size:contain;background-repeat:no-repeat;background-position:center;transform:translate(-50%, -50%);';
     if (imgUrl) ghost.style.backgroundImage = `url('${imgUrl}')`;
-    ghost.style.display = 'block';
     ghost.style.left = clientX + 'px';
     ghost.style.top = clientY + 'px';
 }
@@ -492,7 +501,8 @@ function showGhostPiece(imgUrl, clientX, clientY) {
 function hideGhostPiece() {
     let ghost = document.getElementById('drag-ghost-piece');
     if (ghost) ghost.style.display = 'none';
-    $('.square').removeClass('drag-target-hover');$('.square .piece').removeClass('dragging-source-piece');
+    $('.square').removeClass('drag-target-hover');
+    $('.square .piece').removeClass('dragging-source-piece');
 }
 
 function ensureBranchReadyForMove() {
@@ -514,75 +524,102 @@ function ensureBranchReadyForMove() {
     return true;
 }
 
-function handleBoardPointerDown(sq, clientX, clientY) {
-    if (drawModeEnabled || !sq) return false;
-    if (document.getElementById('promotion-choice-modal')) return false;
+function handlePieceTouchStart(sq, clientX, clientY) {
+    if (drawModeEnabled || !sq) return;
+    if (document.getElementById('promotion-choice-modal')) return;
+    if (!ensureBranchReadyForMove()) return;
+    if (isAutoBotMode() && !isAnalysisBranchMode) return;
 
-    if (!ensureBranchReadyForMove()) return false;
-    if (isAutoBotMode() && !isAnalysisBranchMode) return false;
-
-    if (selectedSquare && sq !== selectedSquare && currentLegalMoves.find(m => m.to === sq)) {
-        if (!isAnalysisBranchMode && gameMode === 'pvb' && game.turn() !== playerColor) {
-            premoveQueue.push({ from: selectedSquare, to: sq });
-            selectedSquare = null; currentLegalMoves = [];
-            playSnd('move');
-            $('#status').text(`Premove #${premoveQueue.length} queued`);
-            renderBoard();
-        } else {
-            executeHumanMove(selectedSquare, sq);
+    // 1. Agar user ne target legal move square par tap kiya -> Move Execute
+    if (selectedSquare && sq !== selectedSquare) {
+        let validMove = currentLegalMoves.find(m => m.to === sq);
+        if (validMove) {
+            if (!isAnalysisBranchMode && gameMode === 'pvb' && game.turn() !== playerColor) {
+                premoveQueue.push({ from: selectedSquare, to: sq });
+                selectedSquare = null; currentLegalMoves = [];
+                playSnd('move');
+                $('#status').text(`Premove #${premoveQueue.length} queued`);
+                renderBoard();
+            } else {
+                executeHumanMove(selectedSquare, sq);
+            }
+            dragPieceState.active = false;
+            return;
         }
-        return true;
     }
 
+    // 2. Agar user ne wahi piece dubara tap kiya -> Deselect
+    if (selectedSquare === sq) {
+        selectedSquare = null;
+        currentLegalMoves = [];
+        updateSelectionAndDotsInPlace();
+        dragPieceState.active = false;
+        return;
+    }
+
+    // 3. Premove Selection
     if (!isAnalysisBranchMode && gameMode === 'pvb' && game.turn() !== playerColor) {
-        if (!premoveEnabled) return false;
+        if (!premoveEnabled) return;
         let vGame = getVirtualPremoveGame();
         let vp = vGame.get(sq);
         if (vp && vp.color === playerColor) {
             selectedSquare = sq;
             currentLegalMoves = vGame.moves({ square: sq, verbose: true });
             updateSelectionAndDotsInPlace();
-            $(`.square[data-square="${sq}"] .piece`).addClass('dragging-source-piece');
-            showGhostPiece(getPieceImageUrl(vp.color, vp.type), clientX, clientY);
             dragPieceState.active = true;
             dragPieceState.fromSq = sq;
             dragPieceState.currentSq = sq;
-            dragPieceState.isPremoveDrag = true;
-            return true;
+            dragPieceState.startX = clientX;
+            dragPieceState.startY = clientY;
+            dragPieceState.movedDistance = 0;
+            showGhostPiece(getPieceImageUrl(vp.color, vp.type), clientX, clientY);
+            $(`.square[data-square="${sq}"] .piece`).addClass('dragging-source-piece');
         } else {
             selectedSquare = null; currentLegalMoves = [];
             if (premoveQueue.length > 0) { premoveQueue = []; $('#status').text("Premoves cleared."); }
             renderBoard();
-            return false;
         }
+        return;
     }
 
+    // 4. Normal Move Selection
     let piece = game.get(sq);
     if (piece && piece.color === game.turn()) {
-        if (gameMode === 'pvb' && !isAnalysisBranchMode && piece.color !== playerColor) return false;
+        if (gameMode === 'pvb' && !isAnalysisBranchMode && piece.color !== playerColor) return;
         selectedSquare = sq;
         currentLegalMoves = game.moves({ square: sq, verbose: true });
         updateSelectionAndDotsInPlace();
-        $(`.square[data-square="${sq}"] .piece`).addClass('dragging-source-piece');
-        showGhostPiece(getPieceImageUrl(piece.color, piece.type), clientX, clientY);
-        $(`.square[data-square="${sq}"]`).addClass('drag-target-hover');
+
         dragPieceState.active = true;
         dragPieceState.fromSq = sq;
         dragPieceState.currentSq = sq;
-        dragPieceState.isPremoveDrag = false;
-        return true;
+        dragPieceState.startX = clientX;
+        dragPieceState.startY = clientY;
+        dragPieceState.movedDistance = 0;
+
+        showGhostPiece(getPieceImageUrl(piece.color, piece.type), clientX, clientY);
+        $(`.square[data-square="${sq}"] .piece`).addClass('dragging-source-piece');
     } else {
         selectedSquare = null;
         currentLegalMoves = [];
         updateSelectionAndDotsInPlace();
-        return false;
+        dragPieceState.active = false;
     }
 }
 
-function handleBoardPointerMove(clientX, clientY) {
+function handlePieceTouchMove(clientX, clientY) {
     if (!dragPieceState.active) return;
-    showGhostPiece(null, clientX, clientY);
-    let hoverSq = getBoardSquareFromPoint(clientX, clientY);
+    let dx = clientX - dragPieceState.startX;
+    let dy = clientY - dragPieceState.startY;
+    dragPieceState.movedDistance = Math.sqrt(dx * dx + dy * dy);
+
+    let ghost = document.getElementById('drag-ghost-piece');
+    if (ghost) {
+        ghost.style.left = clientX + 'px';
+        ghost.style.top = clientY + 'px';
+    }
+
+    let hoverSq = getSquareAtPoint(clientX, clientY);
     if (hoverSq !== dragPieceState.currentSq) {
         dragPieceState.currentSq = hoverSq;
         $('.square').removeClass('drag-target-hover');
@@ -590,19 +627,20 @@ function handleBoardPointerMove(clientX, clientY) {
     }
 }
 
-function handleBoardPointerUp(clientX, clientY) {
+function handlePieceTouchEnd(clientX, clientY) {
     if (!dragPieceState.active) return;
-    let dropSq = getBoardSquareFromPoint(clientX, clientY) || dragPieceState.currentSq;
     let fromSq = dragPieceState.fromSq;
-    let wasPremove = dragPieceState.isPremoveDrag;
+    let dropSq = getSquareAtPoint(clientX, clientY) || dragPieceState.currentSq;
+    let wasDragged = dragPieceState.movedDistance > 12;
 
     dragPieceState.active = false;
     hideGhostPiece();
 
-    if (dropSq && dropSq !== fromSq) {
+    // Agar user ne drag karke doosre square par chhora
+    if (wasDragged && dropSq && dropSq !== fromSq) {
         let validMove = currentLegalMoves.find(m => m.to === dropSq);
         if (validMove) {
-            if (wasPremove) {
+            if (!isAnalysisBranchMode && gameMode === 'pvb' && game.turn() !== playerColor) {
                 premoveQueue.push({ from: fromSq, to: dropSq });
                 selectedSquare = null; currentLegalMoves = [];
                 playSnd('move');
@@ -614,6 +652,7 @@ function handleBoardPointerUp(clientX, clientY) {
             return;
         }
     }
+    // Agar drag nahi tha (sirf tap tha), toh selectedSquare intact rahega taaki user next tap se move kar sake
     updateSelectionAndDotsInPlace();
 }
 
@@ -626,10 +665,12 @@ function bindPieceDragAndDropEvents() {
         getAudioCtx();
         if (document.getElementById('promotion-choice-modal')) return;
         if (e.touches && e.touches.length === 1) {
-            lastPieceTouchTime = Date.now();
             let t = e.touches[0];
-            let sq = getBoardSquareFromPoint(t.clientX, t.clientY);
-            if (sq) { e.preventDefault(); handleBoardPointerDown(sq, t.clientX, t.clientY); }
+            let sq = getSquareAtPoint(t.clientX, t.clientY);
+            if (sq) {
+                e.preventDefault();
+                handlePieceTouchStart(sq, t.clientX, t.clientY);
+            }
         }
     }, { passive: false });
 
@@ -637,31 +678,39 @@ function bindPieceDragAndDropEvents() {
         if (!dragPieceState.active) return;
         if (e.touches && e.touches.length === 1) {
             e.preventDefault();
-            handleBoardPointerMove(e.touches[0].clientX, e.touches[0].clientY);
+            handlePieceTouchMove(e.touches[0].clientX, e.touches[0].clientY);
         }
     }, { passive: false });
 
     window.addEventListener('touchend', function(e) {
         if (!dragPieceState.active) return;
         let t = (e.changedTouches && e.changedTouches[0]) ? e.changedTouches[0] : { clientX: 0, clientY: 0 };
-        handleBoardPointerUp(t.clientX, t.clientY);
+        handlePieceTouchEnd(t.clientX, t.clientY);
     }, { passive: false });
+
+    window.addEventListener('touchcancel', function() {
+        dragPieceState.active = false;
+        hideGhostPiece();
+    });
 
     boardEl.addEventListener('mousedown', function(e) {
         if (e.button !== 0) return;
         getAudioCtx();
-        let sq = getBoardSquareFromPoint(e.clientX, e.clientY);
-        if (sq) { e.preventDefault(); handleBoardPointerDown(sq, e.clientX, e.clientY); }
+        let sq = getSquareAtPoint(e.clientX, e.clientY);
+        if (sq) {
+            e.preventDefault();
+            handlePieceTouchStart(sq, e.clientX, e.clientY);
+        }
     });
 
     window.addEventListener('mousemove', function(e) {
         if (!dragPieceState.active) return;
-        handleBoardPointerMove(e.clientX, e.clientY);
+        handlePieceTouchMove(e.clientX, e.clientY);
     });
 
     window.addEventListener('mouseup', function(e) {
         if (!dragPieceState.active) return;
-        handleBoardPointerUp(e.clientX, e.clientY);
+        handlePieceTouchEnd(e.clientX, e.clientY);
     });
 }
 
@@ -844,7 +893,7 @@ function processMoveVisuals(moveObj, targetIndex) {
         }
     });
 
-    // AUTO-SAVE ON EVERY MOVE
+    // Har move par sirf session update karein (Cloud me multiple spam entries band)
     autoSaveCurrentState();
 }
 
@@ -1097,9 +1146,9 @@ function showAnalysisStatus() {
 }
 
 // ============================================================================
-// AUTO-SAVE & AUTO-RESUME ENGINE
+// CLEAN SESSION AUTO-SAVE (SAVES LOCAL SESSION ONLY - NO CLOUD SPAMMING)
 // ============================================================================
-// Har move chalne par local storage aur cloud dono me active game save karein
+
 function autoSaveCurrentState() {
     if (isMatchOver()) {
         localStorage.removeItem('chess_active_match');
@@ -1117,66 +1166,60 @@ function autoSaveCurrentState() {
         timerStarted: timerStarted
     };
     localStorage.setItem('chess_active_match', JSON.stringify(state));
-
-    // Move chalte hi Supabase me latest In-Progress entry save karein
-    if (gameHistory.length >= 2 && window.saveActiveMatchStateToCloud) {
-        window.saveActiveMatchStateToCloud();
-    }
 }
 
-// App khulte hi pehle local session dekhein, na mile toh cloud se latest match uthayein
 function autoResumePreviousMatch() {
     let raw = localStorage.getItem('chess_active_match');
-    if (raw) {
-        try {
-            let state = JSON.parse(raw);
-            if (state && state.fen) {
-                applyResumedGameState(state);
-                return;
-            }
-        } catch (e) {}
-    }
+    if (!raw) return;
+    try {
+        let state = JSON.parse(raw);
+        if (!state || !state.fen) return;
 
-    // Cloud Fallback: Agar local clear ho gaya ho toh cloud se In Progress game restore karein
-    $.get('/get_matches', function(data) {
-        let matches = data.matches || [];
-        let inProgressGame = matches.find(m => m.result && m.result.includes("In Progress"));
-        if (inProgressGame && inProgressGame.fen) {
-            game.load(inProgressGame.fen);
-            gameHistory = [{ fen: inProgressGame.fen, moveObj: null }];
-            historyIndex = 0;
-            matchEnded = false;
-            isAnalysisBranchMode = false;
-            renderBoard();
-            updateTimer();
-            updateEvalBar(0);
-            updateMaterial(inProgressGame.fen);
-            updateStatus();
-            $('#status').text("Resumed active match from cloud.");
+        game.load(state.fen);
+        gameHistory = state.gameHistory || [{ fen: state.fen, moveObj: null }];
+        historyIndex = state.historyIndex !== undefined ? state.historyIndex : gameHistory.length - 1;
+        whiteTime = state.whiteTime || 600;
+        blackTime = state.blackTime || 600;
+        playerColor = state.playerColor || 'w';
+        currentBoardOrientation = state.currentBoardOrientation || 'w';
+        gameMode = state.gameMode || 'pvb';
+        timerStarted = state.timerStarted || false;
+
+        renderBoard();
+        updateTimer();
+        updateEvalBar(historyIndex);
+        updateMaterial(game.fen());
+        updateStatus();
+        syncEloBadgeVisibility();
+
+        if (timerStarted && !isMatchOver()) {
+            startTimer();
         }
-    });
-}
-
-function applyResumedGameState(state) {
-    game.load(state.fen);
-    gameHistory = state.gameHistory || [{ fen: state.fen, moveObj: null }];
-    historyIndex = state.historyIndex !== undefined ? state.historyIndex : gameHistory.length - 1;
-    whiteTime = state.whiteTime || 600;
-    blackTime = state.blackTime || 600;
-    playerColor = state.playerColor || 'w';
-    currentBoardOrientation = state.currentBoardOrientation || 'w';
-    gameMode = state.gameMode || 'pvb';
-    timerStarted = state.timerStarted || false;
-
-    renderBoard();
-    updateTimer();
-    updateEvalBar(historyIndex);
-    updateMaterial(game.fen());
-    updateStatus();
-    syncEloBadgeVisibility();
-
-    if (timerStarted && !isMatchOver()) {
-        startTimer();
+        $('#status').text("Game resumed from active session.");
+    } catch (e) {
+        localStorage.removeItem('chess_active_match');
     }
-    $('#status').text("Game resumed successfully.");
 }
+
+$(document).ready(function() {
+    preloadAllSounds();
+    bindPieceDragAndDropEvents();
+    document.body.addEventListener('touchstart', () => getAudioCtx(), { once: true });
+    document.body.addEventListener('click', () => getAudioCtx(), { once: true });
+
+    let savedTheme = localStorage.getItem('saved_chess_theme');
+    if (savedTheme) {
+        let sel = safeEl('setting-board-theme');
+        if (sel) sel.value = savedTheme;
+        document.body.className = document.body.className.replace(/\btheme-[^\s]+\b/g, '').trim();
+        document.body.classList.add(savedTheme);
+    }
+
+    let savedPieces = localStorage.getItem('saved_chess_piece_style');
+    if (savedPieces) {
+        let pSel = safeEl('setting-piece-style');
+        if (pSel) pSel.value = savedPieces;
+    }
+
+    autoResumePreviousMatch();
+});
