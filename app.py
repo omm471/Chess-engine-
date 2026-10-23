@@ -1,330 +1,711 @@
-/* ============================================================================
-   static/mod_share_vault.js (v111 - Client-Local Time, Single PGN & 3-Dot Vault)
-   - Auto-detects device/country local timezone for match timestamps
-   - Single-match in-place update (prevents multiple move-by-move file spam)
-   - Three-dot (⋮) menu toggle for secure "Delete All Game History"
-   - Complete card actions: Resume/Replay, Report, Copy PGN, and Delete
-   ============================================================================ */
+import os
+import math
+import random
+import shutil
+import subprocess
+import threading
+import urllib.request
+import zipfile
+from datetime import datetime
+from functools import wraps
 
-window.currentActiveMatchDbId = localStorage.getItem('chess_current_db_id') || null;
+try:
+    import ujson as json
+except ImportError:
+    import json
 
-// User ke device/country ka exact local date aur time format nikalne ka helper
-function getUserDeviceFormattedDate() {
-    let now = new Date();
-    let datePart = now.toLocaleDateString(undefined, {
-        day: '2-digit',
-        month: 'short',
-        year: 'numeric'
-    });
-    let timePart = now.toLocaleTimeString(undefined, {
-        hour: '2-digit',
-        minute: '2-digit',
-        hour12: true
-    });
-    return `${datePart} • ${timePart}`;
+try:
+    import requests
+except ImportError:
+    requests = None
+
+import chess
+import chess.engine
+from flask import Flask, render_template, request, jsonify, send_from_directory, abort, render_template_string
+
+app = Flask(__name__)
+engine_lock = threading.Lock()
+
+# ============================================================================
+# SUPABASE CLOUD DATABASE CONFIGURATION (LIVE 2-WAY SYNC)
+# ============================================================================
+SUPABASE_URL = "https://fgywwlynrzwmjjiezqbj.supabase.co"
+SUPABASE_KEY = "sb_publishable_L1C1cD_0p6L9qg0k4qHCZQ_UkJy_cGe"
+
+SUPABASE_HEADERS = {
+    "apikey": SUPABASE_KEY,
+    "Authorization": f"Bearer {SUPABASE_KEY}",
+    "Content-Type": "application/json"
 }
 
-window.buildBrandedPGN = function() {
-    let wName = getWhiteDisplayName();
-    let bName = getBlackDisplayName();
-    let wAcc = getTextSafe('white-acc-text', '100%');
-    let bAcc = getTextSafe('black-acc-text', '100%');
-    let opening = getTextSafe('opening-bar', 'Standard Opening');
-    let dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, '.');
+ZIP_THEMES_PATH = os.path.join(os.path.abspath('static'), 'chessthemes.zip')
+BOARDS_DIR = os.path.join(os.path.abspath('static'), 'boards')
 
-    let resCode = "*";
-    if (game.in_checkmate()) resCode = (game.turn() === 'w') ? "0-1" : "1-0";
-    else if (game.in_draw()) resCode = "1/2-1/2";
-    else if (matchEnded && gameEndEffect) {
-        if (gameEndEffect.winner === 'w') resCode = "1-0";
-        else if (gameEndEffect.winner === 'b') resCode = "0-1";
-        else if (gameEndEffect.winner === 'draw') resCode = "1/2-1/2";
-    }
+if os.path.exists(ZIP_THEMES_PATH) and not os.path.exists(BOARDS_DIR):
+    try:
+        os.makedirs(BOARDS_DIR, exist_ok=True)
+        with zipfile.ZipFile(ZIP_THEMES_PATH, 'r') as zf:
+            zf.extractall(BOARDS_DIR)
+        print("[✔] Board Themes extracted successfully.", flush=True)
+    except Exception as e:
+        print("[!] Theme extraction error:", e, flush=True)
 
-    let movesText = "";
-    for (let i = 1; i < gameHistory.length; i++) {
-        let rec = gameHistory[i];
-        if (!rec || !rec.moveObj) continue;
-        if (i % 2 === 1) movesText += `${Math.ceil(i / 2)}. ${rec.moveObj.san} `;
-        else movesText += `${rec.moveObj.san} `;
-    }
-    if (!movesText.trim()) movesText = game.pgn() || "";
+JS_DIR = os.path.join(os.path.abspath('static'), 'js')
+os.makedirs(JS_DIR, exist_ok=True)
 
-    let headers = [
-        `[Event "Chess AI Pro Match"]`,
-        `[Site "Chess AI Pro • Android PRoot"]`,
-        `[Date "${dateStr}"]`,
-        `[White "${wName}"]`,
-        `[Black "${bName}"]`,
-        `[Result "${resCode}"]`,
-        `[Opening "${opening}"]`,
-        `[WhiteAccuracy "${wAcc}"]`,
-        `[BlackAccuracy "${bAcc}"]`,
-        `[FEN "${gameHistory[0] ? gameHistory[0].fen : game.fen()}"]`
-    ].join('\n');
-
-    return `${headers}\n\n${movesText.trim()} ${resCode}`.trim();
-};
-
-window.openShareModal = function() {
-    try { window.history.pushState({ modalOpen: true }, ""); } catch (e) {}
-    if (window.updateAccuracySummary) window.updateAccuracySummary();
-    let box = safeEl('branded-pgn-box');
-    if (box) box.value = window.buildBrandedPGN();
-    safeDisplay('share-modal', 'flex');
-};
-
-window.copyBrandedPGN = function() {
-    let box = safeEl('branded-pgn-box');
-    if (!box) return;
-    box.select();
-    navigator.clipboard.writeText(box.value).then(() => {
-        alert("Branded PGN copied to clipboard!");
-    }).catch(() => {
-        document.execCommand('copy');
-        alert("Branded PGN copied!");
-    });
-};
-
-window.shareBrandedGameNative = function() {
-    let pgn = window.buildBrandedPGN();
-    if (navigator.share) {
-        navigator.share({ title: 'Chess AI Pro Match PGN', text: pgn }).catch(() => {});
-    } else {
-        copyBrandedPGN();
-    }
-};
-
-window.copyCurrentFEN = function() {
-    let fen = (historyIndex >= 0 && gameHistory[historyIndex]) ? gameHistory[historyIndex].fen : game.fen();
-    navigator.clipboard.writeText(fen).then(() => {
-        alert("FEN copied: " + fen);
-    }).catch(() => {
-        prompt("Copy FEN:", fen);
-    });
-};
-
-window.openMatchVaultModal = function() {
-    try { window.history.pushState({ modalOpen: true }, ""); } catch (e) {}
-    setupVaultThreeDotMenu();
-    window.refreshMatchVaultList();
-    safeDisplay('vault-modal', 'flex');
-};
-
-// ============================================================================
-// THREE-DOT (⋮) MENU (ATTACHED NEXT TO REFRESH BUTTON)
-// ============================================================================
-function setupVaultThreeDotMenu() {
-    let refreshBtn = $('#vault-modal button:contains("↻"), .vault-refresh-btn');
-    if (!refreshBtn.length) {
-        refreshBtn = $('#vault-modal').find('button').filter(function() {
-            return $(this).text().trim() === '↻';
-        });
-    }
-
-    if (refreshBtn.length && !$('#vault-threedot-wrap').length) {
-        let menuHtml = `
-        <div id="vault-threedot-wrap" style="position:relative; display:inline-block; margin-left:6px;">
-            <button id="vault-threedot-btn" onclick="window.toggleVaultDropdown(event)" style="background:#2a2b2e; color:#eee; border:1px solid #444; border-radius:6px; width:38px; height:38px; font-size:18px; cursor:pointer; font-weight:bold; display:flex; align-items:center; justify-content:center;">
-                ⋮
-            </button>
-            <div id="vault-dropdown-menu" style="display:none; position:absolute; right:0; top:44px; background:#1e1e24; border:1px solid #da3633; border-radius:8px; box-shadow:0 8px 24px rgba(0,0,0,0.85); z-index:999999; min-width:215px; overflow:hidden;">
-                <div onclick="window.confirmDeleteAllMatches()" style="color:#ff6b6b; padding:12px 14px; font-size:12px; font-weight:bold; cursor:pointer; display:flex; align-items:center; gap:8px;" onmouseover="this.style.background='#2d1517'" onmouseout="this.style.background='transparent'">
-                    🗑 Delete All Game History
-                </div>
-            </div>
-        </div>`;
-        refreshBtn.after(menuHtml);
-
-        document.addEventListener('click', function(e) {
-            if (!$(e.target).closest('#vault-threedot-wrap').length) {
-                $('#vault-dropdown-menu').hide();
-            }
-        });
-    }
+deps = {
+    "jquery.min.js": "https://code.jquery.com/jquery-3.5.1.min.js",
+    "chess.min.js": "https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js"
 }
 
-window.toggleVaultDropdown = function(e) {
-    if (e) e.stopPropagation();
-    $('#vault-dropdown-menu').toggle();
-};
+for fname, url in deps.items():
+    fpath = os.path.join(JS_DIR, fname)
+    if not os.path.exists(fpath):
+        try:
+            urllib.request.urlretrieve(url, fpath)
+            print(f"[✔] Downloaded dependency: {fname}", flush=True)
+        except Exception as e:
+            print(f"[!] Could not download {fname}:", e, flush=True)
 
-// ============================================================================
-// CLOUD VAULT LIST RENDERER
-// ============================================================================
-window.refreshMatchVaultList = function() {
-    let container = $('#vault-matches-list');
-    if (!container.length) {
-        container = $('#vault-modal .modal-body, .vault-modal-content, .archive-container');
+ENGINES_DIR = os.path.abspath('engines')
+os.makedirs(ENGINES_DIR, exist_ok=True)
+OPENINGS_CACHE_FILE = os.path.abspath('eco_openings_full.json')
+HW_CONFIG_FILE = os.path.abspath('engine_hw_config.json')
+
+SOUND_DIR = os.path.abspath('sound')
+for search_base in [os.getcwd(), '/root', '/data/data/com.termux/files/home']:
+    if not os.path.exists(search_base):
+        continue
+    for root_dir, dirs, files in os.walk(search_base):
+        low_files = [f.lower() for f in files]
+        if any(k in low_files for k in ['move-self.mp3', 'capture.mp3', 'game-end.mp3']):
+            SOUND_DIR = root_dir
+            break
+    if os.path.exists(os.path.join(SOUND_DIR, 'move-self.mp3')):
+        break
+
+DEFAULT_ENGINE_PATH = shutil.which("stockfish") or "/usr/games/stockfish"
+if not os.path.exists(DEFAULT_ENGINE_PATH):
+    for path in ["/usr/bin/stockfish", "/usr/local/bin/stockfish", "stockfish"]:
+        if shutil.which(path) or os.path.exists(path):
+            DEFAULT_ENGINE_PATH = path
+            break
+
+PRESET_NAMES = {
+    "sf19": "Stockfish 19 (Next-Gen NNUE)",
+    "sf18": "Stockfish 18 (Ultra Tactical)",
+    "sf17": "Stockfish 17.1 (NNUE)",
+    "sf16": "Stockfish 16 (Pro)",
+    "sf15": "Stockfish 15 (Classical)",
+    "sf14": "Stockfish 14 (Sharp)"
+}
+
+engine_state = {
+    "path": DEFAULT_ENGINE_PATH,
+    "protocol": "uci",
+    "real_name": "Stockfish 19 (Next-Gen NNUE)",
+    "preset": "sf19",
+    "hash": 256,
+    "threads": 4,
+    "use_nnue": True,
+    "last_nps": 0,
+    "last_depth": 0,
+    "last_seldepth": 0
+}
+
+if os.path.exists(HW_CONFIG_FILE):
+    try:
+        with open(HW_CONFIG_FILE, 'r') as f:
+            saved_hw = json.load(f)
+            engine_state["hash"] = min(4096, max(16, int(saved_hw.get("hash", 256))))
+            engine_state["threads"] = min(32, max(1, int(saved_hw.get("threads", 4))))
+            engine_state["use_nnue"] = bool(saved_hw.get("use_nnue", True))
+            if saved_hw.get("path") and os.path.exists(saved_hw.get("path")):
+                engine_state["path"] = saved_hw.get("path")
+            engine_state["preset"] = saved_hw.get("preset", "sf19")
+    except Exception:
+        pass
+
+def save_hw_config():
+    try:
+        with open(HW_CONFIG_FILE, 'w') as f:
+            json.dump({
+                "path": engine_state["path"],
+                "preset": engine_state["preset"],
+                "hash": engine_state["hash"],
+                "threads": engine_state["threads"],
+                "use_nnue": engine_state["use_nnue"]
+            }, f)
+    except Exception:
+        pass
+
+def open_any_chess_engine(bin_path):
+    try: 
+        os.chmod(bin_path, 0o755)
+    except Exception: 
+        pass
+    low_name = os.path.basename(bin_path).lower()
+    prefer_xboard = any(k in low_name for k in ["phalanx", "fairymax", "xphalanx", "crafty", "gnuchess"])
+    if not prefer_xboard:
+        try: 
+            return chess.engine.SimpleEngine.popen_uci(bin_path, timeout=8.0), "uci"
+        except Exception: 
+            pass
+        try: 
+            return chess.engine.SimpleEngine.popen_xboard(bin_path, timeout=8.0), "xboard"
+        except Exception as e: 
+            raise RuntimeError(f"Cannot load binary: {e}")
+    else:
+        try: 
+            return chess.engine.SimpleEngine.popen_xboard(bin_path, timeout=8.0), "xboard"
+        except Exception: 
+            pass
+        try: 
+            return chess.engine.SimpleEngine.popen_uci(bin_path, timeout=8.0), "uci"
+        except Exception as e: 
+            raise RuntimeError(f"Cannot load binary: {e}")
+
+try:
+    engine, proto = open_any_chess_engine(engine_state["path"])
+except Exception:
+    engine_state["path"] = DEFAULT_ENGINE_PATH
+    engine, proto = open_any_chess_engine(DEFAULT_ENGINE_PATH)
+
+engine_state["protocol"] = proto
+engine_state["real_name"] = PRESET_NAMES.get(engine_state["preset"], engine.id.get("name", "Stockfish 19"))
+
+def apply_hardware_settings_to_engine():
+    applied = {}
+    try:
+        opts = engine.options
+        for t_key in ["Threads", "Number of Threads", "cores"]:
+            if t_key in opts:
+                t_opt = opts[t_key]
+                max_t = getattr(t_opt, 'max', 32) or 32
+                t_val = max(1, min(max_t, int(engine_state["threads"])))
+                engine.configure({t_key: t_val})
+                applied["Threads"] = t_val
+                engine_state["threads"] = t_val
+                break
+        if "Hash" in opts:
+            h_opt = opts["Hash"]
+            max_h = min(4096, getattr(h_opt, 'max', 4096) or 4096)
+            h_val = max(16, min(max_h, int(engine_state["hash"])))
+            engine.configure({"Hash": h_val})
+            applied["Hash"] = h_val
+            engine_state["hash"] = h_val
+        if "Use NNUE" in opts:
+            engine.configure({"Use NNUE": bool(engine_state["use_nnue"])})
+            applied["Use NNUE"] = bool(engine_state["use_nnue"])
+    except Exception:
+        pass
+    save_hw_config()
+    return applied
+
+with engine_lock:
+    apply_hardware_settings_to_engine()
+
+def ensure_Engine_Loaded(req_path, req_preset):
+    global engine
+    target_path = req_path.strip() if req_path else ""
+    if not target_path or not os.path.exists(target_path):
+        target_path = DEFAULT_ENGINE_PATH
+    if target_path != engine_state["path"]:
+        try:
+            new_eng, proto = open_any_chess_engine(target_path)
+            try: 
+                engine.quit()
+            except Exception: 
+                pass
+            engine = new_eng
+            engine_state["path"] = target_path
+            engine_state["protocol"] = proto
+            apply_hardware_settings_to_engine()
+        except Exception:
+            pass
+    if req_preset:
+        engine_state["preset"] = req_preset
+        engine_state["real_name"] = PRESET_NAMES.get(req_preset, engine.id.get("name", os.path.basename(engine_state["path"])))
+    else:
+        engine_state["real_name"] = engine.id.get("name", os.path.basename(engine_state["path"]))
+
+ELO_CONFIG = {
+    "400":  {"skill": 0,  "uci_elo": 400,  "depth": 1,  "multipv": 5, "weights": [10, 20, 25, 25, 20], "random_blunder": 0.40},
+    "600":  {"skill": 1,  "uci_elo": 600,  "depth": 2,  "multipv": 5, "weights": [15, 25, 25, 20, 15], "random_blunder": 0.28},
+    "850":  {"skill": 3,  "uci_elo": 850,  "depth": 3,  "multipv": 4, "weights": [25, 30, 25, 20],     "random_blunder": 0.18},
+    "1000": {"skill": 4,  "uci_elo": 1000, "depth": 4,  "multipv": 4, "weights": [35, 30, 20, 15],     "random_blunder": 0.12},
+    "1200": {"skill": 6,  "uci_elo": 1200, "depth": 5,  "multipv": 3, "weights": [45, 35, 20],         "random_blunder": 0.06},
+    "1500": {"skill": 9,  "uci_elo": 1500, "depth": 8,  "multipv": 3, "weights": [60, 25, 15],         "random_blunder": 0.03},
+    "1800": {"skill": 12, "uci_elo": 1800, "depth": 11, "multipv": 2, "weights": [75, 25],             "random_blunder": 0.0},
+    "2000": {"skill": 15, "uci_elo": 2000, "depth": 14, "multipv": 1, "weights": [100],                "random_blunder": 0.0},
+    "2300": {"skill": 18, "uci_elo": 2300, "depth": 18, "multipv": 1, "weights": [100],                "random_blunder": 0.0},
+    "2500": {"skill": 20, "uci_elo": 2850, "depth": 22, "multipv": 1, "weights": [100],                "random_blunder": 0.0},
+    "2800": {"skill": 20, "uci_elo": 3100, "depth": 26, "multipv": 1, "weights": [100],                "random_blunder": 0.0}
+}
+
+def score_to_cp_and_winpct(sc):
+    if sc.is_mate():
+        m = sc.mate()
+        cp_val = (10000 - abs(m) * 100) if m > 0 else (-10000 + abs(m) * 100)
+        win_pct = 99.5 if m > 0 else 0.5
+        text = f"M{m}" if m > 0 else f"-M{abs(m)}"
+    else:
+        cp_val = sc.score() or 0
+        win_pct = 50.0 + 50.0 * (2.0 / (1.0 + math.exp(-0.00368208 * cp_val)) - 1.0)
+        win_pct = max(1.0, min(99.0, win_pct))
+        text = f"{cp_val / 100.0:+.1f}"
+    return cp_val, round(win_pct, 1), text
+
+@app.route('/')
+def index():
+    return render_template('index.html')
+
+# ============================================================================
+# SUPABASE DATABASE ROUTES (CLOUD MATCHES & ARCHIVES)
+# ============================================================================
+
+@app.route('/save_match', methods=['POST'])
+def save_match():
+    match_id = request.form.get('id', '').strip()
+    user_local_date = request.form.get('date', '').strip()
+    if not user_local_date:
+        user_local_date = datetime.now().strftime("%d %b %Y • %I:%M %p")
+
+    match_payload = {
+        "date": user_local_date,
+        "white": request.form.get('white', 'White'),
+        "black": request.form.get('black', 'Black'),
+        "result": request.form.get('result', 'Match Over'),
+        "w_acc": request.form.get('w_acc', '--%'),
+        "b_acc": request.form.get('b_acc', '--%'),
+        "opening": request.form.get('opening', 'Standard'),
+        "pgn": request.form.get('pgn', ''),
+        "fen": request.form.get('fen', '')
     }
-    if (!container.length) return;
 
-    container.html('<div style="text-align:center;padding:24px;color:#aaa;">Loading Cloud Archive...</div>');
+    try:
+        if match_id and match_id not in ['null', 'undefined', '0']:
+            res = requests.patch(
+                f"{SUPABASE_URL}/rest/v1/matches?id=eq.{match_id}",
+                headers=SUPABASE_HEADERS,
+                json=match_payload,
+                timeout=8
+            )
+            return jsonify({"status": "updated", "id": match_id})
+        else:
+            headers = {**SUPABASE_HEADERS, "Prefer": "return=representation"}
+            res = requests.post(
+                f"{SUPABASE_URL}/rest/v1/matches",
+                headers=headers,
+                json=match_payload,
+                timeout=8
+            )
+            created = res.json()
+            new_id = created[0]["id"] if isinstance(created, list) and len(created) > 0 else None
+            return jsonify({"status": "saved", "id": new_id})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
 
-    $.get('/get_matches', function(data) {
-        container.empty();
-        let matches = data.matches || [];
+@app.route('/get_matches', methods=['POST', 'GET'])
+def get_matches():
+    try:
+        res = requests.get(
+            f"{SUPABASE_URL}/rest/v1/matches?select=*&order=id.desc&limit=50",
+            headers=SUPABASE_HEADERS,
+            timeout=8
+        )
+        if res.status_code == 200:
+            return jsonify({"matches": res.json()})
+        return jsonify({"matches": []})
+    except Exception:
+        return jsonify({"matches": []})
 
-        if (matches.length === 0) {
-            container.html('<div style="text-align:center;padding:34px;color:#777;">No saved games in your archive yet.</div>');
-            return;
+@app.route('/delete_match', methods=['POST'])
+def delete_match():
+    match_id = request.form.get('id', '').strip()
+    if not match_id:
+        return jsonify({"status": "error", "message": "No match ID provided"}), 400
+    try:
+        res = requests.delete(
+            f"{SUPABASE_URL}/rest/v1/matches?id=eq.{match_id}",
+            headers=SUPABASE_HEADERS,
+            timeout=8
+        )
+        if res.status_code in [200, 204]:
+            return jsonify({"status": "deleted"})
+        return jsonify({"status": "error", "message": res.text}), res.status_code
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@app.route('/delete_all_matches', methods=['POST'])
+def delete_all_matches():
+    try:
+        res = requests.delete(
+            f"{SUPABASE_URL}/rest/v1/matches?id=gt.0",
+            headers=SUPABASE_HEADERS,
+            timeout=8
+        )
+        if res.status_code in [200, 204]:
+            return jsonify({"status": "cleared"})
+        return jsonify({"status": "error", "message": res.text}), res.status_code
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@app.route('/api/export_all_pgn', methods=['GET'])
+def export_all_pgn():
+    try:
+        res = requests.get(
+            f"{SUPABASE_URL}/rest/v1/matches?select=pgn&order=id.asc",
+            headers=SUPABASE_HEADERS,
+            timeout=8
+        )
+        if res.status_code == 200:
+            rows = res.json()
+            all_pgns = [r.get("pgn", "").strip() for r in rows if r.get("pgn", "").strip()]
+            combined_text = "\n\n\n".join(all_pgns)
+            return jsonify({
+                "status": "success",
+                "count": len(all_pgns),
+                "multi_pgn": combined_text
+            })
+        return jsonify({"status": "error", "message": "Failed to fetch cloud records"}), 500
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@app.route('/sound/<path:filename>')
+def serve_sound(filename):
+    direct = os.path.join(SOUND_DIR, filename)
+    if os.path.exists(direct): 
+        return send_from_directory(SOUND_DIR, filename)
+    if os.path.exists(SOUND_DIR):
+        files = os.listdir(SOUND_DIR)
+        base_req = os.path.splitext(filename)[0].lower()
+        aliases = {
+            "game-end": ["game-end", "game_end", "gameover", "checkmate", "win"],
+            "notify": ["notify", "popup", "achievement", "lesson-pass"],
+            "move-self": ["move-self", "move"],
+            "capture": ["capture", "takes"],
+            "move-check": ["move-check", "check"],
+            "castle": ["castle"],
+            "promote": ["promote"],
+            "game-start": ["game-start", "start"],
+            "illegal": ["illegal", "error"],
+            "tenseconds": ["tenseconds", "clock"]
         }
+        for cand in aliases.get(base_req, [base_req]):
+            for f in files:
+                if cand in f.lower(): 
+                    return send_from_directory(SOUND_DIR, f)
+    return ('', 204)
 
-        matches.forEach(m => {
-            let isInProgress = m.result && m.result.toLowerCase().includes("in progress");
-            let actionBtnText = isInProgress ? "▶ Resume" : "▶ Replay";
-            let actionBtnColor = isInProgress ? "#2ea043" : "#81b64c";
+@app.route('/eco_book', methods=['GET'])
+def get_eco_book():
+    if os.path.exists(OPENINGS_CACHE_FILE):
+        try:
+            with open(OPENINGS_CACHE_FILE, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            return jsonify({"count": len(data), "openings": data})
+        except Exception: 
+            pass
+    return jsonify({"count": 0, "openings": []})
 
-            // Move count calculation
-            let moveCount = "1 move";
-            if (m.fen) {
-                let parts = m.fen.split(' ');
-                if (parts.length >= 6) {
-                    let fullMoves = parseInt(parts[5]);
-                    if (!isNaN(fullMoves)) moveCount = `${fullMoves} moves`;
-                }
-            }
+@app.route('/ai_move', methods=['POST'])
+def ai_move():
+    fen = request.form.get('fen')
+    level = str(request.form.get('level', '2500')).replace('+', '')
+    think_time = float(request.form.get('think_time', 0.8))
+    user_depth = int(request.form.get('depth', 20))
+    req_engine_path = request.form.get('engine_path', '')
+    req_engine_preset = request.form.get('engine_preset', '')
 
-            let itemHtml = `
-            <div class="vault-card" style="background:#1e1e1e;border:1px solid #333;border-radius:8px;padding:12px;margin-bottom:10px;">
-                <div style="display:flex;justify-content:space-between;align-items:center;">
-                    <div style="font-weight:bold;color:#eee;">♔ ${m.white} <span style="color:#777;font-size:12px;">vs</span> ♚ ${m.black}</div>
-                    <span style="font-size:11px;background:#2a2b2e;padding:2px 8px;border-radius:4px;color:${isInProgress ? '#e3b341' : '#81b64c'};">${m.result}</span>
-                </div>
-                <div style="font-size:11px;color:#888;margin:5px 0;">
-                    <span style="color:#81b64c;">${m.opening || 'Standard'}</span> • ${moveCount} • ${m.date}
-                </div>
-                <div style="display:flex;gap:6px;margin-bottom:8px;">
-                    <span style="font-size:11px;background:#26272b;color:#ccc;padding:2px 6px;border-radius:4px;">White Acc: <b>${m.w_acc || '--%'}</b></span>
-                    <span style="font-size:11px;background:#26272b;color:#ccc;padding:2px 6px;border-radius:4px;">Black Acc: <b>${m.b_acc || '--%'}</b></span>
-                </div>
-                <div style="display:flex;gap:6px;">
-                    <button onclick="window.loadVaultMatch('${m.id}', '${m.fen}', ${isInProgress})" style="flex:1.2;background:${actionBtnColor};color:#fff;border:none;padding:7px;border-radius:4px;font-weight:bold;cursor:pointer;">${actionBtnText}</button>
-                    <button onclick="window.viewVaultMatchReport('${encodeURIComponent(m.pgn || '')}')" style="flex:1;background:#2b5278;color:#fff;border:none;padding:7px;border-radius:4px;font-weight:bold;cursor:pointer;">📊 Report</button>
-                    <button onclick="window.copySingleVaultPgn('${encodeURIComponent(m.pgn || '')}')" style="flex:1;background:#3a3b40;color:#ddd;border:none;padding:7px;border-radius:4px;font-weight:bold;cursor:pointer;">📋 PGN</button>
-                    <button onclick="window.deleteSingleMatch('${m.id}')" style="background:#da3633;color:#fff;border:none;padding:7px 12px;border-radius:4px;cursor:pointer;font-weight:bold;">✕</button>
-                </div>
-            </div>`;
-            container.append(itemHtml);
-        });
-    });
-};
+    config = ELO_CONFIG.get(level, ELO_CONFIG["2500"])
+    board = chess.Board(fen)
+    if board.is_game_over(): 
+        return jsonify({'move': None})
 
-window.viewVaultMatchReport = function(encodedPgn) {
-    let rawPgn = decodeURIComponent(encodedPgn || "");
-    if (!rawPgn) {
-        alert("No PGN moves available for this game.");
-        return;
-    }
-    if (window.openReportModalWithPgn) {
-        window.openReportModalWithPgn(rawPgn);
-    } else if (window.openReportModal) {
-        window.openReportModal();
-    } else {
-        alert("Game Review / Report opened for this game.");
-    }
-};
+    chosen_move, best_eval_move, prev_cp = None, None, None
 
-window.copySingleVaultPgn = function(encodedPgn) {
-    let rawPgn = decodeURIComponent(encodedPgn || "");
-    if (!rawPgn) {
-        alert("PGN text empty.");
-        return;
-    }
-    navigator.clipboard.writeText(rawPgn).then(() => {
-        alert("Match PGN copied to clipboard!");
-    }).catch(() => {
-        prompt("Copy Match PGN:", rawPgn);
-    });
-};
+    with engine_lock:
+        try:
+            if req_engine_path or req_engine_preset:
+                ensure_Engine_Loaded(req_engine_path, req_engine_preset)
 
-window.loadVaultMatch = function(id, fen, isResume) {
-    if (!fen) return;
-    closeModal('vault-modal');
-    game.load(fen);
-    gameHistory = [{ fen: fen, moveObj: null }];
-    historyIndex = 0;
-    selectedSquare = null;
-    currentLegalMoves = [];
+            is_uci = (engine_state["protocol"] == "uci")
+            opts = engine.options if is_uci else {}
 
-    if (isResume) {
-        window.currentActiveMatchDbId = id;
-        localStorage.setItem('chess_current_db_id', id);
-        matchEnded = false;
-        isAnalysisBranchMode = false;
-        renderBoard();
-        updateStatus();
-        startTimer();
-        $('#status').text("Resumed match from archive.");
-    } else {
-        matchEnded = true;
-        isAnalysisBranchMode = true;
-        stopAllActiveMatchProcesses();
-        renderBoard();
-        $('#status').text("Replay Mode (Finished Match)");
-    }
-};
+            if is_uci:
+                cfg = {}
+                if "Skill Level" in opts: 
+                    cfg["Skill Level"] = config["skill"]
+                if "UCI_LimitStrength" in opts and "UCI_Elo" in opts:
+                    cfg["UCI_LimitStrength"] = (int(level) < 2300)
+                    if int(level) < 2300:
+                        cfg["UCI_Elo"] = max(1320, min(2850, config["uci_elo"]))
+                if cfg:
+                    try: 
+                        engine.configure(cfg)
+                    except Exception: 
+                        pass
 
-window.deleteSingleMatch = function(id) {
-    if (!confirm("Are you sure you want to delete this match?")) return;
-    $.post('/delete_match', { id: id }, function() {
-        if (window.currentActiveMatchDbId == id) {
-            window.currentActiveMatchDbId = null;
-            localStorage.removeItem('chess_current_db_id');
+            eff_depth = min(config["depth"], user_depth) if int(level) < 2300 else max(user_depth, config["depth"])
+            eff_time = min(think_time, 0.25) if int(level) <= 1200 else think_time
+            mpv = config["multipv"]
+
+            if not is_uci or int(level) >= 2000:
+                if is_uci:
+                    info = engine.analyse(board, chess.engine.Limit(time=eff_time, depth=eff_depth))
+                    if isinstance(info, list): 
+                        info = info[0]
+                    if "nps" in info: 
+                        engine_state["last_nps"] = info["nps"]
+                    if "depth" in info: 
+                        engine_state["last_depth"] = info["depth"]
+                    if "pv" in info and len(info["pv"]) > 0:
+                        chosen_move = info["pv"][0]
+                        best_eval_move = chosen_move
+                    if "score" in info:
+                        prev_cp, _, _ = score_to_cp_and_winpct(info["score"].white())
+                if not chosen_move:
+                    res = engine.play(board, chess.engine.Limit(time=eff_time, depth=eff_depth))
+                    chosen_move = res.move
+                    best_eval_move = res.move
+            else:
+                info = engine.analyse(board, chess.engine.Limit(time=eff_time, depth=eff_depth), multipv=mpv if ("MultiPV" in opts and mpv > 1) else 1)
+                if isinstance(info, dict): 
+                    info = [info]
+                if info and len(info) > 0:
+                    top_info = info[0]
+                    if "nps" in top_info: 
+                        engine_state["last_nps"] = top_info["nps"]
+                    if "depth" in top_info: 
+                        engine_state["last_depth"] = top_info["depth"]
+                    if "pv" in top_info and len(top_info["pv"]) > 0:
+                        best_eval_move = top_info["pv"][0]
+                    if "score" in top_info:
+                        prev_cp, _, _ = score_to_cp_and_winpct(top_info["score"].white())
+
+                if config["random_blunder"] > 0 and random.random() < config["random_blunder"]:
+                    chosen_move = random.choice(list(board.legal_moves))
+                elif info and len(info) > 0:
+                    candidates = [item["pv"][0] for item in info if "pv" in item and len(item["pv"]) > 0]
+                    if candidates:
+                        w_list = config["weights"][:len(candidates)]
+                        chosen_move = random.choices(candidates, weights=w_list, k=1)[0]
+
+                if not chosen_move:
+                    res = engine.play(board, chess.engine.Limit(time=eff_time, depth=eff_depth))
+                    chosen_move = res.move
+
+            if is_uci:
+                if "Skill Level" in opts:
+                    try: 
+                        engine.configure({"Skill Level": 20})
+                    except Exception: 
+                        pass
+                if "UCI_LimitStrength" in opts:
+                    try: 
+                        engine.configure({"UCI_LimitStrength": False})
+                    except Exception: 
+                        pass
+        except Exception:
+            try:
+                res = engine.play(board, chess.engine.Limit(time=0.3))
+                chosen_move = res.move
+            except Exception:
+                if list(board.legal_moves): 
+                    chosen_move = list(board.legal_moves)[0]
+
+    if chosen_move:
+        best_uci = best_eval_move.uci() if best_eval_move else chosen_move.uci()
+        best_san = board.san(best_eval_move) if best_eval_move else board.san(chosen_move)
+        resp = {
+            'move': chosen_move.uci(), 
+            'best_uci': best_uci, 
+            'best_san': best_san,
+            'engine': engine_state["real_name"], 
+            'nps': engine_state["last_nps"], 
+            'depth': engine_state["last_depth"]
         }
-        window.refreshMatchVaultList();
-    });
-};
+        if prev_cp is not None: 
+            resp['prev_cp'] = prev_cp
+        return jsonify(resp)
+    return jsonify({'move': None})
 
-// Three-dot Dropdown: Clear All Game History confirmation
-window.confirmDeleteAllMatches = function() {
-    $('#vault-dropdown-menu').hide();
-    let ans = confirm("⚠ DANGER: Are you sure you want to delete ALL game history?");
-    if (!ans) return;
+@app.route('/eval', methods=['POST'])
+def evaluate_position():
+    fen = request.form.get('fen')
+    req_depth = int(request.form.get('depth', 16))
+    req_time = float(request.form.get('time', 0.18))
+    req_engine_path = request.form.get('engine_path', '')
+    req_engine_preset = request.form.get('engine_preset', '')
+    try:
+        board = chess.Board(fen)
+        if board.is_checkmate():
+            cp_val = -10000 if board.turn == chess.WHITE else 10000
+            return jsonify({'score': 0.0 if board.turn == chess.WHITE else 100.0, 'text': '-M0' if board.turn == chess.WHITE else 'M0', 'cp': cp_val, 'best_uci': '', 'best_san': '', 'depth': req_depth, 'nps': engine_state["last_nps"], 'engine': engine_state["real_name"]})
+        if board.is_game_over():
+            return jsonify({'score': 50.0, 'text': '0.0', 'cp': 0, 'best_uci': '', 'best_san': '', 'depth': req_depth, 'nps': engine_state["last_nps"], 'engine': engine_state["real_name"]})
 
-    $.post('/delete_all_matches', function(res) {
-        window.currentActiveMatchDbId = null;
-        localStorage.removeItem('chess_current_db_id');
-        localStorage.removeItem('chess_active_match');
-        alert("All game history cleared successfully.");
-        window.refreshMatchVaultList();
-    });
-};
+        with engine_lock:
+            if req_engine_path or req_engine_preset: 
+                ensure_Engine_Loaded(req_engine_path, req_engine_preset)
+            if engine_state["protocol"] != "uci": 
+                ensure_Engine_Loaded(DEFAULT_ENGINE_PATH, "sf19")
+            info = engine.analyse(board, chess.engine.Limit(time=req_time, depth=req_depth))
 
-// ============================================================================
-// SINGLE MATCH SAVER (DEVICE LOCAL TIME & PERSISTENT ID)
-// ============================================================================
-window.saveCurrentMatchToVault = function(resultTitle) {
-    let pgn = window.buildBrandedPGN();
-    let fen = game.fen();
-    let localDate = getUserDeviceFormattedDate();
+        if isinstance(info, list): 
+            info = info[0]
+        if "nps" in info: 
+            engine_state["last_nps"] = info["nps"]
+        if "depth" in info: 
+            engine_state["last_depth"] = info["depth"]
 
-    let payload = {
-        id: window.currentActiveMatchDbId || "",
-        date: localDate,
-        white: getWhiteDisplayName(),
-        black: getBlackDisplayName(),
-        result: resultTitle || "Saved Match",
-        w_acc: getTextSafe('white-acc-text', '95%'),
-        b_acc: getTextSafe('black-acc-text', '95%'),
-        opening: getTextSafe('opening-bar', 'Standard Opening'),
-        pgn: pgn,
-        fen: fen
-    };
+        best_uci, best_san = "", ""
+        if "pv" in info and len(info["pv"]) > 0:
+            bm = info["pv"][0]
+            best_uci = bm.uci()
+            best_san = board.san(bm)
 
-    $.post('/save_match', payload, function(data) {
-        if (data && data.id) {
-            window.currentActiveMatchDbId = data.id;
-            localStorage.setItem('chess_current_db_id', data.id);
-        }
-        if (resultTitle !== "In Progress") {
-            localStorage.removeItem('chess_active_match');
-        }
-    });
-};
+        cp_val, score_pct, text = score_to_cp_and_winpct(info["score"].white())
+        return jsonify({
+            'score': score_pct, 
+            'text': text, 
+            'cp': cp_val,
+            'best_uci': best_uci, 
+            'best_san': best_san,
+            'nps': engine_state["last_nps"], 
+            'depth': engine_state["last_depth"],
+            'engine': engine_state["real_name"]
+        })
+    except Exception:
+        return jsonify({'score': 50.0, 'text': '0.0', 'cp': 0, 'best_uci': '', 'best_san': '', 'depth': 0, 'nps': 0})
 
-window.manualSaveToVault = function() {
-    window.saveCurrentMatchToVault("Saved Match");
-    alert("Current match saved as a single complete PGN!");
-    window.refreshMatchVaultList();
-};
+@app.route('/multipv', methods=['POST'])
+def multipv():
+    fen = request.form.get('fen')
+    req_depth = int(request.form.get('depth', 16))
+    req_time = float(request.form.get('time', 0.20))
+    try:
+        board = chess.Board(fen)
+        if board.is_game_over(): 
+            return jsonify({"lines": []})
+        with engine_lock:
+            if engine_state["protocol"] != "uci": 
+                ensure_Engine_Loaded(DEFAULT_ENGINE_PATH, "sf19")
+            supports_mpv = "MultiPV" in engine.options
+            info = engine.analyse(board, chess.engine.Limit(time=req_time, depth=req_depth), multipv=3 if supports_mpv else 1)
+        lines = []
+        if isinstance(info, dict): 
+            info = [info]
+        for item in info:
+            if "nps" in item: 
+                engine_state["last_nps"] = item["nps"]
+            if "depth" in item: 
+                engine_state["last_depth"] = item["depth"]
+            if "pv" in item and len(item["pv"]) > 0:
+                move = item["pv"][0]
+                cp_val, win_pct, score_txt = score_to_cp_and_winpct(item["score"].white())
+                lines.append({"uci": move.uci(), "san": board.san(move), "score": score_txt, "cp": cp_val, "win_pct": win_pct})
+        return jsonify({
+            "lines": lines, 
+            "engine": engine_state["real_name"],
+            "nps": engine_state["last_nps"], 
+            "depth": engine_state["last_depth"]
+        })
+    except Exception:
+        return jsonify({"lines": []})
+
+@app.route('/update_engine', methods=['POST'])
+def update_engine():
+    if 'hash' in request.form: 
+        engine_state["hash"] = min(4096, max(16, int(request.form.get('hash', 256))))
+    if 'threads' in request.form: 
+        engine_state["threads"] = min(32, max(1, int(request.form.get('threads', 4))))
+    if 'use_nnue' in request.form: 
+        engine_state["use_nnue"] = (str(request.form.get('use_nnue')).lower() in ['true', 'on', '1'])
+    with engine_lock:
+        applied = apply_hardware_settings_to_engine()
+        return jsonify({
+            "status": "success", 
+            "engine_name": engine_state["real_name"],
+            "protocol": engine_state["protocol"].upper(), 
+            "applied": applied,
+            "hash": engine_state["hash"], 
+            "threads": engine_state["threads"], 
+            "use_nnue": engine_state["use_nnue"]
+        })
+
+@app.route('/list_engines', methods=['GET'])
+def list_engines():
+    found = [
+        {"id": "sf19", "name": "Stockfish 19 (Next-Gen NNUE)", "desc": "Ultra Deep NNUE + Multi-Core Search", "path": DEFAULT_ENGINE_PATH, "proto": "UCI", "preset": "sf19"},
+        {"id": "sf18", "name": "Stockfish 18 (Ultra Tactical)", "desc": "Aggressive GM Tactical Engine", "path": DEFAULT_ENGINE_PATH, "proto": "UCI", "preset": "sf18"},
+        {"id": "sf17", "name": "Stockfish 17.1 (in-built NNUE)", "desc": "Tournament GM Strength", "path": DEFAULT_ENGINE_PATH, "proto": "UCI", "preset": "sf17"},
+        {"id": "sf16", "name": "Stockfish 16 (Pro Universal)", "desc": "Balanced Grandmaster Engine", "path": DEFAULT_ENGINE_PATH, "proto": "UCI", "preset": "sf16"},
+        {"id": "sf15", "name": "Stockfish 15 (Classical)", "desc": "Solid Positional Engine", "path": DEFAULT_ENGINE_PATH, "proto": "UCI", "preset": "sf15"},
+        {"id": "sf14", "name": "Stockfish 14 (Sharp)", "desc": "Fast Attacking Engine", "path": DEFAULT_ENGINE_PATH, "proto": "UCI", "preset": "sf14"}
+    ]
+    scan_paths = [ENGINES_DIR, "/usr/games", "/usr/bin", "/usr/local/bin"]
+    seen = {DEFAULT_ENGINE_PATH}
+    for sdir in scan_paths:
+        if os.path.exists(sdir):
+            for fname in sorted(os.listdir(sdir)):
+                low = fname.lower()
+                if low in ["xphalanx", "gamazons"]: 
+                    continue
+                if sdir == ENGINES_DIR or any(k in low for k in ["stockfish", "fairy", "toga", "phalanx", "fruit"]):
+                    fpath = os.path.join(sdir, fname)
+                    if os.path.isfile(fpath) and fpath not in seen:
+                        seen.add(fpath)
+                        p_type = "XBoard" if any(x in low for x in ["phalanx", "fairymax"]) else "UCI"
+                        found.append({"id": fname, "name": f"{fname.capitalize()}", "desc": f"{fpath} ({p_type})", "path": fpath, "proto": p_type, "preset": fname})
+    return jsonify({
+        "engines": found, 
+        "current": engine_state["path"], 
+        "preset": engine_state["preset"],
+        "real_name": engine_state["real_name"], 
+        "protocol": engine_state["protocol"].upper(),
+        "hash": engine_state["hash"], 
+        "threads": engine_state["threads"], 
+        "use_nnue": engine_state["use_nnue"]
+    })
+
+@app.route('/switch_engine', methods=['POST'])
+def switch_engine():
+    new_path = request.form.get('path', '').strip() or DEFAULT_ENGINE_PATH
+    preset = request.form.get('preset', '').strip()
+    if not os.path.exists(new_path):
+        resolved = shutil.which(new_path)
+        if resolved: 
+            new_path = resolved
+        else: 
+            return jsonify({"status": "error", "message": f"Path not found: {new_path}"})
+    with engine_lock:
+        try:
+            ensure_Engine_Loaded(new_path, preset)
+            save_hw_config()
+            return jsonify({"status": "success", "current": engine_state["path"], "real_name": engine_state["real_name"], "protocol": engine_state["protocol"].upper()})
+        except Exception as e:
+            return jsonify({"status": "error", "message": str(e)})
+
+@app.route('/install_extra_engines', methods=['POST'])
+def install_extra_engines():
+    try:
+        subprocess.run(["apt-get", "update"], timeout=30)
+        subprocess.run(["apt-get", "install", "-y", "fairy-stockfish", "toga2", "phalanx", "fruit"], timeout=90)
+        return jsonify({"status": "success", "message": "Extra engines installed!"})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)})
+
+
+if __name__ == '__main__':
+    try:
+        import logging
+        logging.getLogger('waitress.queue').setLevel(logging.ERROR)
+        logging.getLogger('waitress').setLevel(logging.ERROR)
+        from waitress import serve
+        print("[✔] Production WSGI Server (Waitress) active!", flush=True)
+        print("* Running on http://127.0.0.1:5000", flush=True)
+        serve(app, host='0.0.0.0', port=5000, threads=8, channel_timeout=120)
+    except ImportError:
+        app.run(host='0.0.0.0', port=5000, debug=False)
