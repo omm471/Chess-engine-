@@ -110,89 +110,101 @@ function renderChessComGraphOnCanvas(canvasId, isInteractive) {
     }
 }
 
-window.drawKundliEvalGraph = function() { renderChessComGraphOnCanvas('kundli-eval-graph', true); };
-window.drawAllEvalGraphs = function() { renderChessComGraphOnCanvas('main-eval-graph', true); };
+window.renderEvaluationGraphWithBaseline = function(canvasId, historyData) {
+    let canvas = document.getElementById(canvasId);
+    if (!canvas) return;
+    let ctx = canvas.getContext('2d');
+    let W = canvas.width = canvas.parentElement ? canvas.parentElement.clientWidth : 340;
+    let H = canvas.height = 140;
 
-// Helper to load any puzzle data packet
-function applyPuzzleDataPacket(data, defaultTier = "1600") {
-    game.reset();
-    game.load(data.fen);
-    
-    gameHistory = [{ fen: data.fen, moveObj: null }];
-    historyIndex = 0;
-    matchEnded = false;
-
-    let puzzleTurn = data.turn || 'w';
-
-    window.activePuzzle = {
-        isRunning: true,
-        id: data.id,
-        rating: data.rating,
-        solution: data.solution,
-        plyIndex: 0,
-        playerColor: puzzleTurn,
-        initialFen: data.fen,
-        theme: data.theme || (data.themes ? data.themes.join(', ') : 'Tactics'),
-        currentTier: defaultTier
-    };
-
-    // Problem 1 Fix: Player King hamesha neeche rahega
-    currentBoardOrientation = puzzleTurn;
-    playerColor = puzzleTurn;
-
-    if (puzzleTurn === 'b') {
-        safeText('bottom-player-label', 'Black');
-        safeText('bottom-player-name', 'You');
-        safeText('top-player-label', 'White');
-        safeText('top-player-name', `Opponent (${data.rating})`);
-    } else {
-        safeText('bottom-player-label', 'White');
-        safeText('bottom-player-name', 'You');
-        safeText('top-player-label', 'Black');
-        safeText('top-player-name', `Opponent (${data.rating})`);
+    let points = (historyData && historyData.length > 0) ? historyData : gameHistory;
+    if (!points || points.length < 2) {
+        ctx.clearRect(0, 0, W, H);
+        return;
     }
 
-    clearArrows();
-    if (typeof renderBoard === 'function') renderBoard();
+    ctx.clearRect(0, 0, W, H);
 
-    let turnName = (puzzleTurn === 'w') ? 'White to move' : 'Black to move';
-    safeText('opening-bar', `Puzzle #${data.id} • Rating: ${data.rating} ELO`);
-    safeText('status', `🧩 ${turnName} • Find the winning move!`);
-}
+    // Background
+    ctx.fillStyle = "#1e1e1e";
+    ctx.fillRect(0, 0, W, H);
 
-window.loadDailyPuzzle = function() {
-    safeText('status', 'Fetching Daily Puzzle...');
-    fetch('/api/daily_puzzle')
-        .then(res => res.json())
-        .then(data => {
-            if (data.status === 'success' && data.fen && data.solution && data.solution.length > 0) {
-                applyPuzzleDataPacket(data, "1600");
-            } else {
-                alert('Puzzle fetch failed: ' + (data.message || 'Check connection'));
-            }
-        })
-        .catch(() => alert('Internet connection required.'));
+    // 1. RED BASELINE (Center Line: 0.0 Eval)
+    let midY = H / 2;
+    ctx.beginPath();
+    ctx.strokeStyle = "#e03131"; // Sharp Red Baseline
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([4, 3]); // Dashed line
+    ctx.moveTo(0, midY);
+    ctx.lineTo(W, midY);
+    ctx.stroke();
+    ctx.setLineDash([]); // Reset dash
+
+    // Baseline label
+    ctx.fillStyle = "#e03131";
+    ctx.font = "10px sans-serif";
+    ctx.fillText("0.0", 4, midY - 4);
+
+    let stepX = W / (points.length - 1);
+
+    // Eval conversion to Y-axis coordinates (-10 to +10 range)
+    function evalToY(rec) {
+        let cp = (rec.cp !== undefined) ? rec.cp : 0;
+        let clamped = Math.max(-1000, Math.min(1000, cp));
+        // +1000 CP -> top (0px), -1000 CP -> bottom (H)
+        return midY - (clamped / 1000) * (midY - 12);
+    }
+
+    // 2. Draw Eval Curve Fill & Line
+    ctx.beginPath();
+    ctx.moveTo(0, evalToY(points[0]));
+    for (let i = 1; i < points.length; i++) {
+        ctx.lineTo(i * stepX, evalToY(points[i]));
+    }
+    ctx.strokeStyle = "#81b64c";
+    ctx.lineWidth = 2.5;
+    ctx.stroke();
+
+    // 3. BLUNDER, MISTAKE & INACCURACY MARKERS ON GRAPH
+    points.forEach((rec, idx) => {
+        if (idx === 0) return;
+        let x = idx * stepX;
+        let y = evalToY(rec);
+
+        // Blunder (Red Dot)
+        if (rec.classification && (rec.classification.label === 'Blunder' || rec.classification.symbol === '??')) {
+            ctx.beginPath();
+            ctx.arc(x, y, 4.5, 0, 2 * Math.PI);
+            ctx.fillStyle = "#fa4141";
+            ctx.fill();
+            ctx.strokeStyle = "#ffffff";
+            ctx.lineWidth = 1.2;
+            ctx.stroke();
+        }
+        // Mistake (Orange Dot)
+        else if (rec.classification && (rec.classification.label === 'Mistake' || rec.classification.symbol === '?')) {
+            ctx.beginPath();
+            ctx.arc(x, y, 4, 0, 2 * Math.PI);
+            ctx.fillStyle = "#fa8c16";
+            ctx.fill();
+            ctx.strokeStyle = "#ffffff";
+            ctx.lineWidth = 1;
+            ctx.stroke();
+        }
+        // Inaccuracy (Yellow Dot)
+        else if (rec.classification && (rec.classification.label === 'Inaccuracy' || rec.classification.symbol === '?!')) {
+            ctx.beginPath();
+            ctx.arc(x, y, 3.5, 0, 2 * Math.PI);
+            ctx.fillStyle = "#fadb14";
+            ctx.fill();
+        }
+    });
 };
 
-window.loadPuzzleByLevel = function(level) {
-    safeText('status', `Loading ${level} ELO Puzzle...`);
-    fetch(`/api/puzzle_by_level?level=${level}`)
-        .then(res => res.json())
-        .then(data => {
-            if (data.status === 'success' && data.fen) {
-                applyPuzzleDataPacket(data, level);
-            }
-        })
-        .catch(() => alert('Could not load puzzle level.'));
-};
-
-window.selectTierAndLoad = function(level) {
-    closeModal('tactics-library-modal');
-    window.loadPuzzleByLevel(level);
-};
-
-window.openTacticsLibraryModal = function() {
-    safeDisplay('tactics-library-modal', 'flex');
+// Global mapper link
+window.drawAllEvalGraphs = function() {
+    window.renderEvaluationGraphWithBaseline('main-eval-canvas', gameHistory);
+    window.renderEvaluationGraphWithBaseline('report-eval-canvas', gameHistory);
 };
 
 // Accurate Hint Arrow Calculation
