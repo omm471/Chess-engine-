@@ -1,13 +1,14 @@
 /* ============================================================================
-   static/mod_share_vault.js (v112 - Single-Match Cloud Vault & 3-Dot Delete Menu)
-   - Real-time client timezone formatting
-   - In-place single game cloud updating (no multiple duplicate entries)
-   - Guaranteed Three-dot (⋮) Menu beside refresh button with Delete All History
-   - Full card buttons: Resume/Replay, Report, PGN, Delete
+   static/mod_share_vault.js (v113 - Single-Match Vault & Native 3-Dot Delete)
+   - Real-time client timezone formatting (Universal local time)
+   - In-place single game cloud updating (prevents duplicate move files)
+   - Native In-App Custom Modal for 100% reliable "Delete All Game History"
+   - Complete card actions: Resume/Replay, Report, Copy PGN, and Delete
    ============================================================================ */
 
 window.currentActiveMatchDbId = localStorage.getItem('chess_current_db_id') || null;
 
+// User ke phone/country ka local date aur time format
 function getUserDeviceFormattedDate() {
     let now = new Date();
     let datePart = now.toLocaleDateString(undefined, {
@@ -111,26 +112,68 @@ window.openMatchVaultModal = function() {
 };
 
 // ============================================================================
-// THREE-DOT (⋮) MENU INJECTION (GUARANTEED ATTACHMENT)
+// ANDROID-SAFE CUSTOM IN-APP CONFIRMATION POPUP (NO BROWSER ALERT CRASH)
+// ============================================================================
+function showInAppConfirmDialog(title, message, onConfirm) {
+    let existing = document.getElementById('vault-custom-confirm-modal');
+    if (existing) existing.remove();
+
+    let overlay = document.createElement('div');
+    overlay.id = 'vault-custom-confirm-modal';
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.8);z-index:99999999;display:flex;align-items:center;justify-content:center;padding:18px;';
+    overlay.innerHTML = `
+        <div style="background:#1b1c20;border:1px solid #da3633;border-radius:12px;padding:22px;max-width:320px;width:100%;text-align:center;box-shadow:0 12px 36px rgba(0,0,0,0.9);">
+            <div style="font-size:16px;font-weight:bold;color:#ff6b6b;margin-bottom:8px;">${title}</div>
+            <div style="font-size:13px;color:#ccc;margin-bottom:20px;line-height:1.5;">${message}</div>
+            <div style="display:flex;gap:10px;justify-content:center;">
+                <button id="v-confirm-cancel" style="flex:1;background:#33343a;color:#eee;border:none;padding:10px;border-radius:6px;font-weight:bold;cursor:pointer;">Cancel</button>
+                <button id="v-confirm-ok" style="flex:1;background:#da3633;color:#fff;border:none;padding:10px;border-radius:6px;font-weight:bold;cursor:pointer;">Delete</button>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(overlay);
+
+    overlay.querySelector('#v-confirm-cancel').onclick = () => overlay.remove();
+    overlay.querySelector('#v-confirm-ok').onclick = () => {
+        overlay.remove();
+        onConfirm();
+    };
+}
+
+// ============================================================================
+// THREE-DOT (⋮) MENU SETUP NEXT TO REFRESH BUTTON
 // ============================================================================
 function setupVaultThreeDotMenu() {
     if ($('#vault-threedot-wrap').length) return;
 
-    let saveBtn = $('button:contains("Save Current Game")');
-    if (saveBtn.length) {
-        let parentRow = saveBtn.parent();
+    let refreshBtn = $('#vault-modal button:contains("↻"), .vault-refresh-btn');
+    if (!refreshBtn.length) {
+        refreshBtn = $('#vault-modal').find('button').filter(function() {
+            return $(this).text().trim() === '↻';
+        });
+    }
+
+    let targetContainer = null;
+    if (refreshBtn.length) {
+        targetContainer = refreshBtn.parent();
+    } else {
+        let saveBtn = $('button:contains("Save Current Game")');
+        if (saveBtn.length) targetContainer = saveBtn.parent();
+    }
+
+    if (targetContainer && targetContainer.length) {
         let menuHtml = `
         <div id="vault-threedot-wrap" style="position:relative; display:inline-block; margin-left:6px; vertical-align:middle;">
             <button id="vault-threedot-btn" onclick="window.toggleVaultDropdown(event)" style="background:#2a2b2e; color:#eee; border:1px solid #444; border-radius:6px; width:40px; height:40px; font-size:20px; cursor:pointer; font-weight:bold; display:flex; align-items:center; justify-content:center;">
                 ⋮
             </button>
             <div id="vault-dropdown-menu" style="display:none; position:absolute; right:0; top:46px; background:#1c1d21; border:1px solid #da3633; border-radius:8px; box-shadow:0 8px 24px rgba(0,0,0,0.9); z-index:999999; min-width:220px; overflow:hidden;">
-                <div onclick="window.confirmDeleteAllMatches()" style="color:#ff6b6b; padding:12px 16px; font-size:13px; font-weight:bold; cursor:pointer; display:flex; align-items:center; gap:8px;" onmouseover="this.style.background='#2d1517'" onmouseout="this.style.background='transparent'">
+                <div onclick="window.triggerDeleteAllHistoryAction()" style="color:#ff6b6b; padding:12px 16px; font-size:13px; font-weight:bold; cursor:pointer; display:flex; align-items:center; gap:8px;" onmouseover="this.style.background='#2d1517'" onmouseout="this.style.background='transparent'">
                     🗑 Delete All Game History
                 </div>
             </div>
         </div>`;
-        parentRow.append(menuHtml);
+        targetContainer.append(menuHtml);
 
         document.addEventListener('click', function(e) {
             if (!$(e.target).closest('#vault-threedot-wrap').length) {
@@ -143,6 +186,22 @@ function setupVaultThreeDotMenu() {
 window.toggleVaultDropdown = function(e) {
     if (e) e.stopPropagation();
     $('#vault-dropdown-menu').toggle();
+};
+
+window.triggerDeleteAllHistoryAction = function() {
+    $('#vault-dropdown-menu').hide();
+    showInAppConfirmDialog(
+        "Delete All Games?",
+        "Are you sure you want to permanently clear your entire cloud game history?",
+        function() {
+            $.post('/delete_all_matches', function(res) {
+                window.currentActiveMatchDbId = null;
+                localStorage.removeItem('chess_current_db_id');
+                localStorage.removeItem('chess_active_match');
+                window.refreshMatchVaultList();
+            });
+        }
+    );
 };
 
 // ============================================================================
@@ -207,25 +266,17 @@ window.refreshMatchVaultList = function() {
 
 window.viewVaultMatchReport = function(encodedPgn) {
     let rawPgn = decodeURIComponent(encodedPgn || "");
-    if (!rawPgn) {
-        alert("No PGN moves available for this game.");
-        return;
-    }
+    if (!rawPgn) return;
     if (window.openReportModalWithPgn) {
         window.openReportModalWithPgn(rawPgn);
     } else if (window.openReportModal) {
         window.openReportModal();
-    } else {
-        alert("Game Review / Report opened for this game.");
     }
 };
 
 window.copySingleVaultPgn = function(encodedPgn) {
     let rawPgn = decodeURIComponent(encodedPgn || "");
-    if (!rawPgn) {
-        alert("PGN text empty.");
-        return;
-    }
+    if (!rawPgn) return;
     navigator.clipboard.writeText(rawPgn).then(() => {
         alert("Match PGN copied to clipboard!");
     }).catch(() => {
@@ -261,28 +312,19 @@ window.loadVaultMatch = function(id, fen, isResume) {
 };
 
 window.deleteSingleMatch = function(id) {
-    if (!confirm("Are you sure you want to delete this match?")) return;
-    $.post('/delete_match', { id: id }, function() {
-        if (window.currentActiveMatchDbId == id) {
-            window.currentActiveMatchDbId = null;
-            localStorage.removeItem('chess_current_db_id');
+    showInAppConfirmDialog(
+        "Delete Match?",
+        "Are you sure you want to delete this match record?",
+        function() {
+            $.post('/delete_match', { id: id }, function() {
+                if (window.currentActiveMatchDbId == id) {
+                    window.currentActiveMatchDbId = null;
+                    localStorage.removeItem('chess_current_db_id');
+                }
+                window.refreshMatchVaultList();
+            });
         }
-        window.refreshMatchVaultList();
-    });
-};
-
-window.confirmDeleteAllMatches = function() {
-    $('#vault-dropdown-menu').hide();
-    let ans = confirm("⚠ DANGER: Are you sure you want to delete ALL game history?");
-    if (!ans) return;
-
-    $.post('/delete_all_matches', function(res) {
-        window.currentActiveMatchDbId = null;
-        localStorage.removeItem('chess_current_db_id');
-        localStorage.removeItem('chess_active_match');
-        alert("All game history cleared successfully.");
-        window.refreshMatchVaultList();
-    });
+    );
 };
 
 // ============================================================================
