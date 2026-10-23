@@ -266,9 +266,15 @@ def index():
 
 @app.route('/save_match', methods=['POST'])
 def save_match():
-    match_id = request.form.get('id')
+    match_id = request.form.get('id', '').strip()
+
+    # User ke device/country ka real local time frontend se aayega
+    user_local_date = request.form.get('date', '').strip()
+    if not user_local_date:
+        user_local_date = datetime.now().strftime("%d %b %Y • %I:%M %p")
+
     match_payload = {
-        "date": datetime.now().strftime("%d %b %Y • %I:%M %p"),
+        "date": user_local_date,
         "white": request.form.get('white', 'White'),
         "black": request.form.get('black', 'Black'),
         "result": request.form.get('result', 'Match Over'),
@@ -280,23 +286,23 @@ def save_match():
     }
 
     try:
-        if match_id:
-            # Agar match already in-progress hai toh usi row ko update karein
+        # Agar match already in-progress hai toh usi row ko update (PATCH) karein
+        if match_id and match_id not in ['null', 'undefined', '0']:
             res = requests.patch(
                 f"{SUPABASE_URL}/rest/v1/matches?id=eq.{match_id}",
                 headers=SUPABASE_HEADERS,
                 json=match_payload,
-                timeout=6
+                timeout=8
             )
             return jsonify({"status": "updated", "id": match_id})
         else:
-            # Naya match start hone par insert karein aur ID return karein
+            # Naya match start hone par insert karein aur uski unique ID return karein
             headers = {**SUPABASE_HEADERS, "Prefer": "return=representation"}
             res = requests.post(
                 f"{SUPABASE_URL}/rest/v1/matches",
                 headers=headers,
                 json=match_payload,
-                timeout=6
+                timeout=8
             )
             created = res.json()
             new_id = created[0]["id"] if isinstance(created, list) and len(created) > 0 else None
@@ -304,20 +310,36 @@ def save_match():
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 
-
 @app.route('/get_matches', methods=['POST', 'GET'])
 def get_matches():
     try:
         res = requests.get(
             f"{SUPABASE_URL}/rest/v1/matches?select=*&order=id.desc&limit=50",
             headers=SUPABASE_HEADERS,
-            timeout=6
+            timeout=8
         )
         if res.status_code == 200:
             return jsonify({"matches": res.json()})
         return jsonify({"matches": []})
     except Exception:
         return jsonify({"matches": []})
+
+@app.route('/delete_match', methods=['POST'])
+def delete_match():
+    match_id = request.form.get('id', '').strip()
+    if not match_id:
+        return jsonify({"status": "error", "message": "No match ID provided"}), 400
+    try:
+        res = requests.delete(
+            f"{SUPABASE_URL}/rest/v1/matches?id=eq.{match_id}",
+            headers=SUPABASE_HEADERS,
+            timeout=8
+        )
+        if res.status_code in [200, 204]:
+            return jsonify({"status": "deleted"})
+        return jsonify({"status": "error", "message": res.text}), res.status_code
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 @app.route('/delete_all_matches', methods=['POST'])
 def delete_all_matches():
@@ -332,7 +354,6 @@ def delete_all_matches():
         return jsonify({"status": "error", "message": res.text}), res.status_code
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
-
 
 # Cloud Multi-Match PGN Vault Exporter
 @app.route('/api/export_all_pgn', methods=['GET'])
