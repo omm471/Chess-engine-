@@ -261,7 +261,7 @@ def index():
     return render_template('index.html')
 
 # ============================================================================
-# SUPABASE DATABASE ROUTES (CLOUD MATCHES & ARCHIVES)
+# SUPABASE DATABASE ROUTES (CLOUD MATCHES & DUPLICATE-SAFE ARCHIVES)
 # ============================================================================
 
 @app.route('/save_match', methods=['POST'])
@@ -271,11 +271,12 @@ def save_match():
     if not user_local_date:
         user_local_date = datetime.now().strftime("%d %b %Y • %I:%M %p")
 
+    result_status = request.form.get('result', 'Match Over')
     match_payload = {
         "date": user_local_date,
         "white": request.form.get('white', 'White'),
         "black": request.form.get('black', 'Black'),
-        "result": request.form.get('result', 'Match Over'),
+        "result": result_status,
         "w_acc": request.form.get('w_acc', '--%'),
         "b_acc": request.form.get('b_acc', '--%'),
         "opening": request.form.get('opening', 'Standard'),
@@ -284,6 +285,7 @@ def save_match():
     }
 
     try:
+        # 1. Agar frontend se valid ID bheji gayi hai toh usi ko update (PATCH) karein
         if match_id and match_id not in ['null', 'undefined', '0']:
             res = requests.patch(
                 f"{SUPABASE_URL}/rest/v1/matches?id=eq.{match_id}",
@@ -292,17 +294,38 @@ def save_match():
                 timeout=8
             )
             return jsonify({"status": "updated", "id": match_id})
-        else:
-            headers = {**SUPABASE_HEADERS, "Prefer": "return=representation"}
-            res = requests.post(
-                f"{SUPABASE_URL}/rest/v1/matches",
-                headers=headers,
-                json=match_payload,
-                timeout=8
+
+        # 2. DUPLICATE LOCK: Agar match In Progress hai toh pehle check karein cloud me koi match pehle se hai kya
+        if "in progress" in result_status.lower():
+            check = requests.get(
+                f"{SUPABASE_URL}/rest/v1/matches?result=ilike.*In Progress*&order=id.desc&limit=1",
+                headers=SUPABASE_HEADERS,
+                timeout=6
             )
-            created = res.json()
-            new_id = created[0]["id"] if isinstance(created, list) and len(created) > 0 else None
-            return jsonify({"status": "saved", "id": new_id})
+            if check.status_code == 200:
+                existing = check.json()
+                if existing and len(existing) > 0:
+                    existing_id = existing[0]["id"]
+                    # Nayi entry mat banao, usi in-progress row ko update karo!
+                    requests.patch(
+                        f"{SUPABASE_URL}/rest/v1/matches?id=eq.{existing_id}",
+                        headers=SUPABASE_HEADERS,
+                        json=match_payload,
+                        timeout=8
+                    )
+                    return jsonify({"status": "updated", "id": existing_id})
+
+        # 3. Sirf naye match ke start hone par nayi row banayein
+        headers = {**SUPABASE_HEADERS, "Prefer": "return=representation"}
+        res = requests.post(
+            f"{SUPABASE_URL}/rest/v1/matches",
+            headers=headers,
+            json=match_payload,
+            timeout=8
+        )
+        created = res.json()
+        new_id = created[0]["id"] if isinstance(created, list) and len(created) > 0 else None
+        return jsonify({"status": "saved", "id": new_id})
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 
