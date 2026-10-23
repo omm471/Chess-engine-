@@ -720,6 +720,56 @@ def install_extra_engines():
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)})
 
+# ============================================================================
+# DIRECT DEVICE INTERNAL STORAGE PGN SAVER
+# ============================================================================
+@app.route('/save_to_device_storage', methods=['POST'])
+def save_to_device_storage():
+    pgn_content = request.form.get('pgn', '').strip()
+    file_name = request.form.get('filename', '').strip()
+
+    if not pgn_content:
+        return jsonify({"status": "error", "message": "No PGN data received"}), 400
+
+    if not file_name:
+        file_name = f"Match_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pgn"
+
+    # Android internal storage folder path (Number 0 use karein)
+    possible_dirs = [
+        "/storage/emulated/0/ChessAIPro",
+        "/sdcard/ChessAIPro",
+        os.path.expanduser("~/storage/shared/ChessAIPro")
+    ]
+
+    target_dir = None
+    for d in possible_dirs:
+        try:
+            os.makedirs(d, exist_ok=True)
+            if os.path.exists(d) and os.access(d, os.W_OK):
+                target_dir = d
+                break
+        except Exception:
+            continue
+
+    if not target_dir:
+        target_dir = os.path.abspath('saved_pgn_matches')
+        os.makedirs(target_dir, exist_ok=True)
+
+    file_path = os.path.join(target_dir, file_name)
+
+    try:
+        with open(file_path, 'w', encoding='utf-8') as f:
+            f.write(pgn_content)
+        return jsonify({
+            "status": "success",
+            "folder": target_dir,
+            "filename": file_name,
+            "path": file_path
+        })
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
 
 if __name__ == '__main__':
     try:
