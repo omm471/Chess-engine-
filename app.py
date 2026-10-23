@@ -285,7 +285,7 @@ def save_match():
     }
 
     try:
-        # 1. Agar frontend se valid ID bheji gayi hai toh usi ko update (PATCH) karein
+        # 1. Frontend se valid ID aane par direct PATCH update karein
         if match_id and match_id not in ['null', 'undefined', '0']:
             res = requests.patch(
                 f"{SUPABASE_URL}/rest/v1/matches?id=eq.{match_id}",
@@ -295,7 +295,7 @@ def save_match():
             )
             return jsonify({"status": "updated", "id": match_id})
 
-        # 2. DUPLICATE LOCK: Agar match In Progress hai toh pehle check karein cloud me koi match pehle se hai kya
+        # 2. DUPLICATE LOCK: In Progress games ke liye duplicate check
         if "in progress" in result_status.lower():
             check = requests.get(
                 f"{SUPABASE_URL}/rest/v1/matches?result=ilike.*In Progress*&order=id.desc&limit=1",
@@ -306,7 +306,6 @@ def save_match():
                 existing = check.json()
                 if existing and len(existing) > 0:
                     existing_id = existing[0]["id"]
-                    # Nayi entry mat banao, usi in-progress row ko update karo!
                     requests.patch(
                         f"{SUPABASE_URL}/rest/v1/matches?id=eq.{existing_id}",
                         headers=SUPABASE_HEADERS,
@@ -315,7 +314,7 @@ def save_match():
                     )
                     return jsonify({"status": "updated", "id": existing_id})
 
-        # 3. Sirf naye match ke start hone par nayi row banayein
+        # 3. Naye match ke start hone par nayi row create karein
         headers = {**SUPABASE_HEADERS, "Prefer": "return=representation"}
         res = requests.post(
             f"{SUPABASE_URL}/rest/v1/matches",
@@ -734,7 +733,7 @@ def save_to_device_storage():
     if not file_name:
         file_name = f"Match_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pgn"
 
-    # Android internal storage folder path (Number 0 use karein)
+    # Android internal storage path (uses digit 0)
     possible_dirs = [
         "/storage/emulated/0/ChessAIPro",
         "/sdcard/ChessAIPro",
@@ -768,7 +767,6 @@ def save_to_device_storage():
         })
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
-
 
 
 if __name__ == '__main__':
