@@ -1,7 +1,7 @@
 /* ============================================================================
-   static/mod_share_vault.js (v117 - Device PGN Storage & In-App Dialog)
-   - Reliable Phone Storage Saver: Saves PGN to Device Folder with In-App Confirmation
-   - Universal Click Binding: Guarantees 'Download Current Match PGN' button responds
+   static/mod_share_vault.js (v118 - Android Bottom Toast & Storage Saver)
+   - Android Native Bottom Toast: Clean floating pill at the bottom (No Popups!)
+   - Direct Phone Storage Saver: Saves PGN to /storage/emulated/0/ChessAIPro/
    - In-Flight Request Lock: Prevents duplicate rows when moves happen rapidly
    - Native In-App Custom Confirm Dialog (Android WebView compatible)
    - Exact client-local time formatting with dynamic Resume/Replay switching
@@ -24,6 +24,54 @@ function getUserDeviceFormattedDate() {
         hour12: true
     });
     return `${datePart} • ${timePart}`;
+}
+
+// ============================================================================
+// NATIVE ANDROID BOTTOM TOAST (NO CENTER POPUPS!)
+// ============================================================================
+function showAndroidToast(message) {
+    let existing = document.getElementById('android-toast-pill');
+    if (existing) existing.remove();
+
+    let toast = document.createElement('div');
+    toast.id = 'android-toast-pill';
+    toast.style.cssText = `
+        position: fixed !important;
+        bottom: 34px !important;
+        left: 50% !important;
+        transform: translateX(-50%) translateY(20px) !important;
+        background: #232429 !important;
+        color: #ffffff !important;
+        padding: 10px 20px !important;
+        border-radius: 28px !important;
+        border: 1px solid #3e404a !important;
+        box-shadow: 0 10px 28px rgba(0,0,0,0.7) !important;
+        font-size: 13px !important;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
+        font-weight: 500 !important;
+        z-index: 99999999 !important;
+        pointer-events: none !important;
+        opacity: 0 !important;
+        transition: opacity 0.22s ease-out, transform 0.22s ease-out !important;
+        max-width: 86vw !important;
+        text-align: center !important;
+        white-space: nowrap !important;
+        overflow: hidden !important;
+        text-overflow: ellipsis !important;
+    `;
+    toast.innerText = message;
+    document.body.appendChild(toast);
+
+    setTimeout(() => {
+        toast.style.opacity = '1';
+        toast.style.transform = 'translateX(-50%) translateY(0)';
+    }, 20);
+
+    setTimeout(() => {
+        toast.style.opacity = '0';
+        toast.style.transform = 'translateX(-50%) translateY(16px)';
+        setTimeout(() => toast.remove(), 260);
+    }, 2600);
 }
 
 window.buildBrandedPGN = function() {
@@ -69,46 +117,12 @@ window.buildBrandedPGN = function() {
 };
 
 // ============================================================================
-// IN-APP NOTIFICATION DIALOG (ANDROID WEBVIEW SAFE POPUP)
-// ============================================================================
-function showPgnSaveSuccessDialog(filePath, pgnText) {
-    let existing = document.getElementById('pgn-save-success-modal');
-    if (existing) existing.remove();
-
-    let overlay = document.createElement('div');
-    overlay.id = 'pgn-save-success-modal';
-    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:99999999;display:flex;align-items:center;justify-content:center;padding:16px;';
-    overlay.innerHTML = `
-        <div style="background:#1c1d22;border:1px solid #2ea043;border-radius:12px;padding:20px;max-width:340px;width:100%;text-align:center;box-shadow:0 12px 36px rgba(0,0,0,0.9);">
-            <div style="font-size:26px;margin-bottom:6px;">💾</div>
-            <div style="font-size:16px;font-weight:bold;color:#3fb950;margin-bottom:8px;">PGN Saved to Device!</div>
-            <div style="font-size:11px;color:#aaa;margin-bottom:14px;word-break:break-all;background:#141518;padding:8px;border-radius:6px;border:1px solid #333;text-align:left;">
-                📁 <b>Path:</b><br>${filePath}
-            </div>
-            <div style="display:flex;gap:8px;justify-content:center;">
-                <button id="btn-copy-pgn-quick" style="flex:1;background:#238636;color:#fff;border:none;padding:10px;border-radius:6px;font-weight:bold;cursor:pointer;font-size:12px;">📋 Copy PGN</button>
-                <button id="btn-close-pgn-modal" style="flex:1;background:#30363d;color:#eee;border:none;padding:10px;border-radius:6px;font-weight:bold;cursor:pointer;font-size:12px;">Close</button>
-            </div>
-        </div>
-    `;
-    document.body.appendChild(overlay);
-
-    overlay.querySelector('#btn-copy-pgn-quick').onclick = function() {
-        navigator.clipboard.writeText(pgnText).then(() => {
-            this.innerText = "✔ Copied!";
-            setTimeout(() => { overlay.remove(); }, 600);
-        });
-    };
-    overlay.querySelector('#btn-close-pgn-modal').onclick = () => overlay.remove();
-}
-
-// ============================================================================
 // DIRECT DEVICE STORAGE PGN SAVER
 // ============================================================================
 window.saveSingleMatchPGN = function() {
     let pgnText = window.buildBrandedPGN ? window.buildBrandedPGN() : (game ? game.pgn() : "");
     if (!pgnText || !pgnText.trim()) {
-        showPgnSaveSuccessDialog("No PGN moves recorded yet to save!", "");
+        showAndroidToast("⚠ No PGN moves recorded to save!");
         return;
     }
 
@@ -120,18 +134,17 @@ window.saveSingleMatchPGN = function() {
     // 1. Python server ke zariye phone ke internal folder me direct save karein
     $.post('/save_to_device_storage', { pgn: pgnText, filename: fileName }, function(res) {
         if (res && res.status === 'success') {
-            showPgnSaveSuccessDialog(res.path || (res.folder + "/" + res.filename), pgnText);
+            showAndroidToast(`💾 Saved to ChessAIPro folder (${fileName})`);
         } else {
             triggerBrowserFileDownload(pgnText, fileName);
-            showPgnSaveSuccessDialog("Saved to Browser / Internal Storage", pgnText);
+            showAndroidToast(`💾 Saved to Downloads folder (${fileName})`);
         }
     }).fail(function() {
         triggerBrowserFileDownload(pgnText, fileName);
-        showPgnSaveSuccessDialog("Saved to Device Downloads", pgnText);
+        showAndroidToast(`💾 Saved to Downloads folder (${fileName})`);
     });
 };
 
-// Aliases taaki button ka koi bhi naam ho, function execute ho
 window.downloadCurrentPGN = window.saveSingleMatchPGN;
 window.downloadCurrentMatchPGN = window.saveSingleMatchPGN;
 window.downloadMatchPGN = window.saveSingleMatchPGN;
@@ -180,10 +193,10 @@ window.copyBrandedPGN = function() {
     if (!box) return;
     box.select();
     navigator.clipboard.writeText(box.value).then(() => {
-        showPgnSaveSuccessDialog("Copied to Clipboard", box.value);
+        showAndroidToast("📋 PGN copied to clipboard");
     }).catch(() => {
         document.execCommand('copy');
-        showPgnSaveSuccessDialog("Copied to Clipboard", box.value);
+        showAndroidToast("📋 PGN copied to clipboard");
     });
 };
 
@@ -199,7 +212,7 @@ window.shareBrandedGameNative = function() {
 window.copyCurrentFEN = function() {
     let fen = (historyIndex >= 0 && gameHistory[historyIndex]) ? gameHistory[historyIndex].fen : game.fen();
     navigator.clipboard.writeText(fen).then(() => {
-        showPgnSaveSuccessDialog("FEN Copied to Clipboard:\n" + fen, fen);
+        showAndroidToast("📋 FEN copied to clipboard");
     }).catch(() => {
         prompt("Copy FEN:", fen);
     });
@@ -213,7 +226,7 @@ window.openMatchVaultModal = function() {
 };
 
 // ============================================================================
-// ANDROID-SAFE IN-APP CONFIRMATION DIALOG
+// ANDROID-SAFE IN-APP CONFIRMATION DIALOG (FOR DELETING HISTORY ONLY)
 // ============================================================================
 function showInAppConfirmDialog(title, message, onConfirm) {
     let existing = document.getElementById('vault-custom-confirm-modal');
@@ -300,6 +313,7 @@ window.triggerDeleteAllHistoryAction = function() {
                 localStorage.removeItem('chess_current_db_id');
                 localStorage.removeItem('chess_active_match');
                 window.refreshMatchVaultList();
+                showAndroidToast("🗑 All game history deleted");
             });
         }
     );
@@ -380,7 +394,7 @@ window.copySingleVaultPgn = function(encodedPgn) {
     let rawPgn = decodeURIComponent(encodedPgn || "");
     if (!rawPgn) return;
     navigator.clipboard.writeText(rawPgn).then(() => {
-        showPgnSaveSuccessDialog("PGN Copied to Clipboard", rawPgn);
+        showAndroidToast("📋 PGN copied to clipboard");
     }).catch(() => {
         prompt("Copy Match PGN:", rawPgn);
     });
@@ -424,6 +438,7 @@ window.deleteSingleMatch = function(id) {
                     localStorage.removeItem('chess_current_db_id');
                 }
                 window.refreshMatchVaultList();
+                showAndroidToast("Match deleted");
             });
         }
     );
@@ -482,6 +497,6 @@ window.saveCurrentMatchToVault = function(resultTitle) {
 
 window.manualSaveToVault = function() {
     window.saveCurrentMatchToVault("Saved Match");
-    showPgnSaveSuccessDialog("Current match saved as a single complete PGN!", "");
+    showAndroidToast("💾 Match saved to Vault");
     window.refreshMatchVaultList();
 };
