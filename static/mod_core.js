@@ -485,6 +485,10 @@ function getSquareAtPoint(clientX, clientY) {
     return files[boardCol] + (8 - boardRow);
 }
 
+// ============================================================================
+// ENLARGED TACTILE GHOST PIECE (CHESS.COM STYLE 1.25x ZOOM & LIFT)
+// ============================================================================
+
 function showGhostPiece(imgUrl, clientX, clientY) {
     let ghost = document.getElementById('drag-ghost-piece');
     if (!ghost) {
@@ -495,6 +499,7 @@ function showGhostPiece(imgUrl, clientX, clientY) {
     let anySq = document.querySelector('.square');
     let sqSize = anySq ? anySq.clientWidth : 46;
 
+    // 25% Enlarge + Deep Elevation Shadow
     ghost.style.cssText = `
         position: fixed !important;
         pointer-events: none !important;
@@ -505,13 +510,12 @@ function showGhostPiece(imgUrl, clientX, clientY) {
         background-size: contain !important;
         background-repeat: no-repeat !important;
         background-position: center !important;
-        transform: translate(-50%, -50%) !important;
-        margin: 0 !important;
-        padding: 0 !important;
+        transform: translate(-50%, -50%) scale(1.25) !important;
         top: ${clientY}px !important;
         left: ${clientX}px !important;
-        opacity: 0.92 !important;
-        filter: drop-shadow(0 8px 14px rgba(0,0,0,0.45)) !important;
+        opacity: 0.96 !important;
+        filter: drop-shadow(0 14px 22px rgba(0,0,0,0.65)) !important;
+        transition: transform 0.08s ease-out !important;
     `;
     if (imgUrl) ghost.style.backgroundImage = `url('${imgUrl}')`;
 }
@@ -1223,25 +1227,17 @@ function autoResumePreviousMatch() {
     }
 }
 
-$(document).ready(function() {
-    preloadAllSounds();
-    bindPieceDragAndDropEvents();
-    document.body.addEventListener('touchstart', () => getAudioCtx(), { once: true });
-    document.body.addEventListener('click', () => getAudioCtx(), { once: true });
-
-    let savedTheme = localStorage.getItem('saved_chess_theme');
-    if (savedTheme) {
-        let sel = safeEl('setting-board-theme');
-        if (sel) sel.value = savedTheme;
-        document.body.className = document.body.className.replace(/\btheme-[^\s]+\b/g, '').trim();
-        document.body.classList.add(savedTheme);
-    }
-
-    let savedPieces = localStorage.getItem('saved_chess_piece_style');
-    if (savedPieces) {
-        let pSel = safeEl('setting-piece-style');
-        if (pSel) pSel.value = savedPieces;
-    }
-
-    autoResumePreviousMatch();
-});
+    // Tactile piece selection zoom & pick-up fading
+    $('head').append(`
+        <style>
+            .square.selected .piece {
+                transform: scale(1.12);
+                transition: transform 0.12s cubic-bezier(0.2, 0.9, 0.3, 1.3);
+                filter: drop-shadow(0 4px 8px rgba(0,0,0,0.4));
+            }
+            .dragging-source-piece {
+                opacity: 0.28 !important;
+                filter: grayscale(40%);
+            }
+        </style>
+    `);
