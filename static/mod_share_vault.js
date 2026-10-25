@@ -1,11 +1,10 @@
 /* ============================================================================
-   static/mod_share_vault.js (v119 - Native Multi-PGN & Smooth Resume Engine)
+   static/mod_share_vault.js (v120 - Full Device Storage & Complete Vault Engine)
    ============================================================================ */
 
 window.currentActiveMatchDbId = localStorage.getItem('chess_current_db_id') || null;
 
 function showAndroidToast(message) {
-    // Agar Android app me chal raha hai, toh native bridge se toast aayega, duplicate nahi
     if (window.AndroidBridge && window.AndroidBridge.savePgnNative) return;
 
     let existing = document.getElementById('android-toast-pill');
@@ -14,19 +13,11 @@ function showAndroidToast(message) {
     let toast = document.createElement('div');
     toast.id = 'android-toast-pill';
     toast.style.cssText = `
-        position: fixed !important;
-        bottom: 34px !important;
-        left: 50% !important;
-        transform: translateX(-50%) !important;
-        background: #232429 !important;
-        color: #ffffff !important;
-        padding: 9px 18px !important;
-        border-radius: 24px !important;
-        border: 1px solid #3e404a !important;
-        box-shadow: 0 8px 24px rgba(0,0,0,0.8) !important;
-        font-size: 12.5px !important;
-        z-index: 99999999 !important;
-        pointer-events: none !important;
+        position: fixed !important; bottom: 34px !important; left: 50% !important;
+        transform: translateX(-50%) !important; background: #232429 !important;
+        color: #ffffff !important; padding: 9px 18px !important; border-radius: 24px !important;
+        border: 1px solid #3e404a !important; box-shadow: 0 8px 24px rgba(0,0,0,0.8) !important;
+        font-size: 12.5px !important; z-index: 99999999 !important; pointer-events: none !important;
     `;
     toast.innerText = message;
     document.body.appendChild(toast);
@@ -56,7 +47,6 @@ window.buildBrandedPGN = function() {
     return `${headers}\n\n${movesText.trim()} ${resCode}`.trim();
 };
 
-// 1. SINGLE MATCH PGN SAVER
 window.saveSingleMatchPGN = function() {
     let pgnText = window.buildBrandedPGN ? window.buildBrandedPGN() : game.pgn();
     if (!pgnText || !pgnText.trim()) {
@@ -77,7 +67,6 @@ window.saveSingleMatchPGN = function() {
     }
 };
 
-// 2. MASTER MULTI-PGN EXPORTER (History ke saare alag-alag games ek file me)
 window.exportAllMatchesMultiPGN = function() {
     $.get('/get_matches', function(data) {
         let matches = data.matches || [];
@@ -95,7 +84,6 @@ window.exportAllMatchesMultiPGN = function() {
             });
         }
 
-        // Current active game bhi include karein
         let currentPgn = window.buildBrandedPGN();
         if (currentPgn && !pgnCollection.includes(currentPgn)) {
             pgnCollection.push(currentPgn);
@@ -155,12 +143,18 @@ window.shareBrandedGameNative = function() {
     }
 };
 
+window.copyCurrentFEN = function() {
+    let fen = (historyIndex >= 0 && gameHistory[historyIndex]) ? gameHistory[historyIndex].fen : game.fen();
+    navigator.clipboard.writeText(fen).then(() => {
+        showAndroidToast("📋 FEN copied to clipboard");
+    });
+};
+
 window.openMatchVaultModal = function() {
     window.refreshMatchVaultList();
     safeDisplay('vault-modal', 'flex');
 };
 
-// 3. HISTORY MATCH LIST & SAFE RESUME LOGIC (AI LOCK KABHI NAHI HOGA)
 window.refreshMatchVaultList = function() {
     let container = $('#vault-matches-list');
     if (!container.length) return;
@@ -196,7 +190,6 @@ window.refreshMatchVaultList = function() {
     });
 };
 
-// LOAD VAULT MATCH: Mode and player restoration
 window.loadVaultMatch = function(id, fen, isResume, whiteName, blackName) {
     if (!fen) return;
     closeModal('vault-modal');
@@ -207,7 +200,6 @@ window.loadVaultMatch = function(id, fen, isResume, whiteName, blackName) {
     selectedSquare = null;
     currentLegalMoves = [];
 
-    // Names restore
     safeText('bottom-player-label', 'White:');
     safeText('bottom-player-name', whiteName || 'Player');
     safeText('top-player-label', 'Black:');
@@ -218,8 +210,8 @@ window.loadVaultMatch = function(id, fen, isResume, whiteName, blackName) {
         matchEnded = false;
         isAnalysisBranchMode = false;
 
-        // Agar black Stockfish hai toh PvB mode me rakhein
-        if ((blackName || '').includes('Stockfish') || (blackName || '').includes('Bot') || (blackName || '').includes('GM')) {
+        let blackStr = (blackName || getTextSafe('top-player-name', '')).toLowerCase();
+        if (blackStr.includes('stockfish') || blackStr.includes('bot') || blackStr.includes('ai') || blackStr.includes('gm')) {
             gameMode = 'pvb';
             playerColor = 'w';
         } else {
@@ -230,7 +222,6 @@ window.loadVaultMatch = function(id, fen, isResume, whiteName, blackName) {
         updateStatus();
         startTimer();
 
-        // Agar black ka turn hai aur AI mode hai toh engine ko turant trigger karein
         if (gameMode === 'pvb' && game.turn() === 'b') {
             setTimeout(makeAiMove, 300);
         }
