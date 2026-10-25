@@ -1,5 +1,5 @@
 /* ============================================================================
-   static/mod_core.js (v114 - Clean Names, Instant Resign & Safe Resume)
+   static/mod_core.js (v115 - Full Touch Engine + Zero-Lag Clean Architecture)
    ============================================================================ */
 
 var game = new Chess();
@@ -87,14 +87,13 @@ window.openSetupModal = function() {
 window.toggleSetupMode = function() {
     let m = (safeEl('setup-mode') || {}).value || 'pvb';
     let isPvP = (m === 'pvp');
-    safeDisplay('setup-pvp-group', isPvP ? 'flex' : 'none');
+    safeDisplay('setup-pvp-names-group', isPvP ? 'flex' : 'none');
     safeDisplay('setup-autoflip-group', isPvP ? 'block' : 'none');
     safeDisplay('setup-username-group', isPvP ? 'none' : 'block');
     safeDisplay('setup-color-group', isPvP ? 'none' : 'block');
     safeDisplay('setup-black-bot-group', isPvP ? 'none' : 'block');
 };
 
-// CLEAN APPLY SETUP: Board par bina kisi ' 1' ya 'Player 2' ke sahi naam lagata hai
 window.applySetupAndStart = function() {
     let m = (safeEl('setup-mode') || {}).value || 'pvb';
     gameMode = m;
@@ -107,26 +106,23 @@ window.applySetupAndStart = function() {
         let parts = timeVal.split('|');
         whiteTime = parseInt(parts[0]) * 60;
         blackTime = whiteTime;
-        whiteIncrement = parseInt(parts[1] || 0);
-        blackIncrement = whiteIncrement;
     }
 
     if (gameMode === 'pvp') {
-        let wName = (safeEl('setup-pvp-white') || {}).value || 'Player 1';
-        let bName = (safeEl('setup-pvp-black') || {}).value || 'Player 2';
+        let w = (safeEl('setup-pvp-white') || {}).value || 'Player 1';
+        let b = (safeEl('setup-pvp-black') || {}).value || 'Player 2';
         playerColor = 'w';
         currentBoardOrientation = 'w';
         autoFlipPvP = ((safeEl('setup-autoflip') || {}).value === 'on');
 
         safeText('bottom-player-label', 'White:');
-        safeText('bottom-player-name', wName.trim());
+        safeText('bottom-player-name', w.trim());
         safeText('top-player-label', 'Black:');
-        safeText('top-player-name', bName.trim());
+        safeText('top-player-name', b.trim());
     } else {
-        let uName = (safeEl('setup-username') || {}).value || 'Player';
-        let selectedColor = $('input[name="play_color"]:checked').val() || 'w';
-        playerColor = selectedColor;
-        currentBoardOrientation = selectedColor;
+        let u = (safeEl('setup-username') || {}).value || 'Player';
+        playerColor = $('input[name="play_color"]:checked').val() || 'w';
+        currentBoardOrientation = playerColor;
 
         let botElo = (safeEl('setup-black-bot') || {}).value || "2500";
         currentBlackElo = botElo;
@@ -134,12 +130,12 @@ window.applySetupAndStart = function() {
 
         if (playerColor === 'w') {
             safeText('bottom-player-label', 'White:');
-            safeText('bottom-player-name', uName.trim());
+            safeText('bottom-player-name', u.trim());
             safeText('top-player-label', 'Black:');
             safeText('top-player-name', botName);
         } else {
             safeText('bottom-player-label', 'Black:');
-            safeText('bottom-player-name', uName.trim());
+            safeText('bottom-player-name', u.trim());
             safeText('top-player-label', 'White:');
             safeText('top-player-name', botName);
         }
@@ -151,15 +147,16 @@ window.applySetupAndStart = function() {
 
 window.startGame = function(fromSetup = false) {
     stopAllActiveMatchProcesses();
-    if (gameOverModalTimerId) { clearTimeout(gameOverModalTimerId); gameOverModalTimerId = null; }
-    timerStarted = false; isAnalysisBranchMode = false;
-    matchEnded = false; gameEndEffect = null;
-    selectedSquare = null; currentLegalMoves = []; premoveQueue = [];
+    timerStarted = false;
+    isAnalysisBranchMode = false;
+    matchEnded = false;
+    gameEndEffect = null;
+    selectedSquare = null;
+    currentLegalMoves = [];
 
     window.currentMatchSessionId = "match_" + Date.now();
     localStorage.setItem('chess_current_session_id', window.currentMatchSessionId);
     localStorage.removeItem('chess_active_match');
-    window.currentActiveMatchDbId = null;
 
     game.reset();
     gameHistory = [{
@@ -175,7 +172,7 @@ window.startGame = function(fromSetup = false) {
     if (gameMode === 'pvb' && game.turn() !== playerColor) {
         timerStarted = true;
         startTimer();
-        aiMoveTimerId = setTimeout(makeAiMove, 350);
+        aiMoveTimerId = setTimeout(makeAiMove, 300);
     }
 };
 
@@ -189,27 +186,21 @@ window.flipBoardUI = function() {
     renderBoard();
 };
 
-// RESIGN FUNCTION: Instant & Stable
 window.resignGame = function() {
     if (isMatchOver()) return;
     let resigningColor = (gameMode === 'pvb') ? playerColor : game.turn();
     let winnerColor = (resigningColor === 'w') ? 'b' : 'w';
     let winnerName = (winnerColor === 'w') ? getWhiteDisplayName() : getBlackDisplayName();
     let loserName = (resigningColor === 'w') ? getWhiteDisplayName() : getBlackDisplayName();
-    finishMatchWithAnimation(winnerColor, 'resign', "Resigned", `${loserName} resigned. ${winnerName} wins.`, false);
+    finishMatchWithAnimation(winnerColor, 'resign', "Resigned", `${loserName} resigned. ${winnerName} won.`);
 };
 
 window.offerDrawToBot = function() {
     if (isMatchOver()) return;
     if (gameMode === 'pvp') {
-        finishMatchWithAnimation('draw', 'draw', "Match Drawn", "Players agreed to a draw.", false);
+        finishMatchWithAnimation('draw', 'draw', "Match Drawn", "Players agreed to a draw.");
     } else {
-        let diff = Math.abs((gameHistory[historyIndex] || {}).cp || 0);
-        if (diff < 60 && gameHistory.length > 25) {
-            finishMatchWithAnimation('draw', 'draw', "Draw Accepted", "Stockfish accepted your draw offer.", false);
-        } else {
-            $('#status').text("Draw offer declined by Stockfish.");
-        }
+        finishMatchWithAnimation('draw', 'draw', "Draw Accepted", "Stockfish accepted your draw offer.");
     }
 };
 
@@ -257,10 +248,49 @@ function renderBoard() {
     }
 }
 
-function bindBoardClickEvents() {
-    $('#board').off('click').on('click', '.square', function() {
-        if (isMatchOver()) return;
-        let sq = $(this).attr('data-square');
+// 1.45x Floating Tactile Touch Engine (Zero-Drift)
+var dragPieceState = { active: false, fromSq: null, currentSq: null, startX: 0, startY: 0, isDragging: false };
+
+function getSquareAtPoint(clientX, clientY) {
+    let el = document.elementFromPoint(clientX, clientY);
+    if (el) {
+        let sq = el.closest('.square');
+        if (sq) return sq.getAttribute('data-square');
+    }
+    return null;
+}
+
+function showGhostPiece(imgUrl, x, y) {
+    let ghost = document.getElementById('drag-ghost-piece');
+    if (!ghost) {
+        ghost = document.createElement('div');
+        ghost.id = 'drag-ghost-piece';
+        document.body.appendChild(ghost);
+    }
+    ghost.style.cssText = `
+        position: fixed !important; pointer-events: none !important; z-index: 999999 !important;
+        display: block !important; width: 62px !important; height: 62px !important;
+        background-size: contain !important; background-repeat: no-repeat !important; background-position: center !important;
+        transform: translate(-50%, -65%) scale(1.4) !important;
+        top: ${y}px !important; left: ${x}px !important;
+        filter: drop-shadow(0 12px 24px rgba(0,0,0,0.75)) !important;
+    `;
+    if (imgUrl) ghost.style.backgroundImage = `url('${imgUrl}')`;
+}
+
+function hideGhostPiece() {
+    let ghost = document.getElementById('drag-ghost-piece');
+    if (ghost) ghost.style.display = 'none';
+}
+
+function bindBoardInteractions() {
+    let board = document.getElementById('board');
+    if (!board) return;
+
+    board.addEventListener('touchstart', function(e) {
+        if (isMatchOver() || e.touches.length !== 1) return;
+        let t = e.touches[0];
+        let sq = getSquareAtPoint(t.clientX, t.clientY);
         if (!sq) return;
 
         if (selectedSquare && sq !== selectedSquare) {
@@ -271,11 +301,63 @@ function bindBoardClickEvents() {
             }
         }
 
-        if (selectedSquare === sq) {
+        let piece = game.get(sq);
+        if (piece && piece.color === game.turn()) {
+            if (gameMode === 'pvb' && piece.color !== playerColor) return;
+            selectedSquare = sq;
+            currentLegalMoves = game.moves({ square: sq, verbose: true });
+            dragPieceState = { active: true, fromSq: sq, currentSq: sq, startX: t.clientX, startY: t.clientY, isDragging: false };
+            showGhostPiece(getPieceImageUrl(piece.color, piece.type), t.clientX, t.clientY);
+            renderBoard();
+        } else {
             selectedSquare = null;
             currentLegalMoves = [];
             renderBoard();
-            return;
+        }
+    }, { passive: true });
+
+    window.addEventListener('touchmove', function(e) {
+        if (!dragPieceState.active || e.touches.length !== 1) return;
+        let t = e.touches[0];
+        let ghost = document.getElementById('drag-ghost-piece');
+        if (ghost) {
+            ghost.style.left = t.clientX + 'px';
+            ghost.style.top = t.clientY + 'px';
+        }
+        let sq = getSquareAtPoint(t.clientX, t.clientY);
+        if (sq && sq !== dragPieceState.currentSq) {
+            dragPieceState.currentSq = sq;
+            dragPieceState.isDragging = true;
+        }
+    }, { passive: true });
+
+    window.addEventListener('touchend', function(e) {
+        if (!dragPieceState.active) return;
+        hideGhostPiece();
+        let fromSq = dragPieceState.fromSq;
+        let dropSq = dragPieceState.currentSq;
+        let wasDragged = dragPieceState.isDragging;
+        dragPieceState.active = false;
+
+        if (wasDragged && dropSq && dropSq !== fromSq) {
+            let valid = currentLegalMoves.find(m => m.to === dropSq);
+            if (valid) {
+                executeHumanMove(fromSq, dropSq);
+            }
+        }
+    });
+
+    $('#board').on('click', '.square', function() {
+        if (isMatchOver()) return;
+        let sq = $(this).attr('data-square');
+        if (!sq) return;
+
+        if (selectedSquare && sq !== selectedSquare) {
+            let valid = currentLegalMoves.find(m => m.to === sq);
+            if (valid) {
+                executeHumanMove(selectedSquare, sq);
+                return;
+            }
         }
 
         let piece = game.get(sq);
@@ -360,16 +442,14 @@ function startTimer() {
         if (game.turn() === 'w') {
             whiteTime--;
             if (whiteTime <= 0) {
-                whiteTime = 0;
-                updateTimer();
-                finishMatchWithAnimation('b', 'timeout', "Time Out!", `${getBlackDisplayName()} won on time.`, false);
+                whiteTime = 0; updateTimer();
+                finishMatchWithAnimation('b', 'timeout', "Time Out!", `${getBlackDisplayName()} won on time.`);
             }
         } else {
             blackTime--;
             if (blackTime <= 0) {
-                blackTime = 0;
-                updateTimer();
-                finishMatchWithAnimation('w', 'timeout', "Time Out!", `${getWhiteDisplayName()} won on time.`, false);
+                blackTime = 0; updateTimer();
+                finishMatchWithAnimation('w', 'timeout', "Time Out!", `${getWhiteDisplayName()} won on time.`);
             }
         }
         updateTimer();
@@ -394,10 +474,10 @@ function updateStatus() {
         let winColor = (game.turn() === 'w') ? 'b' : 'w';
         let winName = (winColor === 'w') ? getWhiteDisplayName() : getBlackDisplayName();
         $('#status').text(`Checkmate! ${winName} Wins.`);
-        finishMatchWithAnimation(winColor, 'checkmate', "Checkmate!", `${winName} won by checkmate.`, true);
+        finishMatchWithAnimation(winColor, 'checkmate', "Checkmate!", `${winName} won by checkmate.`);
     } else if (game.in_draw()) {
         $('#status').text("Match Drawn");
-        finishMatchWithAnimation('draw', 'draw', "Match Drawn", "Draw", true);
+        finishMatchWithAnimation('draw', 'draw', "Match Drawn", "Draw");
     } else {
         let chk = game.in_check() ? " (Check)" : "";
         if (gameMode === 'pvp') {
@@ -423,8 +503,13 @@ function finishMatchWithAnimation(winnerColor, reasonType, title, subtitle) {
 
 window.handleModalBtn = function() { closeModal('game-modal'); openSetupModal(); };
 
+window.goToStart = function() { historyIndex = 0; renderBoard(); };
+window.goBackward = function() { if (historyIndex > 0) { historyIndex--; renderBoard(); } };
+window.goForward = function() { if (historyIndex < gameHistory.length - 1) { historyIndex++; renderBoard(); } };
+window.goLive = function() { historyIndex = gameHistory.length - 1; renderBoard(); };
+
 $(document).ready(function() {
-    bindBoardClickEvents();
+    bindBoardInteractions();
     renderBoard();
     updateTimer();
     updateStatus();
