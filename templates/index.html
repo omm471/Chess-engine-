@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Chess AI Pro</title>
+    <title>JoHnnY</title>
     <link rel="stylesheet" href="/static/style.css?v=101">
     <style>
         body {
@@ -144,6 +144,10 @@
         .sticky-top-bar { position: sticky !important; top: -14px !important; background: #21201d !important; z-index: 99 !important; padding: 8px 2px !important; margin: -10px -4px 10px -4px !important; border-bottom: 1px solid #363431 !important; display: flex !important; justify-content: space-between !important; align-items: center !important; }
         .big-close-btn { background: #363431 !important; color: #ddd !important; border: 1px solid #4a4844 !important; padding: 4px 10px !important; border-radius: 4px !important; font-size: 11.5px !important; font-weight: bold !important; cursor: pointer !important; }
 
+        .setup-group { margin-bottom: 9px; text-align: left; }
+        .setup-group label { display: block; font-size: 12px; font-weight: bold; margin-bottom: 4px; color: #81b64c; }
+        .custom-input, select { width: 100%; box-sizing: border-box; padding: 8px 10px; background: #161512; border: 1px solid #383632; border-radius: 5px; color: #fff; font-size: 12.5px; }
+
         .chessis-sec-title { color: #5c9ded; font-size: 11px; font-weight: 700; text-align: left; margin: 10px 0 4px 0; text-transform: uppercase; letter-spacing: 0.4px; }
         .chessis-row { display: flex; justify-content: space-between; align-items: center; padding: 9px 4px; border-bottom: 1px solid #2d2b28; text-align: left; }
         .chessis-row-title { color: #e8e8e8; font-size: 12.5px; font-weight: 600; }
@@ -222,83 +226,6 @@
             color: rgba(255, 255, 255, 0.90) !important; font-weight: 800 !important;
             text-shadow: 0 0 2px rgba(0, 0, 0, 0.8) !important;
         }
-
-/* ==========================================================================
-   ONBOARDING WIZARD STYLING (DARK, CLEAN & MOBILE FRIENDLY)
-   ========================================================================== */
-#onboarding-modal-overlay {
-    position: fixed;
-    inset: 0;
-    background: rgba(8, 8, 10, 0.92);
-    backdrop-filter: blur(8px);
-    z-index: 9999999;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 18px;
-}
-
-.onboarding-card {
-    background: #18191c;
-    border: 1px solid #2d2f36;
-    border-radius: 16px;
-    width: 100%;
-    max-width: 380px;
-    padding: 24px 20px;
-    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.85);
-    color: #e0e0e0;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-    animation: obFadeIn 0.22s ease-out;
-}
-
-@keyframes obFadeIn {
-    from { opacity: 0; transform: translateY(12px) scale(0.97); }
-    to { opacity: 1; transform: translateY(0) scale(1); }
-}
-
-.ob-icon {
-    font-size: 34px;
-    margin-bottom: 8px;
-    text-align: center;
-}
-
-.ob-title {
-    font-size: 19px;
-    font-weight: 700;
-    color: #ffffff;
-    margin: 0 0 6px 0;
-    text-align: center;
-}
-
-.ob-subtitle {
-    font-size: 12.5px;
-    color: #9da1ad;
-    line-height: 1.45;
-    margin: 0 0 16px 0;
-    text-align: center;
-}
-
-.ob-shield-box {
-    background: #111a14;
-    border: 1px solid #1f3b25;
-    border-radius: 10px;
-    padding: 12px;
-    font-size: 11.5px;
-    color: #a3e635;
-    display: flex;
-    gap: 10px;
-    align-items: center;
-    margin-bottom: 18px;
-    line-height: 1.4;
-}
-
-.ob-shield-icon {
-    font-size: 20px;
-}
-
-.ob-info-box {
-    background: #121316;
-
     </style>
 </head>
 <body class="theme-green">
@@ -385,7 +312,7 @@
         </div>
     </div>
 
-    <!-- 3. NEW GAME SETUP MODAL (FULL CONTROLS RESTORED) -->
+    <!-- 3. NEW GAME SETUP MODAL (FULL CONTROLS + 2-PLAYER PASS & PLAY SUPPORT) -->
     <div id="setup-modal" class="modal-overlay" style="display: none;">
         <div class="modal-content setup-box">
             <div class="sticky-top-bar">
@@ -395,7 +322,7 @@
             <div class="setup-group">
                 <label>Game Mode:</label>
                 <select id="setup-mode" onchange="toggleSetupMode()">
-                    <option value="pvb">Player vs Bot (Rated Match)</option>
+                    <option value="pvb" selected>Player vs Bot (Rated Match)</option>
                     <option value="bvb">Bot vs Bot (Rating Levels Match)</option>
                     <option value="eve">Engine vs Engine (Different Engines Duel)</option>
                     <option value="pvp">Pass & Play (2 Players)</option>
@@ -405,10 +332,25 @@
                 <label>Auto-Flip Board:</label>
                 <select id="setup-autoflip"><option value="on" selected>ON</option><option value="off">OFF</option></select>
             </div>
+
+            <!-- Single Player Name (for PvB) -->
             <div class="setup-group" id="setup-username-group">
                 <label>Your Name:</label>
                 <input type="text" id="setup-username" value="Player" class="custom-input" oninput="saveUsername()">
             </div>
+
+            <!-- Pass & Play 2-Player Dedicated Names (Clean Left-Aligned) -->
+            <div id="setup-pvp-names-group" style="display: none; flex-direction: column; width: 100%;">
+                <div class="setup-group">
+                    <label style="color:#22C55E;">White:</label>
+                    <input type="text" id="setup-pvp-white" value="Player 1" class="custom-input">
+                </div>
+                <div class="setup-group">
+                    <label style="color:#22C55E;">Black:</label>
+                    <input type="text" id="setup-pvp-black" value="Player 2" class="custom-input">
+                </div>
+            </div>
+
             <div class="setup-group" id="setup-color-group">
                 <label>Play Side:</label>
                 <div class="color-selector">
@@ -565,7 +507,7 @@
         </div>
     </div>
 
-    <!-- 5. SETTINGS MODAL -->
+    <!-- 5. SETTINGS MODAL (DEFAULT 8 CORES & 512 MB SELECTED) -->
     <div id="settings-modal" class="modal-overlay" style="display: none;">
         <div class="modal-content setup-box">
             <div class="sticky-top-bar">
@@ -573,8 +515,8 @@
                 <button class="big-close-btn" onclick="closeModal('settings-modal')">Close</button>
             </div>
             <div style="background:#161512; border:1px solid #312f2c; border-radius:5px; padding:8px 10px; text-align:left; font-size:11px; color:#aaa;">
-                <div>Active Engine: <b id="active-engine-realname" style="color:#81b64c;">Stockfish 19</b> (<span id="active-engine-proto" style="color:#5c9ded;">UCI</span>)</div>
-                <div style="margin-top:3px;">Live Hardware: <b id="live-hw-status" style="color:#f0c15c;">4 Cores • 256 MB Hash • NNUE ON</b></div>
+                <div>Active Engine: <b id="active-engine-realname" style="color:#81b64c;">Stockfish 16.1</b> (<span id="active-engine-proto" style="color:#5c9ded;">UCI</span>)</div>
+                <div style="margin-top:3px;">Live Hardware: <b id="live-hw-status" style="color:#f0c15c;">8 Cores • 512 MB Hash • NNUE ON</b></div>
             </div>
             <div class="chessis-sec-title">Select Chess Engine</div>
             <div id="engine-radio-list" style="margin-bottom:6px;"></div>
@@ -597,7 +539,7 @@
                 <select id="engine-threads" style="width:115px; background:#161512; color:#fff; border:1px solid #3c3934; padding:5px; border-radius:4px;" onchange="applyLiveEngineHardware()">
                     <script>
                         for(let i=1; i<=32; i++) {
-                            document.write(`<option value="${i}" ${i===4?'selected':''}>${i} Cores</option>`);
+                            document.write(`<option value="${i}" ${i===8?'selected':''}>${i} Cores</option>`);
                         }
                     </script>
                 </select>
@@ -612,8 +554,8 @@
                     <option value="32">32 MB</option>
                     <option value="64">64 MB</option>
                     <option value="128">128 MB</option>
-                    <option value="256" selected>256 MB</option>
-                    <option value="512">512 MB</option>
+                    <option value="256">256 MB</option>
+                    <option value="512" selected>512 MB</option>
                     <option value="1024">1024 MB (1GB)</option>
                     <option value="2048">2048 MB (2GB)</option>
                     <option value="4096">4096 MB (4GB)</option>
@@ -698,7 +640,7 @@
                 <button onclick="manualSaveToVault()" style="flex:1; background:#81b64c; color:#fff; border:none; padding:8px; font-size:11.5px; font-weight:bold; border-radius:5px; cursor:pointer;">+ Save Current Game</button>
                 <button onclick="refreshMatchVaultList()" style="background:#2c2a27; color:#ddd; border:1px solid #3f3c38; padding:8px 12px; font-size:11.5px; border-radius:5px; cursor:pointer;">↻</button>
             </div>
-            <div id="vault-list"></div>
+            <div id="vault-matches-list"></div>
         </div>
     </div>
 
@@ -711,7 +653,8 @@
                     <div class="app-logo">CHESS <span>AI PRO</span></div>
                 </div>
                 <div style="display:flex; align-items:center; gap:5px;">
-                    <div class="hw-pill" id="top-engine-pill" onclick="openSettingsModal()">Stockfish 19 • 4C/256MB</div>
+                    <!-- 8C/512MB Default Hardware Pill -->
+                    <div class="hw-pill" id="top-engine-pill" onclick="openSettingsModal()">Stockfish 16.1 • 8C/512MB</div>
                     <button class="header-icon-btn" onclick="openSettingsModal()" title="Settings">⚙</button>
                 </div>
             </div>
@@ -784,12 +727,12 @@
 
     <script src="/static/js/jquery.min.js"></script>
     <script src="/static/js/chess.min.js"></script>
-    <script src="/static/mod_core.js?v=105"></script>
-    <script src="/static/mod_openings.js?v=105"></script>
-    <script src="/static/mod_analysis.js?v=105"></script>
-    <script src="/static/mod_drawing.js?v=105"></script>
-    <script src="/static/mod_share_vault.js?v=105"></script>
-    <script src="/static/mod_extras.js?v=105"></script>
+    <script src="/static/mod_core.js?v=116"></script>
+    <script src="/static/mod_openings.js?v=116"></script>
+    <script src="/static/mod_analysis.js?v=116"></script>
+    <script src="/static/mod_drawing.js?v=116"></script>
+    <script src="/static/mod_share_vault.js?v=121"></script>
+    <script src="/static/mod_extras.js?v=116"></script>
 
     <script>
         (function() {
@@ -802,10 +745,46 @@
                     renderBoard();
                 }
             };
-        })();
-        
-    </script>
 
-    
+            // Setup mode switch: Pass & Play me White aur Black name inputs toggle honge
+            window.toggleSetupMode = function() {
+                let m = (document.getElementById('setup-mode') || {}).value || 'pvb';
+                let isPvP = (m === 'pvp');
+
+                let pvpGroup = document.getElementById('setup-pvp-names-group');
+                if (pvpGroup) pvpGroup.style.display = isPvP ? 'flex' : 'none';
+
+                let userGroup = document.getElementById('setup-username-group');
+                if (userGroup) userGroup.style.display = isPvP ? 'none' : 'block';
+
+                let flipGroup = document.getElementById('setup-autoflip-group');
+                if (flipGroup) flipGroup.style.display = isPvP ? 'block' : 'none';
+
+                let colorGroup = document.getElementById('setup-color-group');
+                if (colorGroup) colorGroup.style.display = (m === 'pvb') ? 'block' : 'none';
+
+                let whiteBotGroup = document.getElementById('setup-white-bot-group');
+                if (whiteBotGroup) whiteBotGroup.style.display = (m === 'bvb') ? 'block' : 'none';
+
+                let blackBotGroup = document.getElementById('setup-black-bot-group');
+                if (blackBotGroup) blackBotGroup.style.display = (m === 'pvb' || m === 'bvb') ? 'block' : 'none';
+
+                let eveGroup = document.getElementById('setup-eve-group');
+                if (eveGroup) eveGroup.style.display = (m === 'eve') ? 'flex' : 'none';
+
+                let thinkGroup = document.getElementById('setup-think-group');
+                if (thinkGroup) thinkGroup.style.display = isPvP ? 'none' : 'block';
+
+                let depthGroup = document.getElementById('setup-depth-group');
+                if (depthGroup) depthGroup.style.display = isPvP ? 'none' : 'block';
+
+                let personalityGroup = document.getElementById('setup-personality-group');
+                if (personalityGroup) personalityGroup.style.display = (m === 'pvb' || m === 'bvb') ? 'block' : 'none';
+
+                let oppLbl = document.getElementById('opponent-elo-label');
+                if (oppLbl) oppLbl.innerText = (m === 'bvb') ? "Black Bot Level & Name:" : "Opponent Bot Level & Name:";
+            };
+        })();
+    </script>
 </body>
 </html>
