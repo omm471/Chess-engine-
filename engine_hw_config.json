@@ -1,1 +1,1 @@
-{"path": "/usr/games/stockfish", "preset": "sf19", "hash": 4096, "threads": 32, "use_nnue": true}
+{"path": "/usr/games/stockfish", "preset": "sf19", "hash": 512, "threads": 8, "use_nnue": true}
