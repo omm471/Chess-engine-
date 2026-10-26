@@ -1,7 +1,9 @@
 /* ============================================================================
-   static/mod_core.js (v113 - Auto-Play Glitch Fix & Single Match ID Lock)
+   static/mod_core.js (v122 - Full Action Integration & 2-Player Pass-Play Engine)
    - Glitch Fix: AI strictly prevented from playing human's turn in PvB
    - Single Match ID Session: Eliminates multiple duplicate match rows
+   - 2-Player Pass & Play: Independent White & Black custom name handling
+   - Front Controls: Resign, Offer Draw, Hint, Flip, and Menu actions wired
    - 1.45x Enlarged Floating Tactile Touch Controls (Zero-Drift)
    - Real-time Depth, NPS (kN/s), Hardware and Engine Telemetry restored
    ============================================================================ */
@@ -179,8 +181,23 @@ function safeText(ids, text) { (Array.isArray(ids) ? ids : [ids]).forEach(id => 
 function safeHtml(ids, html) { (Array.isArray(ids) ? ids : [ids]).forEach(id => { let el = safeEl(id); if (el) el.innerHTML = html; }); }
 function safeDisplay(ids, disp) { (Array.isArray(ids) ? ids : [ids]).forEach(id => { let el = safeEl(id); if (el) el.style.display = disp; }); }
 function getTextSafe(id, fallback = "") { let el = safeEl(id); return (el && el.innerText) ? el.innerText.trim() : fallback; }
-function getWhiteDisplayName() { return getTextSafe('top-player-label', '') === 'White' ? getTextSafe('top-player-name', 'White') : getTextSafe('bottom-player-name', 'White'); }
-function getBlackDisplayName() { return getTextSafe('top-player-label', '') === 'Black' ? getTextSafe('top-player-name', 'Black') : getTextSafe('bottom-player-name', 'Black'); }
+
+// Robust substring check: Works with "White", "White:", "Player 1 (White):"
+function getWhiteDisplayName() {
+    let topLbl = getTextSafe('top-player-label', '').toLowerCase();
+    if (topLbl.includes('white')) {
+        return getTextSafe('top-player-name', 'White');
+    }
+    return getTextSafe('bottom-player-name', 'White');
+}
+
+function getBlackDisplayName() {
+    let topLbl = getTextSafe('top-player-label', '').toLowerCase();
+    if (topLbl.includes('black')) {
+        return getTextSafe('top-player-name', 'Black');
+    }
+    return getTextSafe('bottom-player-name', 'Black');
+}
 
 window.syncEloBadgeVisibility = function() {
     let pill = safeEl('live-player-elo-pill');
@@ -215,20 +232,25 @@ window.openSettingsModal = function() {
     if (window.refreshEngineListInSettings) window.refreshEngineListInSettings();
     safeDisplay('settings-modal', 'flex');
 };
+
 window.toggleSetupMode = function() {
     let m = (safeEl('setup-mode') || {}).value || 'pvb';
-    safeDisplay('setup-autoflip-group', m === 'pvp' ? 'flex' : 'none');
-    safeDisplay('setup-username-group', (m === 'pvb' || m === 'pvp') ? 'flex' : 'none');
+    let isPvP = (m === 'pvp');
+
+    safeDisplay('setup-pvp-names-group', isPvP ? 'flex' : 'none');
+    safeDisplay('setup-username-group', isPvP ? 'none' : 'block');
+    safeDisplay('setup-autoflip-group', isPvP ? 'flex' : 'none');
     safeDisplay('setup-color-group', m === 'pvb' ? 'flex' : 'none');
     safeDisplay('setup-white-bot-group', m === 'bvb' ? 'flex' : 'none');
     safeDisplay('setup-black-bot-group', (m === 'pvb' || m === 'bvb') ? 'flex' : 'none');
     safeDisplay('setup-eve-group', m === 'eve' ? 'flex' : 'none');
-    safeDisplay('setup-think-group', m === 'pvp' ? 'none' : 'flex');
-    safeDisplay('setup-depth-group', m === 'pvp' ? 'none' : 'flex');
+    safeDisplay('setup-think-group', isPvP ? 'none' : 'flex');
+    safeDisplay('setup-depth-group', isPvP ? 'none' : 'flex');
     safeDisplay('setup-personality-group', (m === 'pvb' || m === 'bvb') ? 'flex' : 'none');
     let oppLbl = safeEl('opponent-elo-label');
     if (oppLbl) oppLbl.innerText = (m === 'bvb') ? "Black Bot Level & Name:" : "Opponent Bot Level & Name:";
 };
+
 window.toggleCustomTime = function() {
     let v = (safeEl('setup-time') || {}).value;
     safeDisplay('custom-time-group', v === 'custom' ? 'flex' : 'none');
@@ -248,6 +270,106 @@ window.saveBotNameForElo = function(side) {
 window.saveUsername = function() {
     let u = (safeEl('setup-username') || {}).value;
     if (u && u.trim()) localStorage.setItem('chess_username', u.trim());
+};
+
+// ============================================================================
+// APPLY SETUP AND START (PASS & PLAY 2-PLAYER, BOT, EVE & TIME CONTROLS)
+// ============================================================================
+window.applySetupAndStart = function() {
+    let mode = (safeEl('setup-mode') || {}).value || 'pvb';
+    gameMode = mode;
+
+    if (mode === 'pvp') {
+        let p1Name = (safeEl('setup-pvp-white') || {}).value || "Player 1";
+        let p2Name = (safeEl('setup-pvp-black') || {}).value || "Player 2";
+        autoFlipPvP = ((safeEl('setup-autoflip') || {}).value === 'on');
+
+        playerColor = 'w';
+        currentBoardOrientation = 'w';
+
+        safeText('bottom-player-name', p1Name.trim() || "Player 1");
+        safeText('bottom-player-label', 'White');
+        safeText('top-player-name', p2Name.trim() || "Player 2");
+        safeText('top-player-label', 'Black');
+    } else if (mode === 'pvb') {
+        let uName = (safeEl('setup-username') || {}).value || "You";
+        let botElo = (safeEl('setup-black-bot') || {}).value || "2500";
+        let botName = (safeEl('setup-bot-name') || {}).value || getSavedBotName(botElo);
+        currentBlackElo = botElo;
+
+        let colRadios = document.getElementsByName('play_color');
+        let chosenCol = 'w';
+        for (let i = 0; i < colRadios.length; i++) {
+            if (colRadios[i].checked) { chosenCol = colRadios[i].value; break; }
+        }
+        if (chosenCol === 'random') {
+            chosenCol = (Math.random() < 0.5) ? 'w' : 'b';
+        }
+
+        playerColor = chosenCol;
+        currentBoardOrientation = chosenCol;
+
+        if (chosenCol === 'w') {
+            safeText('bottom-player-name', uName.trim() || "You");
+            safeText('bottom-player-label', 'White');
+            safeText('top-player-name', botName.trim() || "Stockfish GM");
+            safeText('top-player-label', 'Black');
+        } else {
+            safeText('bottom-player-name', uName.trim() || "You");
+            safeText('bottom-player-label', 'Black');
+            safeText('top-player-name', botName.trim() || "Stockfish GM");
+            safeText('top-player-label', 'White');
+        }
+    } else if (mode === 'bvb') {
+        let wElo = (safeEl('setup-white-bot') || {}).value || "1500";
+        let bElo = (safeEl('setup-black-bot') || {}).value || "2500";
+        let wName = (safeEl('setup-white-bot-name') || {}).value || getSavedBotName(wElo);
+        let bName = (safeEl('setup-bot-name') || {}).value || getSavedBotName(bElo);
+
+        currentWhiteElo = wElo;
+        currentBlackElo = bElo;
+        currentBoardOrientation = 'w';
+
+        safeText('bottom-player-name', wName.trim());
+        safeText('bottom-player-label', 'White');
+        safeText('top-player-name', bName.trim());
+        safeText('top-player-label', 'Black');
+    }
+
+    // Time Control Settings
+    let tVal = (safeEl('setup-time') || {}).value || "10|0";
+    if (tVal === '0|0') {
+        isInfiniteTime = true;
+        whiteTime = 0; blackTime = 0;
+        whiteIncrement = 0; blackIncrement = 0;
+    } else if (tVal === 'custom') {
+        isInfiniteTime = false;
+        let cMin = parseInt((safeEl('custom-minutes') || {}).value) || 10;
+        let cSec = parseInt((safeEl('custom-seconds') || {}).value) || 0;
+        let cInc = parseInt((safeEl('custom-increment') || {}).value) || 0;
+        whiteTime = (cMin * 60) + cSec;
+        blackTime = whiteTime;
+        whiteIncrement = cInc;
+        blackIncrement = cInc;
+    } else {
+        isInfiniteTime = false;
+        let parts = tVal.split('|');
+        let mins = parseInt(parts[0]) || 10;
+        let inc = parseInt(parts[1]) || 0;
+        whiteTime = mins * 60;
+        blackTime = whiteTime;
+        whiteIncrement = inc;
+        blackIncrement = inc;
+    }
+
+    // Bot Think & Depth Settings
+    let thinkEl = safeEl('setup-think-time');
+    if (thinkEl) engineThinkTime = parseFloat(thinkEl.value) || 0.8;
+    let depthEl = safeEl('setup-depth-slider');
+    if (depthEl) engineMaxDepth = parseInt(depthEl.value) || 20;
+
+    closeModal('setup-modal');
+    window.startGame(true);
 };
 
 window.applyThemeAndPieces = function() {
@@ -1189,6 +1311,142 @@ function showAnalysisStatus() {
         $('#status').text(`Move ${historyIndex}: ${rec.moveObj.san}${clsTxt}${bestTxt}`);
     }
 }
+
+// ============================================================================
+// FRONT CONTROLS: RESIGN, OFFER DRAW, HINT, MENU & FULLSCREEN
+// ============================================================================
+
+window.resignGame = function() {
+    if (isMatchOver()) return;
+    let winnerColor = (game.turn() === 'w') ? 'b' : 'w';
+    let winnerName = (winnerColor === 'w') ? getWhiteDisplayName() : getBlackDisplayName();
+    let loserName = (winnerColor === 'w') ? getBlackDisplayName() : getWhiteDisplayName();
+    $('#status').text(`${loserName} resigned. ${winnerName} Wins.`);
+    finishMatchWithAnimation(winnerColor, 'resignation', "Resignation", `${loserName} resigned. ${winnerName} won.`, false);
+    if (window.AndroidBridge && window.AndroidBridge.handleResign) {
+        try { window.AndroidBridge.handleResign(); } catch (e) {}
+    }
+};
+
+window.offerDrawToBot = function() {
+    if (isMatchOver()) return;
+    if (gameMode === 'pvp') {
+        $('#status').text("Draw agreed between players.");
+        finishMatchWithAnimation('draw', 'draw', "Match Drawn", "Draw agreed between players.", false);
+        if (window.AndroidBridge && window.AndroidBridge.handleOfferDraw) {
+            try { window.AndroidBridge.handleOfferDraw(true); } catch (e) {}
+        }
+        return;
+    }
+    // In PvB mode: bot evaluates position
+    let currCp = 0;
+    let lastRec = gameHistory[gameHistory.length - 1];
+    if (lastRec && lastRec.cp !== undefined) currCp = lastRec.cp;
+    if (Math.abs(currCp) <= 120 || gameHistory.length >= 50) {
+        $('#status').text("Draw offer accepted by opponent.");
+        finishMatchWithAnimation('draw', 'draw', "Match Drawn", "Opponent accepted the draw offer.", false);
+    } else {
+        $('#status').text("Opponent declined the draw offer.");
+        if (typeof showAndroidToast === 'function') showAndroidToast("Opponent declined the draw offer.");
+    }
+    if (window.AndroidBridge && window.AndroidBridge.handleOfferDraw) {
+        try { window.AndroidBridge.handleOfferDraw(false); } catch (e) {}
+    }
+};
+
+window.requestHint = function() {
+    if (isMatchOver() || (gameMode === 'pvb' && game.turn() !== playerColor)) return;
+    let lastRec = gameHistory[gameHistory.length - 1];
+    if (lastRec && lastRec.bestMoveUci && lastRec.bestMoveUci.length >= 4) {
+        let from = lastRec.bestMoveUci.substring(0, 2);
+        let to = lastRec.bestMoveUci.substring(2, 4);
+        selectedSquare = from;
+        currentLegalMoves = game.moves({ square: from, verbose: true });
+        updateSelectionAndDotsInPlace();
+        let fromCoord = sqToSvgCoords(from), toCoord = sqToSvgCoords(to);
+        let svg = safeEl('arrow-overlay');
+        if (svg) {
+            svg.innerHTML = `<line x1="${fromCoord.x}" y1="${fromCoord.y}" x2="${toCoord.x}" y2="${toCoord.y}" stroke="#f0c15c" stroke-width="4.5" stroke-linecap="round" opacity="0.9" />`;
+        }
+        $('#status').text(`Hint: ${lastRec.bestMoveSan || lastRec.bestMoveUci}`);
+    } else {
+        $.post('/eval', { fen: game.fen(), depth: 14, time: 0.15 }, function(data) {
+            if (data && data.best_uci && data.best_uci.length >= 4) {
+                let from = data.best_uci.substring(0, 2);
+                let to = data.best_uci.substring(2, 4);
+                selectedSquare = from;
+                currentLegalMoves = game.moves({ square: from, verbose: true });
+                updateSelectionAndDotsInPlace();
+                let fromCoord = sqToSvgCoords(from), toCoord = sqToSvgCoords(to);
+                let svg = safeEl('arrow-overlay');
+                if (svg) {
+                    svg.innerHTML = `<line x1="${fromCoord.x}" y1="${fromCoord.y}" x2="${toCoord.x}" y2="${toCoord.y}" stroke="#f0c15c" stroke-width="4.5" stroke-linecap="round" opacity="0.9" />`;
+                }
+                $('#status').text(`Hint: ${data.best_san || data.best_uci}`);
+            }
+        });
+    }
+};
+
+window.openToolsMenuModal = function() {
+    if (window.toggleSidebarDrawer) window.toggleSidebarDrawer(true);
+};
+
+window.openDeepReport = function() {
+    safeDisplay('kundli-modal', 'flex');
+    if (window.runDeepKundliScan) window.runDeepKundliScan(false);
+};
+
+window.toggleSidebarDrawer = function(force) {
+    let drawer = safeEl('chess-sidebar-drawer');
+    let backdrop = safeEl('sidebar-backdrop');
+    if (!drawer) return;
+    let isOpen = drawer.classList.contains('open');
+    let shouldOpen = (force !== undefined) ? force : !isOpen;
+    if (shouldOpen) {
+        drawer.classList.add('open');
+        if (backdrop) backdrop.style.display = 'block';
+    } else {
+        drawer.classList.remove('open');
+        if (backdrop) backdrop.style.display = 'none';
+    }
+};
+
+window.toggleDrawMode = function() {
+    drawModeEnabled = !drawModeEnabled;
+    safeDisplay('draw-palette-bar', drawModeEnabled ? 'flex' : 'none');
+    let canvas = safeEl('custom-draw-overlay');
+    if (canvas) {
+        if (drawModeEnabled) canvas.classList.add('drawing-active');
+        else canvas.classList.remove('drawing-active');
+    }
+};
+
+window.toggleFocusMode = function() {
+    if (!document.fullscreenElement) {
+        document.documentElement.requestFullscreen().catch(() => {});
+        document.body.classList.add('focus-fullscreen-mode');
+    } else {
+        document.exitFullscreen().catch(() => {});
+        document.body.classList.remove('focus-fullscreen-mode');
+    }
+    syncOptionalPanelsVisibility();
+};
+
+window.togglePremoveMode = function() {
+    premoveEnabled = !premoveEnabled;
+    safeText('sidebar-premove-val', premoveEnabled ? 'ON' : 'OFF');
+    let vEl = safeEl('sidebar-premove-val');
+    if (vEl) vEl.style.color = premoveEnabled ? '#81b64c' : '#ca3431';
+    if (!premoveEnabled) premoveQueue = [];
+};
+
+window.resetCareerRating = function() {
+    localStorage.setItem('chess_player_elo', "1200");
+    safeText('sidebar-elo-val', "1200 ELO");
+    safeText('live-player-elo-pill', "1200 ELO");
+    if (typeof showAndroidToast === 'function') showAndroidToast("Rating reset to 1200 ELO");
+};
 
 // ============================================================================
 // SINGLE-MATCH IN-PLACE STATE SAVE (NO CLOUD DUPLICATE SPAM)
