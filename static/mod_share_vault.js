@@ -1,7 +1,8 @@
 /* ============================================================================
-   static/mod_share_vault.js (v118 - Android Bottom Toast & Storage Saver)
+   static/mod_share_vault.js (v121 - Full Storage Saver & Multi-PGN Integration)
    - Android Native Bottom Toast: Clean floating pill at the bottom (No Popups!)
-   - Direct Phone Storage Saver: Saves PGN to /storage/emulated/0/ChessAIPro/
+   - Direct Phone Storage Saver: Saves PGN directly to Download/ChessAIPro/
+   - Master Multi-PGN Exporter: Bundles all distinct match history into 1 file
    - In-Flight Request Lock: Prevents duplicate rows when moves happen rapidly
    - Native In-App Custom Confirm Dialog (Android WebView compatible)
    - Exact client-local time formatting with dynamic Resume/Replay switching
@@ -30,6 +31,8 @@ function getUserDeviceFormattedDate() {
 // NATIVE ANDROID BOTTOM TOAST (NO CENTER POPUPS!)
 // ============================================================================
 function showAndroidToast(message) {
+    if (window.AndroidBridge && window.AndroidBridge.savePgnNative) return;
+
     let existing = document.getElementById('android-toast-pill');
     if (existing) existing.remove();
 
@@ -75,31 +78,38 @@ function showAndroidToast(message) {
 }
 
 window.buildBrandedPGN = function() {
-    let wName = getWhiteDisplayName();
-    let bName = getBlackDisplayName();
-    let wAcc = getTextSafe('white-acc-text', '100%');
-    let bAcc = getTextSafe('black-acc-text', '100%');
-    let opening = getTextSafe('opening-bar', 'Standard Opening');
+    let wName = (typeof getWhiteDisplayName === 'function') ? getWhiteDisplayName() : 'White';
+    let bName = (typeof getBlackDisplayName === 'function') ? getBlackDisplayName() : 'Black';
+    let wAcc = (typeof getTextSafe === 'function') ? getTextSafe('white-acc-text', '100%') : '100%';
+    let bAcc = (typeof getTextSafe === 'function') ? getTextSafe('black-acc-text', '100%') : '100%';
+    let opening = (typeof getTextSafe === 'function') ? getTextSafe('opening-bar', 'Standard Opening') : 'Standard Opening';
     let dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, '.');
 
     let resCode = "*";
-    if (game.in_checkmate()) resCode = (game.turn() === 'w') ? "0-1" : "1-0";
-    else if (game.in_draw()) resCode = "1/2-1/2";
-    else if (matchEnded && gameEndEffect) {
+    if (typeof game !== 'undefined' && game.in_checkmate && game.in_checkmate()) {
+        resCode = (game.turn() === 'w') ? "0-1" : "1-0";
+    } else if (typeof game !== 'undefined' && game.in_draw && game.in_draw()) {
+        resCode = "1/2-1/2";
+    } else if (typeof matchEnded !== 'undefined' && matchEnded && typeof gameEndEffect !== 'undefined' && gameEndEffect) {
         if (gameEndEffect.winner === 'w') resCode = "1-0";
         else if (gameEndEffect.winner === 'b') resCode = "0-1";
         else if (gameEndEffect.winner === 'draw') resCode = "1/2-1/2";
     }
 
     let movesText = "";
-    for (let i = 1; i < gameHistory.length; i++) {
-        let rec = gameHistory[i];
-        if (!rec || !rec.moveObj) continue;
-        if (i % 2 === 1) movesText += `${Math.ceil(i / 2)}. ${rec.moveObj.san} `;
-        else movesText += `${rec.moveObj.san} `;
+    if (typeof gameHistory !== 'undefined' && Array.isArray(gameHistory)) {
+        for (let i = 1; i < gameHistory.length; i++) {
+            let rec = gameHistory[i];
+            if (!rec || !rec.moveObj) continue;
+            if (i % 2 === 1) movesText += `${Math.ceil(i / 2)}. ${rec.moveObj.san} `;
+            else movesText += `${rec.moveObj.san} `;
+        }
     }
-    if (!movesText.trim()) movesText = game.pgn() || "";
+    if (!movesText.trim() && typeof game !== 'undefined' && game.pgn) {
+        movesText = game.pgn() || "";
+    }
 
+    let startFen = (typeof gameHistory !== 'undefined' && gameHistory[0]) ? gameHistory[0].fen : (typeof game !== 'undefined' ? game.fen() : "");
     let headers = [
         `[Event "Chess AI Pro Match"]`,
         `[Site "Chess AI Pro • Android PRoot"]`,
@@ -110,28 +120,38 @@ window.buildBrandedPGN = function() {
         `[Opening "${opening}"]`,
         `[WhiteAccuracy "${wAcc}"]`,
         `[BlackAccuracy "${bAcc}"]`,
-        `[FEN "${gameHistory[0] ? gameHistory[0].fen : game.fen()}"]`
+        `[FEN "${startFen}"]`
     ].join('\n');
 
     return `${headers}\n\n${movesText.trim()} ${resCode}`.trim();
 };
 
 // ============================================================================
-// DIRECT DEVICE STORAGE PGN SAVER
+// 1. DIRECT DEVICE STORAGE SINGLE PGN SAVER
 // ============================================================================
 window.saveSingleMatchPGN = function() {
-    let pgnText = window.buildBrandedPGN ? window.buildBrandedPGN() : (game ? game.pgn() : "");
+    let pgnText = window.buildBrandedPGN ? window.buildBrandedPGN() : (typeof game !== 'undefined' ? game.pgn() : "");
     if (!pgnText || !pgnText.trim()) {
         showAndroidToast("⚠ No PGN moves recorded to save!");
         return;
     }
 
-    let cleanWhite = getWhiteDisplayName().replace(/[^a-zA-Z0-9]/g, '_');
-    let cleanBlack = getBlackDisplayName().replace(/[^a-zA-Z0-9]/g, '_');
+    let w = ((typeof getWhiteDisplayName === 'function') ? getWhiteDisplayName() : 'White').replace(/[^a-zA-Z0-9]/g, '_');
+    let b = ((typeof getBlackDisplayName === 'function') ? getBlackDisplayName() : 'Black').replace(/[^a-zA-Z0-9]/g, '_');
     let timeStamp = new Date().toISOString().slice(0, 10).replace(/-/g, '') + "_" + Date.now().toString().slice(-4);
-    let fileName = `Match_${cleanWhite}_vs_${cleanBlack}_${timeStamp}.pgn`;
+    let fileName = `Match_${w}_vs_${b}_${timeStamp}.pgn`;
 
-    // 1. Python server ke zariye phone ke internal folder me direct save karein
+    // 1. Native Android Storage Bridge call
+    if (window.AndroidBridge && window.AndroidBridge.savePgnNative) {
+        window.AndroidBridge.savePgnNative(pgnText, fileName, false);
+        return;
+    }
+    if (window.Android && window.Android.savePgnNative) {
+        window.Android.savePgnNative(pgnText, fileName, false);
+        return;
+    }
+
+    // 2. Python server fallback
     $.post('/save_to_device_storage', { pgn: pgnText, filename: fileName }, function(res) {
         if (res && res.status === 'success') {
             showAndroidToast(`💾 Saved to ChessAIPro folder (${fileName})`);
@@ -150,6 +170,75 @@ window.downloadCurrentMatchPGN = window.saveSingleMatchPGN;
 window.downloadMatchPGN = window.saveSingleMatchPGN;
 window.downloadPGN = window.saveSingleMatchPGN;
 window.saveMatchPGN = window.saveSingleMatchPGN;
+
+// ============================================================================
+// 2. MASTER MULTI-PGN EXPORTER (ALL GAMES IN 1 FILE)
+// ============================================================================
+window.exportAllMatchesMultiPGN = function() {
+    $.get('/get_matches', function(data) {
+        let matches = (data && data.matches) ? data.matches : [];
+        let pgnCollection = [];
+
+        if (matches.length > 0) {
+            matches.forEach((m, idx) => {
+                let mPgn = (m && m.pgn) ? m.pgn.trim() : "";
+                if (mPgn) {
+                    if (!mPgn.includes("[Event ")) {
+                        mPgn = `[Event "Match ${idx + 1}"]\n[Site "Chess AI Pro Archive"]\n[White "${m.white || 'Player'}"]\n[Black "${m.black || 'Stockfish'}"]\n[Result "${m.result || '*'}"]\n\n${mPgn}`;
+                    }
+                    if (!pgnCollection.includes(mPgn)) {
+                        pgnCollection.push(mPgn);
+                    }
+                }
+            });
+        }
+
+        let currentPgn = window.buildBrandedPGN ? window.buildBrandedPGN() : "";
+        if (currentPgn && currentPgn.trim() && !pgnCollection.includes(currentPgn.trim())) {
+            pgnCollection.push(currentPgn.trim());
+        }
+
+        let fullMasterPgn = pgnCollection.join('\n\n\n');
+        if (!fullMasterPgn.trim()) {
+            fullMasterPgn = currentPgn || "[Event \"Casual Match\"]\n\n1. e4 *";
+        }
+
+        let timeStamp = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+        let fileName = `Master_All_Matches_${timeStamp}.pgn`;
+
+        // Native Android Storage Bridge call
+        if (window.AndroidBridge && window.AndroidBridge.savePgnNative) {
+            window.AndroidBridge.savePgnNative(fullMasterPgn, fileName, true);
+            return;
+        }
+        if (window.Android && window.Android.savePgnNative) {
+            window.Android.savePgnNative(fullMasterPgn, fileName, true);
+            return;
+        }
+
+        // Fallback to Python server or browser
+        $.post('/save_to_device_storage', { pgn: fullMasterPgn, filename: fileName }, function(res) {
+            if (res && res.status === 'success') {
+                showAndroidToast(`📚 Master PGN saved (${pgnCollection.length} matches)`);
+            } else {
+                triggerBrowserFileDownload(fullMasterPgn, fileName);
+                showAndroidToast(`📚 Master PGN saved (${pgnCollection.length} matches)`);
+            }
+        }).fail(function() {
+            triggerBrowserFileDownload(fullMasterPgn, fileName);
+            showAndroidToast(`📚 Master PGN saved (${pgnCollection.length} matches)`);
+        });
+    }).fail(function() {
+        let cur = window.buildBrandedPGN ? window.buildBrandedPGN() : "";
+        let timeStamp = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+        let fileName = `Master_All_Matches_${timeStamp}.pgn`;
+        if (window.AndroidBridge && window.AndroidBridge.savePgnNative) {
+            window.AndroidBridge.savePgnNative(cur, fileName, true);
+        } else {
+            triggerBrowserFileDownload(cur, fileName);
+        }
+    });
+};
 
 function triggerBrowserFileDownload(text, filename) {
     try {
@@ -183,13 +272,14 @@ $(document).on('click', '#btn-download-pgn, #modal-download-pgn-btn, [id*="downl
 window.openShareModal = function() {
     try { window.history.pushState({ modalOpen: true }, ""); } catch (e) {}
     if (window.updateAccuracySummary) window.updateAccuracySummary();
-    let box = safeEl('branded-pgn-box');
+    let box = (typeof safeEl === 'function') ? safeEl('branded-pgn-box') : document.getElementById('branded-pgn-box');
     if (box) box.value = window.buildBrandedPGN();
-    safeDisplay('share-modal', 'flex');
+    if (typeof safeDisplay === 'function') safeDisplay('share-modal', 'flex');
+    else $('#share-modal').css('display', 'flex');
 };
 
 window.copyBrandedPGN = function() {
-    let box = safeEl('branded-pgn-box');
+    let box = (typeof safeEl === 'function') ? safeEl('branded-pgn-box') : document.getElementById('branded-pgn-box');
     if (!box) return;
     box.select();
     navigator.clipboard.writeText(box.value).then(() => {
@@ -210,7 +300,7 @@ window.shareBrandedGameNative = function() {
 };
 
 window.copyCurrentFEN = function() {
-    let fen = (historyIndex >= 0 && gameHistory[historyIndex]) ? gameHistory[historyIndex].fen : game.fen();
+    let fen = (typeof historyIndex !== 'undefined' && historyIndex >= 0 && typeof gameHistory !== 'undefined' && gameHistory[historyIndex]) ? gameHistory[historyIndex].fen : (typeof game !== 'undefined' ? game.fen() : "");
     navigator.clipboard.writeText(fen).then(() => {
         showAndroidToast("📋 FEN copied to clipboard");
     }).catch(() => {
@@ -222,7 +312,8 @@ window.openMatchVaultModal = function() {
     try { window.history.pushState({ modalOpen: true }, ""); } catch (e) {}
     setupVaultThreeDotMenu();
     window.refreshMatchVaultList();
-    safeDisplay('vault-modal', 'flex');
+    if (typeof safeDisplay === 'function') safeDisplay('vault-modal', 'flex');
+    else $('#vault-modal').css('display', 'flex');
 };
 
 // ============================================================================
@@ -369,7 +460,7 @@ window.refreshMatchVaultList = function() {
                     <span style="font-size:11px;background:#26272b;color:#ccc;padding:2px 6px;border-radius:4px;">Black Acc: <b>${m.b_acc || '--%'}</b></span>
                 </div>
                 <div style="display:flex;gap:6px;">
-                    <button onclick="window.loadVaultMatch('${m.id}', '${m.fen}', ${isInProgress})" style="flex:1.2;background:${actionBtnColor};color:#fff;border:none;padding:7px;border-radius:4px;font-weight:bold;cursor:pointer;">${actionBtnText}</button>
+                    <button onclick="window.loadVaultMatch('${m.id}', '${m.fen}', ${isInProgress}, '${m.white || ''}', '${m.black || ''}')" style="flex:1.2;background:${actionBtnColor};color:#fff;border:none;padding:7px;border-radius:4px;font-weight:bold;cursor:pointer;">${actionBtnText}</button>
                     <button onclick="window.viewVaultMatchReport('${encodeURIComponent(m.pgn || '')}')" style="flex:1;background:#2b5278;color:#fff;border:none;padding:7px;border-radius:4px;font-weight:bold;cursor:pointer;">📊 Report</button>
                     <button onclick="window.copySingleVaultPgn('${encodeURIComponent(m.pgn || '')}')" style="flex:1;background:#3a3b40;color:#ddd;border:none;padding:7px;border-radius:4px;font-weight:bold;cursor:pointer;">📋 PGN</button>
                     <button onclick="window.deleteSingleMatch('${m.id}')" style="background:#da3633;color:#fff;border:none;padding:7px 12px;border-radius:4px;cursor:pointer;font-weight:bold;">✕</button>
@@ -400,29 +491,55 @@ window.copySingleVaultPgn = function(encodedPgn) {
     });
 };
 
-window.loadVaultMatch = function(id, fen, isResume) {
+window.loadVaultMatch = function(id, fen, isResume, whiteName, blackName) {
     if (!fen) return;
-    closeModal('vault-modal');
-    game.load(fen);
-    gameHistory = [{ fen: fen, moveObj: null }];
-    historyIndex = 0;
-    selectedSquare = null;
-    currentLegalMoves = [];
+    if (typeof closeModal === 'function') closeModal('vault-modal');
+    else $('#vault-modal').hide();
+
+    if (typeof game !== 'undefined') {
+        game.load(fen);
+        gameHistory = [{ fen: fen, moveObj: null }];
+        historyIndex = 0;
+        selectedSquare = null;
+        currentLegalMoves = [];
+    }
+
+    if (whiteName && typeof safeText === 'function') {
+        safeText('bottom-player-name', whiteName);
+        safeText('bottom-player-label', 'White:');
+    }
+    if (blackName && typeof safeText === 'function') {
+        safeText('top-player-name', blackName);
+        safeText('top-player-label', 'Black:');
+    }
 
     if (isResume) {
         window.currentActiveMatchDbId = id;
         localStorage.setItem('chess_current_db_id', id);
-        matchEnded = false;
-        isAnalysisBranchMode = false;
-        renderBoard();
-        updateStatus();
-        startTimer();
+        if (typeof matchEnded !== 'undefined') matchEnded = false;
+        if (typeof isAnalysisBranchMode !== 'undefined') isAnalysisBranchMode = false;
+
+        let bStr = (blackName || '').toLowerCase();
+        if (bStr.includes('stockfish') || bStr.includes('bot') || bStr.includes('ai') || bStr.includes('gm')) {
+            if (typeof gameMode !== 'undefined') gameMode = 'pvb';
+            if (typeof playerColor !== 'undefined') playerColor = 'w';
+        } else {
+            if (typeof gameMode !== 'undefined') gameMode = 'pvp';
+        }
+
+        if (typeof renderBoard === 'function') renderBoard();
+        if (typeof updateStatus === 'function') updateStatus();
+        if (typeof startTimer === 'function') startTimer();
         $('#status').text("Resumed match from archive.");
+
+        if (typeof gameMode !== 'undefined' && gameMode === 'pvb' && typeof game !== 'undefined' && game.turn() === 'b') {
+            if (typeof makeAiMove === 'function') setTimeout(makeAiMove, 300);
+        }
     } else {
-        matchEnded = true;
-        isAnalysisBranchMode = true;
-        stopAllActiveMatchProcesses();
-        renderBoard();
+        if (typeof matchEnded !== 'undefined') matchEnded = true;
+        if (typeof isAnalysisBranchMode !== 'undefined') isAnalysisBranchMode = true;
+        if (typeof stopAllActiveMatchProcesses === 'function') stopAllActiveMatchProcesses();
+        if (typeof renderBoard === 'function') renderBoard();
         $('#status').text("Replay Mode (Finished Match)");
     }
 };
@@ -448,19 +565,19 @@ window.deleteSingleMatch = function(id) {
 // SINGLE MATCH SAVER WITH IN-FLIGHT QUEUE (ZERO DUPLICATE ROW GUARANTEE)
 // ============================================================================
 window.saveCurrentMatchToVault = function(resultTitle) {
-    let pgn = window.buildBrandedPGN ? window.buildBrandedPGN() : game.pgn();
-    let fen = game.fen();
+    let pgn = window.buildBrandedPGN ? window.buildBrandedPGN() : (typeof game !== 'undefined' ? game.pgn() : "");
+    let fen = (typeof game !== 'undefined') ? game.fen() : "";
     let localDate = getUserDeviceFormattedDate();
 
     let payload = {
         id: window.currentActiveMatchDbId || "",
         date: localDate,
-        white: getWhiteDisplayName(),
-        black: getBlackDisplayName(),
+        white: (typeof getWhiteDisplayName === 'function') ? getWhiteDisplayName() : 'White',
+        black: (typeof getBlackDisplayName === 'function') ? getBlackDisplayName() : 'Black',
         result: resultTitle || "In Progress",
-        w_acc: getTextSafe('white-acc-text', '95%'),
-        b_acc: getTextSafe('black-acc-text', '95%'),
-        opening: getTextSafe('opening-bar', 'Standard Opening'),
+        w_acc: (typeof getTextSafe === 'function') ? getTextSafe('white-acc-text', '95%') : '95%',
+        b_acc: (typeof getTextSafe === 'function') ? getTextSafe('black-acc-text', '95%') : '95%',
+        opening: (typeof getTextSafe === 'function') ? getTextSafe('opening-bar', 'Standard Opening') : 'Standard Opening',
         pgn: pgn,
         fen: fen
     };
