@@ -1,10 +1,11 @@
 /* ============================================================================
-   static/mod_analysis.js (v107 - Robust Graph, Red 0.0 Baseline & Blunder Dots)
+   static/mod_analysis.js (v123 - Universal Canvas Graph & Blunder Dot Engine)
    - Guaranteed Graph Rendering: Chess.com style eval fill + green trendline
-   - Red Dashed Baseline at 0.0 (equal position) with "0.0" indicator
+   - Dual Canvas Binding: Auto-detects #kundli-eval-graph and #main-eval-graph
+   - Dynamic Centipawn (cp) to Eval Curve conversion (Zero Blank Graph)
+   - Red Dashed Baseline at 0.0 with "0.0" indicator text
    - Blunder (Red ??), Mistake (Orange ?), and Inaccuracy (Yellow ?!) markers
-   - Interactive Scrubber: Tap anywhere on the graph to jump to that move
-   - Accuracy, Move Quality Summary & Tactics Puzzle Engine
+   - Interactive Scrubber: Tap/Click anywhere on graph to jump to that move
    ============================================================================ */
 
 var matchAccuracyData = { wAcc: 100, bAcc: 100, wAcpl: 12, bAcpl: 15, counts: {} };
@@ -56,6 +57,8 @@ window.classifyMoveByEval = function(idx) {
 
 window.updateAccuracySummary = function() {
     let wTotal = 0, bTotal = 0, wCount = 0, bCount = 0;
+    if (!gameHistory || !Array.isArray(gameHistory)) return;
+
     gameHistory.forEach((rec, idx) => {
         if (idx === 0 || !rec.moveObj) return;
         let prevCp = gameHistory[idx - 1].cp || 0;
@@ -65,12 +68,16 @@ window.updateAccuracySummary = function() {
         if (rec.moveObj.color === 'w') { wTotal += acc; wCount++; }
         else { bTotal += acc; bCount++; }
     });
+
     let wAvg = wCount > 0 ? (Math.round((wTotal / wCount) * 10) / 10) : 100.0;
     let bAvg = bCount > 0 ? (Math.round((bTotal / bCount) * 10) / 10) : 100.0;
     matchAccuracyData.wAcc = wAvg;
     matchAccuracyData.bAcc = bAvg;
-    safeText(['white-acc-text', 'k-w-acc', 'modal-p1-acc'], wAvg + '%');
-    safeText(['black-acc-text', 'k-b-acc', 'modal-p2-acc'], bAvg + '%');
+
+    if (typeof safeText === 'function') {
+        safeText(['white-acc-text', 'k-w-acc', 'modal-p1-acc'], wAvg + '%');
+        safeText(['black-acc-text', 'k-b-acc', 'modal-p2-acc'], bAvg + '%');
+    }
 };
 
 // ============================================================================
@@ -82,67 +89,81 @@ function renderChessComGraphOnCanvas(canvasId, isInteractive) {
     let ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    let w = canvas.width || 340;
-    let h = canvas.height || 110;
-    if (canvas.clientWidth && canvas.clientWidth > 50) {
-        w = canvas.clientWidth;
-        canvas.width = w;
-    }
-    if (canvas.clientHeight && canvas.clientHeight > 30) {
-        h = canvas.clientHeight;
-        canvas.height = h;
-    }
+    // Responsive Canvas Resizing: Ensures graph is never stretched or 0px
+    let rect = canvas.getBoundingClientRect();
+    let w = Math.round(rect.width || canvas.clientWidth || canvas.width || 310);
+    let h = Math.round(rect.height || canvas.clientHeight || canvas.height || 75);
 
-    let len = gameHistory ? gameHistory.length : 0;
+    if (w < 60) w = 310;
+    if (h < 30) h = 75;
+
+    if (canvas.width !== w) canvas.width = w;
+    if (canvas.height !== h) canvas.height = h;
+
+    let len = (typeof gameHistory !== 'undefined' && gameHistory) ? gameHistory.length : 0;
     if (len === 0) {
-        ctx.clearRect(0, 0, w, h);
+        ctx.fillStyle = '#181715';
+        ctx.fillRect(0, 0, w, h);
         return;
     }
 
     // 1. Dark Background
-    ctx.fillStyle = '#262421';
+    ctx.fillStyle = '#1e1d1a';
     ctx.fillRect(0, 0, w, h);
 
     let midY = h / 2;
-    let step = len <= 1 ? w : (w / (len - 1));
+    let step = (len <= 1) ? w : (w / (len - 1));
+
+    // Helper: Centipawns to Win Percentage (fallback if evalScore is missing)
+    function getNormalizedEvalScore(rec) {
+        if (!rec) return 50.0;
+        if (rec.evalScore !== undefined && !isNaN(rec.evalScore)) {
+            return Number(rec.evalScore);
+        }
+        if (rec.cp !== undefined && !isNaN(rec.cp)) {
+            let cpVal = Number(rec.cp);
+            return Math.max(2.0, Math.min(98.0, 50.0 + 50.0 * (2.0 / (1.0 + Math.exp(-0.00368208 * cpVal)) - 1.0)));
+        }
+        return 50.0;
+    }
 
     // 2. White Advantage Fill (Under the curve)
     ctx.beginPath();
     ctx.moveTo(0, h);
     for (let i = 0; i < len; i++) {
-        let sc = (gameHistory[i] && gameHistory[i].evalScore !== undefined && !isNaN(gameHistory[i].evalScore)) ? Number(gameHistory[i].evalScore) : 50.0;
-        let clamped = Math.max(4, Math.min(96, sc));
+        let sc = getNormalizedEvalScore(gameHistory[i]);
+        let clamped = Math.max(3, Math.min(97, sc));
         let x = (len === 1) ? w : (i * step);
         let y = h - (clamped / 100.0) * h;
         ctx.lineTo(x, y);
     }
     ctx.lineTo(w, h);
     ctx.closePath();
-    ctx.fillStyle = 'rgba(238, 238, 238, 0.88)';
+    ctx.fillStyle = 'rgba(238, 238, 238, 0.82)';
     ctx.fill();
 
     // 3. RED BASELINE (0.0 Center Equal Line)
     ctx.beginPath();
     ctx.strokeStyle = '#ff3b30'; // Sharp Red Line
-    ctx.lineWidth = 1.6;
-    ctx.setLineDash([4, 3]); // Dashed line
+    ctx.lineWidth = 1.4;
+    ctx.setLineDash([4, 3]);
     ctx.moveTo(0, midY);
     ctx.lineTo(w, midY);
     ctx.stroke();
-    ctx.setLineDash([]); // Reset to solid
+    ctx.setLineDash([]);
 
-    // Red "0.0" indicator text
+    // Red "0.0" baseline indicator
     ctx.fillStyle = '#ff3b30';
-    ctx.font = 'bold 9px sans-serif';
+    ctx.font = 'bold 9px monospace';
     ctx.fillText('0.0', 4, midY - 3);
 
-    // 4. Green Curve Stroke on Top
+    // 4. Green Trendline on Top
     ctx.beginPath();
     ctx.strokeStyle = '#81b64c';
     ctx.lineWidth = 2.2;
     for (let i = 0; i < len; i++) {
-        let sc = (gameHistory[i] && gameHistory[i].evalScore !== undefined && !isNaN(gameHistory[i].evalScore)) ? Number(gameHistory[i].evalScore) : 50.0;
-        let clamped = Math.max(4, Math.min(96, sc));
+        let sc = getNormalizedEvalScore(gameHistory[i]);
+        let clamped = Math.max(3, Math.min(97, sc));
         let x = (len === 1) ? w : (i * step);
         let y = h - (clamped / 100.0) * h;
         if (i === 0) ctx.moveTo(x, y);
@@ -150,19 +171,19 @@ function renderChessComGraphOnCanvas(canvasId, isInteractive) {
     }
     ctx.stroke();
 
-    // 5. Current Move Scrubber Line
+    // 5. Active Move Scrubber Line
     let activeIdx = (typeof historyIndex !== 'undefined') ? historyIndex : (len - 1);
     if (activeIdx >= 0 && activeIdx < len && len > 1) {
         let cx = activeIdx * step;
         ctx.beginPath();
         ctx.strokeStyle = '#f0c15c';
-        ctx.lineWidth = 1.5;
+        ctx.lineWidth = 1.6;
         ctx.moveTo(cx, 0);
         ctx.lineTo(cx, h);
         ctx.stroke();
     }
 
-    // 6. BLUNDER (Red), MISTAKE (Orange) & INACCURACY (Yellow) DOTS
+    // 6. BLUNDER (Red), MISTAKE (Orange) & INACCURACY (Yellow) MARKERS
     for (let i = 1; i < len; i++) {
         let rec = gameHistory[i];
         if (!rec) continue;
@@ -173,23 +194,23 @@ function renderChessComGraphOnCanvas(canvasId, isInteractive) {
         }
         if (!cls) continue;
 
-        let sc = (rec.evalScore !== undefined && !isNaN(rec.evalScore)) ? Number(rec.evalScore) : 50.0;
-        let clamped = Math.max(4, Math.min(96, sc));
+        let sc = getNormalizedEvalScore(rec);
+        let clamped = Math.max(3, Math.min(97, sc));
         let dotX = i * step;
         let dotY = h - (clamped / 100.0) * h;
 
         let dotColor = null;
-        let radius = 4;
+        let radius = 3.5;
 
         if (cls.label === 'Blunder' || cls.symbol === '??') {
-            dotColor = '#fa4141'; // Red Dot for Blunder
+            dotColor = '#fa4141';
             radius = 5.0;
         } else if (cls.label === 'Mistake' || cls.symbol === '?') {
-            dotColor = '#fa8c16'; // Orange Dot for Mistake
-            radius = 4.2;
+            dotColor = '#fa8c16';
+            radius = 4.0;
         } else if (cls.label === 'Inaccuracy' || cls.symbol === '?!') {
-            dotColor = '#fadb14'; // Yellow Dot for Inaccuracy
-            radius = 3.4;
+            dotColor = '#fadb14';
+            radius = 3.2;
         }
 
         if (dotColor) {
@@ -209,10 +230,10 @@ function renderChessComGraphOnCanvas(canvasId, isInteractive) {
         canvas.style.cursor = "pointer";
 
         function onGraphTap(e) {
-            let rect = canvas.getBoundingClientRect();
-            let clientX = e.clientX || (e.touches && e.touches[0] ? e.touches[0].clientX : 0);
-            let clickX = clientX - rect.left;
-            let ratio = Math.max(0, Math.min(1, clickX / rect.width));
+            let crect = canvas.getBoundingClientRect();
+            let clientX = (e.touches && e.touches[0]) ? e.touches[0].clientX : e.clientX;
+            let clickX = clientX - crect.left;
+            let ratio = Math.max(0, Math.min(1, clickX / crect.width));
             let targetPly = Math.round(ratio * (gameHistory.length - 1));
 
             if (targetPly >= 0 && targetPly < gameHistory.length) {
@@ -233,21 +254,41 @@ function renderChessComGraphOnCanvas(canvasId, isInteractive) {
 // Global Hooks connecting all callers to the same reliable graph engine
 window.renderChessComGraphOnCanvas = renderChessComGraphOnCanvas;
 window.renderEvaluationGraphWithBaseline = function(canvasId) { renderChessComGraphOnCanvas(canvasId); };
+
 window.drawAllEvalGraphs = function() {
-    let ids = ['report-eval-canvas', 'main-eval-canvas', 'eval-graph-canvas', 'review-eval-canvas', 'analysis-eval-canvas'];
+    // Both Kundli Modal Canvas & Main Board Canvas are registered
+    let ids = [
+        'kundli-eval-graph',
+        'main-eval-graph',
+        'report-eval-canvas',
+        'main-eval-canvas',
+        'eval-graph-canvas'
+    ];
     ids.forEach(id => {
         let el = document.getElementById(id);
         if (el) renderChessComGraphOnCanvas(id);
     });
 };
 
+window.drawKundliGraph = function() {
+    renderChessComGraphOnCanvas('kundli-eval-graph');
+};
+
+// Auto-trigger graph render when Report Modal is opened
+$(document).on('click', '#btn-deep-report, [onclick*="openDeepReport"]', function() {
+    setTimeout(function() {
+        renderChessComGraphOnCanvas('kundli-eval-graph');
+    }, 80);
+});
+
 // ============================================================================
 // HINTS, ARROWS & PUZZLE ENGINE
 // ============================================================================
 window.drawArrow = function(fromSq, toSq, color = 'rgba(74, 143, 240, 0.85)') {
-    let svg = safeEl('arrow-overlay');
+    let svg = (typeof safeEl === 'function') ? safeEl('arrow-overlay') : document.getElementById('arrow-overlay');
     if (!svg) return;
 
+    if (typeof sqToSvgCoords !== 'function') return;
     let p1 = sqToSvgCoords(fromSq);
     let p2 = sqToSvgCoords(toSq);
 
@@ -278,7 +319,7 @@ window.requestHint = function() {
             let from = expectedUci.slice(0, 2);
             let to = expectedUci.slice(2, 4);
             window.drawArrow(from, to, 'rgba(129, 182, 76, 0.9)');
-            safeText('status', `Hint: Move from ${from.toUpperCase()} to ${to.toUpperCase()}`);
+            if (typeof safeText === 'function') safeText('status', `Hint: Move from ${from.toUpperCase()} to ${to.toUpperCase()}`);
             return;
         }
     }
@@ -289,14 +330,17 @@ window.triggerPuzzleVictory = function() {
     let pz = window.activePuzzle;
     pz.isRunning = false;
 
-    safeText('status', '🏆 Brilliant! Puzzle Solved Successfully!');
+    if (typeof safeText === 'function') {
+        safeText('status', '🏆 Brilliant! Puzzle Solved Successfully!');
+        safeText('puzzle-modal-title', 'Brilliant! Puzzle Solved');
+        safeText('puzzle-modal-rating', `Rating: ${pz.rating} ELO • Puzzle #${pz.id}`);
+        safeText('puzzle-modal-theme', pz.theme || 'Tactics, Endgame');
+    }
     if (typeof playSound === 'function') playSound('game-end');
-
-    safeText('puzzle-modal-title', 'Brilliant! Puzzle Solved');
-    safeText('puzzle-modal-rating', `Rating: ${pz.rating} ELO • Puzzle #${pz.id}`);
-    safeText('puzzle-modal-theme', pz.theme || 'Tactics, Endgame');
     
-    setTimeout(() => { safeDisplay('puzzle-modal', 'flex'); }, 400);
+    setTimeout(() => {
+        if (typeof safeDisplay === 'function') safeDisplay('puzzle-modal', 'flex');
+    }, 400);
 };
 
 window.checkPuzzlePlayerMove = function(userMoveUci) {
@@ -313,7 +357,7 @@ window.checkPuzzlePlayerMove = function(userMoveUci) {
             return true;
         }
 
-        safeText('status', '✓ Best move! Opponent replying...');
+        if (typeof safeText === 'function') safeText('status', '✓ Best move! Opponent replying...');
         let oppUci = pz.solution[pz.plyIndex];
         pz.plyIndex++;
 
@@ -332,7 +376,7 @@ window.checkPuzzlePlayerMove = function(userMoveUci) {
                 if (pz.plyIndex >= pz.solution.length) {
                     window.triggerPuzzleVictory();
                 } else {
-                    safeText('status', 'Your turn! Find the next winning move.');
+                    if (typeof safeText === 'function') safeText('status', 'Your turn! Find the next winning move.');
                 }
             }
         }, 450);
@@ -347,24 +391,24 @@ window.checkPuzzlePlayerMove = function(userMoveUci) {
             }
             if (typeof renderBoard === 'function') renderBoard();
             if (typeof playSound === 'function') playSound('illegal');
-            safeText('status', '✘ Not the best move! Try again.');
+            if (typeof safeText === 'function') safeText('status', '✘ Not the best move! Try again.');
         }, 250);
         return true;
     }
 };
 
 window.fetchNextPuzzle = function() {
-    closeModal('puzzle-modal');
+    if (typeof closeModal === 'function') closeModal('puzzle-modal');
     let pz = window.activePuzzle;
-    if (pz && pz.currentTier) {
+    if (pz && pz.currentTier && typeof window.loadPuzzleByLevel === 'function') {
         window.loadPuzzleByLevel(pz.currentTier);
-    } else {
+    } else if (typeof window.loadDailyPuzzle === 'function') {
         window.loadDailyPuzzle();
     }
 };
 
 window.retryCurrentPuzzle = function() {
-    closeModal('puzzle-modal');
+    if (typeof closeModal === 'function') closeModal('puzzle-modal');
     let pz = window.activePuzzle;
     if (pz && pz.initialFen) {
         game.reset();
@@ -373,16 +417,16 @@ window.retryCurrentPuzzle = function() {
         historyIndex = 0;
         pz.plyIndex = 0;
         pz.isRunning = true;
-        clearArrows();
+        if (typeof clearArrows === 'function') clearArrows();
         if (typeof renderBoard === 'function') renderBoard();
-        safeText('status', `🧩 Puzzle Restarted! Find the winning move.`);
+        if (typeof safeText === 'function') safeText('status', `🧩 Puzzle Restarted! Find the winning move.`);
     }
 };
 
 window.analyzeCurrentPuzzlePosition = function() {
-    closeModal('puzzle-modal');
+    if (typeof closeModal === 'function') closeModal('puzzle-modal');
     window.activePuzzle.isRunning = false;
     isAnalysisBranchMode = true;
-    safeText('status', 'Analysis Free Play Mode — Move pieces freely or tap Hint.');
+    if (typeof safeText === 'function') safeText('status', 'Analysis Free Play Mode — Move pieces freely or tap Hint.');
     if (typeof openDeepReport === 'function') openDeepReport();
 };
