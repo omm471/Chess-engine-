@@ -1,16 +1,27 @@
 /* ============================================================================
-   static/mod_share_vault.js (v121 - Full Storage Saver & Multi-PGN Integration)
+   static/mod_share_vault.js (v122 - Device-Isolated Cloud Vault & Storage Engine)
+   - Unique Device ID: Har phone ka cloud archive 100% private (dost ka data mix nahi hoga)
+   - Dual-ID Selector: Works with both #vault-matches-list and #vault-list
    - Android Native Bottom Toast: Clean floating pill at the bottom (No Popups!)
    - Direct Phone Storage Saver: Saves PGN directly to Download/ChessAIPro/
    - Master Multi-PGN Exporter: Bundles all distinct match history into 1 file
    - In-Flight Request Lock: Prevents duplicate rows when moves happen rapidly
    - Native In-App Custom Confirm Dialog (Android WebView compatible)
-   - Exact client-local time formatting with dynamic Resume/Replay switching
    ============================================================================ */
 
 window.currentActiveMatchDbId = localStorage.getItem('chess_current_db_id') || null;
 window.isSavingToCloud = false;
 window.pendingCloudSave = null;
+
+// Har phone ke liye unique private ID jo kabhi clash nahi hogi
+function getOrCreateDeviceId() {
+    let devId = localStorage.getItem('chess_device_id');
+    if (!devId) {
+        devId = 'dev_' + Math.random().toString(36).substring(2, 9) + '_' + Date.now().toString(36);
+        localStorage.setItem('chess_device_id', devId);
+    }
+    return devId;
+}
 
 function getUserDeviceFormattedDate() {
     let now = new Date();
@@ -175,7 +186,8 @@ window.saveMatchPGN = window.saveSingleMatchPGN;
 // 2. MASTER MULTI-PGN EXPORTER (ALL GAMES IN 1 FILE)
 // ============================================================================
 window.exportAllMatchesMultiPGN = function() {
-    $.get('/get_matches', function(data) {
+    let devId = getOrCreateDeviceId();
+    $.get('/get_matches', { device_id: devId }, function(data) {
         let matches = (data && data.matches) ? data.matches : [];
         let pgnCollection = [];
 
@@ -395,26 +407,28 @@ window.toggleVaultDropdown = function(e) {
 
 window.triggerDeleteAllHistoryAction = function() {
     $('#vault-dropdown-menu').hide();
+    let devId = getOrCreateDeviceId();
     showInAppConfirmDialog(
         "Delete All Games?",
-        "Are you sure you want to permanently clear your entire cloud game history?",
+        "Are you sure you want to permanently clear your entire game history on this device?",
         function() {
-            $.post('/delete_all_matches', function(res) {
+            $.post('/delete_all_matches', { device_id: devId }, function(res) {
                 window.currentActiveMatchDbId = null;
                 localStorage.removeItem('chess_current_db_id');
                 localStorage.removeItem('chess_active_match');
                 window.refreshMatchVaultList();
-                showAndroidToast("🗑 All game history deleted");
+                showAndroidToast("🗑 Game history deleted for this device");
             });
         }
     );
 };
 
 // ============================================================================
-// ARCHIVE MATCH LIST RENDERER WITH DYNAMIC RESUME / REPLAY
+// ARCHIVE MATCH LIST RENDERER WITH DYNAMIC RESUME / REPLAY & DUAL-SELECTOR FIX
 // ============================================================================
 window.refreshMatchVaultList = function() {
-    let container = $('#vault-matches-list');
+    // #vault-matches-list aur #vault-list dono ko support karein
+    let container = $('#vault-matches-list, #vault-list');
     if (!container.length) {
         container = $('#vault-modal .modal-body, .vault-modal-content, .archive-container');
     }
@@ -422,7 +436,8 @@ window.refreshMatchVaultList = function() {
 
     container.html('<div style="text-align:center;padding:24px;color:#aaa;">Loading Cloud Archive...</div>');
 
-    $.get('/get_matches', function(data) {
+    let devId = getOrCreateDeviceId();
+    $.get('/get_matches', { device_id: devId }, function(data) {
         container.empty();
         let matches = data.matches || [];
 
@@ -562,15 +577,17 @@ window.deleteSingleMatch = function(id) {
 };
 
 // ============================================================================
-// SINGLE MATCH SAVER WITH IN-FLIGHT QUEUE (ZERO DUPLICATE ROW GUARANTEE)
+// SINGLE MATCH SAVER WITH DEVICE ISOLATION & IN-FLIGHT QUEUE
 // ============================================================================
 window.saveCurrentMatchToVault = function(resultTitle) {
     let pgn = window.buildBrandedPGN ? window.buildBrandedPGN() : (typeof game !== 'undefined' ? game.pgn() : "");
     let fen = (typeof game !== 'undefined') ? game.fen() : "";
     let localDate = getUserDeviceFormattedDate();
+    let devId = getOrCreateDeviceId();
 
     let payload = {
         id: window.currentActiveMatchDbId || "",
+        device_id: devId,
         date: localDate,
         white: (typeof getWhiteDisplayName === 'function') ? getWhiteDisplayName() : 'White',
         black: (typeof getBlackDisplayName === 'function') ? getBlackDisplayName() : 'Black',
