@@ -38,6 +38,8 @@ SUPABASE_HEADERS = {
     "Content-Type": "application/json"
 }
 
+LOCAL_MATCHES_FILE = os.path.abspath('saved_matches_local.json')
+
 ZIP_THEMES_PATH = os.path.join(os.path.abspath('static'), 'chessthemes.zip')
 BOARDS_DIR = os.path.join(os.path.abspath('static'), 'boards')
 
@@ -100,7 +102,7 @@ PRESET_NAMES = {
     "sf14": "Stockfish 14 (Sharp)"
 }
 
-# Default set to 8 Cores (Threads) and 512 MB (Hash RAM)
+# Default Hardware Optimization: 8 Cores (Threads) & 512 MB (Hash RAM)
 engine_state = {
     "path": DEFAULT_ENGINE_PATH,
     "protocol": "uci",
@@ -262,8 +264,24 @@ def index():
     return render_template('index.html')
 
 # ============================================================================
-# SUPABASE DATABASE ROUTES (CLOUD MATCHES & DUPLICATE-SAFE ARCHIVES)
+# SUPABASE DATABASE ROUTES (FAIL-SAFE CLOUD + LOCAL SYNC)
 # ============================================================================
+
+def get_local_matches():
+    if os.path.exists(LOCAL_MATCHES_FILE):
+        try:
+            with open(LOCAL_MATCHES_FILE, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except Exception:
+            return []
+    return []
+
+def save_local_matches(matches_list):
+    try:
+        with open(LOCAL_MATCHES_FILE, 'w', encoding='utf-8') as f:
+            json.dump(matches_list[:60], f)
+    except Exception:
+        pass
 
 @app.route('/save_match', methods=['POST'])
 def save_match():
@@ -285,112 +303,182 @@ def save_match():
         "fen": request.form.get('fen', '')
     }
 
-    try:
-        if match_id and match_id not in ['null', 'undefined', '0']:
-            res = requests.patch(
-                f"{SUPABASE_URL}/rest/v1/matches?id=eq.{match_id}",
-                headers=SUPABASE_HEADERS,
-                json=match_payload,
-                timeout=8
-            )
-            return jsonify({"status": "updated", "id": match_id})
+    # 1. ALWAYS SAVE TO LOCAL STORAGE (Guaranteed Offline Safety)
+    local_data = get_local_matches()
+    assigned_local_id = match_id if (match_id and match_id not in ['null', 'undefined', '0']) else str(int(datetime.now().timestamp() * 1000))
+    match_payload["id"] = assigned_local_id
 
-        if "in progress" in result_status.lower():
-            check = requests.get(
-                f"{SUPABASE_URL}/rest/v1/matches?result=ilike.*In Progress*&order=id.desc&limit=1",
-                headers=SUPABASE_HEADERS,
-                timeout=6
-            )
-            if check.status_code == 200:
-                existing = check.json()
-                if existing and len(existing) > 0:
-                    existing_id = existing[0]["id"]
-                    requests.patch(
-                        f"{SUPABASE_URL}/rest/v1/matches?id=eq.{existing_id}",
-                        headers=SUPABASE_HEADERS,
-                        json=match_payload,
-                        timeout=8
-                    )
-                    return jsonify({"status": "updated", "id": existing_id})
+    updated_locally = False
+    for idx, item in enumerate(local_data):
+        if str(item.get("id")) == str(assigned_local_id):
+            local_data[idx] = match_payload
+            updated_locally = True
+            break
+    if not updated_locally:
+        local_data.insert(0, match_payload)
+    save_local_matches(local_data)
 
-        headers = {**SUPABASE_HEADERS, "Prefer": "return=representation"}
-        res = requests.post(
-            f"{SUPABASE_URL}/rest/v1/matches",
-            headers=headers,
-            json=match_payload,
-            timeout=8
-        )
-        created = res.json()
-        new_id = created[0]["id"] if isinstance(created, list) and len(created) > 0 else None
-        return jsonify({"status": "saved", "id": new_id})
-    except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 500
+    # 2. SUPABASE CLOUD SYNC (Strict Integer ID Check to prevent 400 Bad Request)
+    is_valid_numeric_id = bool(match_id and match_id.isdigit() and int(match_id) > 0)
+
+    if requests is not None:
+        try:
+            if is_valid_numeric_id:
+                # Patch existing row
+                patch_headers = {**SUPABASE_HEADERS, "Prefer": "return=representation"}
+                res = requests.patch(
+                    f"{SUPABASE_URL}/rest/v1/matches?id=eq.{match_id}",
+                    headers=patch_headers,
+                    json=match_payload,
+                    timeout=5
+                )
+                if res.status_code in [200, 204]:
+                    rows = res.json() if res.text else []
+                    if rows and len(rows) > 0:
+                        return jsonify({"status": "updated", "id": match_id})
+
+            # Check if an 'In Progress' match is already open on Supabase
+            if "in progress" in result_status.lower():
+                check = requests.get(
+                    f"{SUPABASE_URL}/rest/v1/matches?result=ilike.*In Progress*&order=id.desc&limit=1",
+                    headers=SUPABASE_HEADERS,
+                    timeout=5
+                )
+                if check.status_code == 200:
+                    existing = check.json()
+                    if existing and len(existing) > 0:
+                        existing_id = existing[0]["id"]
+                        requests.patch(
+                            f"{SUPABASE_URL}/rest/v1/matches?id=eq.{existing_id}",
+                            headers=SUPABASE_HEADERS,
+                            json=match_payload,
+                            timeout=5
+                        )
+                        return jsonify({"status": "updated", "id": existing_id})
+
+            # Insert as a new match row
+            headers = {**SUPABASE_HEADERS, "Prefer": "return=representation"}
+            # Remove string id before creating Supabase auto-increment row
+            cloud_payload = {k: v for k, v in match_payload.items() if k != "id"}
+            res = requests.post(
+                f"{SUPABASE_URL}/rest/v1/matches",
+                headers=headers,
+                json=cloud_payload,
+                timeout=5
+            )
+            if res.status_code in [200, 201]:
+                created = res.json()
+                new_id = created[0]["id"] if isinstance(created, list) and len(created) > 0 else assigned_local_id
+                return jsonify({"status": "saved", "id": new_id})
+        except Exception:
+            pass
+
+    return jsonify({"status": "saved_locally", "id": assigned_local_id})
 
 @app.route('/get_matches', methods=['POST', 'GET'])
 def get_matches():
-    try:
-        res = requests.get(
-            f"{SUPABASE_URL}/rest/v1/matches?select=*&order=id.desc&limit=50",
-            headers=SUPABASE_HEADERS,
-            timeout=8
-        )
-        if res.status_code == 200:
-            return jsonify({"matches": res.json()})
-        return jsonify({"matches": []})
-    except Exception:
-        return jsonify({"matches": []})
+    cloud_matches = []
+    if requests is not None:
+        try:
+            res = requests.get(
+                f"{SUPABASE_URL}/rest/v1/matches?select=*&order=id.desc&limit=50",
+                headers=SUPABASE_HEADERS,
+                timeout=5
+            )
+            if res.status_code == 200:
+                cloud_matches = res.json() or []
+        except Exception:
+            cloud_matches = []
+
+    local_matches = get_local_matches()
+
+    # Merge Cloud & Local (Deduplicate smoothly)
+    combined = []
+    seen_pgns = set()
+
+    for m in cloud_matches:
+        pgn_sig = (m.get('pgn') or '').strip()
+        key = pgn_sig if len(pgn_sig) > 10 else f"{m.get('date')}_{m.get('white')}_{m.get('black')}"
+        if key not in seen_pgns:
+            seen_pgns.add(key)
+            combined.append(m)
+
+    for m in local_matches:
+        pgn_sig = (m.get('pgn') or '').strip()
+        key = pgn_sig if len(pgn_sig) > 10 else f"{m.get('date')}_{m.get('white')}_{m.get('black')}"
+        if key not in seen_pgns:
+            seen_pgns.add(key)
+            combined.append(m)
+
+    return jsonify({"matches": combined})
 
 @app.route('/delete_match', methods=['POST'])
 def delete_match():
     match_id = request.form.get('id', '').strip()
     if not match_id:
         return jsonify({"status": "error", "message": "No match ID provided"}), 400
-    try:
-        res = requests.delete(
-            f"{SUPABASE_URL}/rest/v1/matches?id=eq.{match_id}",
-            headers=SUPABASE_HEADERS,
-            timeout=8
-        )
-        if res.status_code in [200, 204]:
-            return jsonify({"status": "deleted"})
-        return jsonify({"status": "error", "message": res.text}), res.status_code
-    except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 500
+
+    # Delete locally
+    local_data = get_local_matches()
+    local_data = [m for m in local_data if str(m.get('id')) != str(match_id)]
+    save_local_matches(local_data)
+
+    # Delete from Supabase if valid ID
+    if requests is not None and match_id.isdigit():
+        try:
+            requests.delete(
+                f"{SUPABASE_URL}/rest/v1/matches?id=eq.{match_id}",
+                headers=SUPABASE_HEADERS,
+                timeout=5
+            )
+        except Exception:
+            pass
+
+    return jsonify({"status": "deleted"})
 
 @app.route('/delete_all_matches', methods=['POST'])
 def delete_all_matches():
-    try:
-        res = requests.delete(
-            f"{SUPABASE_URL}/rest/v1/matches?id=gt.0",
-            headers=SUPABASE_HEADERS,
-            timeout=8
-        )
-        if res.status_code in [200, 204]:
-            return jsonify({"status": "cleared"})
-        return jsonify({"status": "error", "message": res.text}), res.status_code
-    except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 500
+    # Clear local
+    save_local_matches([])
+
+    # Clear cloud
+    if requests is not None:
+        try:
+            requests.delete(
+                f"{SUPABASE_URL}/rest/v1/matches?id=gt.0",
+                headers=SUPABASE_HEADERS,
+                timeout=5
+            )
+        except Exception:
+            pass
+
+    return jsonify({"status": "cleared"})
 
 @app.route('/api/export_all_pgn', methods=['GET'])
 def export_all_pgn():
-    try:
-        res = requests.get(
-            f"{SUPABASE_URL}/rest/v1/matches?select=pgn&order=id.asc",
-            headers=SUPABASE_HEADERS,
-            timeout=8
-        )
-        if res.status_code == 200:
-            rows = res.json()
-            all_pgns = [r.get("pgn", "").strip() for r in rows if r.get("pgn", "").strip()]
-            combined_text = "\n\n\n".join(all_pgns)
-            return jsonify({
-                "status": "success",
-                "count": len(all_pgns),
-                "multi_pgn": combined_text
-            })
-        return jsonify({"status": "error", "message": "Failed to fetch cloud records"}), 500
-    except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 500
+    matches_data = []
+    if requests is not None:
+        try:
+            res = requests.get(
+                f"{SUPABASE_URL}/rest/v1/matches?select=pgn&order=id.asc",
+                headers=SUPABASE_HEADERS,
+                timeout=5
+            )
+            if res.status_code == 200:
+                matches_data = res.json() or []
+        except Exception:
+            pass
+
+    if not matches_data:
+        matches_data = get_local_matches()
+
+    all_pgns = [r.get("pgn", "").strip() for r in matches_data if r.get("pgn", "").strip()]
+    combined_text = "\n\n\n".join(all_pgns)
+    return jsonify({
+        "status": "success",
+        "count": len(all_pgns),
+        "multi_pgn": combined_text
+    })
 
 @app.route('/sound/<path:filename>')
 def serve_sound(filename):
@@ -731,7 +819,6 @@ def save_to_device_storage():
     if not file_name:
         file_name = f"Match_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pgn"
 
-    # Android internal storage path (uses digit 0)
     possible_dirs = [
         "/storage/emulated/0/ChessAIPro",
         "/sdcard/ChessAIPro",
