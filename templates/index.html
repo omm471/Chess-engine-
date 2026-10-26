@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>JoHnnY</title>
-    <link rel="stylesheet" href="/static/style.css?v=120">
+    <link rel="stylesheet" href="/static/style.css?v=125">
     <style>
         body {
             background: #161512 !important;
@@ -609,7 +609,7 @@
         </div>
     </div>
 
-    <!-- SAVED GAMES ARCHIVE MODAL (SINGLE CONTAINER ONLY) -->
+    <!-- SAVED GAMES ARCHIVE MODAL (SINGLE CLEAN CONTAINER - ONLY 3-DOT MENU) -->
     <div id="vault-modal" class="modal-overlay" style="display: none;">
         <div class="modal-content kundli-box">
             <div class="sticky-top-bar">
@@ -619,9 +619,8 @@
             <div style="display:flex; gap:6px; margin-bottom:10px;">
                 <button onclick="manualSaveToVault()" style="flex:1; background:#81b64c; color:#fff; border:none; padding:8px; font-size:11.5px; font-weight:bold; border-radius:5px; cursor:pointer;">+ Save Current Game</button>
                 <button onclick="refreshMatchVaultList()" style="background:#2c2a27; color:#ddd; border:1px solid #3f3c38; padding:8px 12px; font-size:11.5px; border-radius:5px; cursor:pointer;">↻</button>
-                <button onclick="clearAllArchiveMatches()" style="background:#3a1d1d; color:#ff8080; border:1px solid #6e2a2a; padding:8px 12px; font-size:11.5px; border-radius:5px; cursor:pointer;" title="Delete All History">🗑</button>
             </div>
-            <!-- Single Container to eliminate duplicate cards -->
+            <!-- Single container: Eliminates duplicate sections -->
             <div id="vault-matches-list"></div>
         </div>
     </div>
@@ -709,15 +708,15 @@
     <!-- SCRIPTS -->
     <script src="/static/js/jquery.min.js"></script>
     <script src="/static/js/chess.min.js"></script>
-    <script src="/static/mod_core.js?v=420"></script>
-    <script src="/static/mod_openings.js?v=420"></script>
-    <script src="/static/mod_analysis.js?v=420"></script>
-    <script src="/static/mod_drawing.js?v=420"></script>
-    <script src="/static/mod_share_vault.js?v=420"></script>
-    <script src="/static/mod_extras.js?v=420"></script>
+    <script src="/static/mod_core.js?v=430"></script>
+    <script src="/static/mod_openings.js?v=430"></script>
+    <script src="/static/mod_analysis.js?v=430"></script>
+    <script src="/static/mod_drawing.js?v=430"></script>
+    <script src="/static/mod_share_vault.js?v=430"></script>
+    <script src="/static/mod_extras.js?v=430"></script>
 
     <!-- ======================================================================
-         DEFINITIVE CONTROLLER: GUARANTEES REAL ELO RATINGS, NO DUPLICATES & PVB
+         DEFINITIVE CONTROLLER: GUARANTEES NO DUPLICATES, SINGLE 3-DOT & REAL ELO
          ====================================================================== -->
     <script>
         (function() {
@@ -775,7 +774,6 @@
                     window.playerColor = 'w';
                     window.currentBoardOrientation = 'w';
                 } else if (mode === 'bvb') {
-                    // Bot vs Bot Mode: Bot Names + EXACT ELO
                     let wLevel = (document.getElementById('setup-white-bot') || {}).value || "1500";
                     let bLevel = (document.getElementById('setup-black-bot') || {}).value || "2500";
                     let wInp = document.getElementById('setup-white-bot-name');
@@ -840,7 +838,7 @@
                 return window.activeBlackDisplayName || (document.getElementById('top-player-name') || {}).innerText || "Black";
             };
 
-            // 3. CLEAN VAULT ARCHIVE: NO DUPLICATE CARDS & WORKING DELETE
+            // 3. CLEAN VAULT ARCHIVE: NO DUPLICATE IN-PROGRESS / FINISHED MATCHES
             window.refreshMatchVaultList = function() {
                 let target = $('#vault-matches-list');
                 if (!target.length) return;
@@ -866,7 +864,30 @@
                     return;
                 }
 
+                // Deduplicate: Agar match Checkmate/Finished ho chuka hai toh uska purana In Progress card chhipayein
+                let finishedSignatures = new Set();
                 list.forEach(m => {
+                    let res = (m.result || "").toLowerCase();
+                    if (!res.includes("progress")) {
+                        finishedSignatures.add(`${m.white}_${m.black}`);
+                    }
+                });
+
+                let cleanList = list.filter(m => {
+                    let res = (m.result || "").toLowerCase();
+                    let sig = `${m.white}_${m.black}`;
+                    // Agar finished match exist karta hai toh adhoora In Progress chhod dein
+                    if (res.includes("progress") && finishedSignatures.has(sig)) {
+                        return false;
+                    }
+                    return true;
+                });
+
+                cleanList.forEach(m => {
+                    let isInProgress = (m.result || "").toLowerCase().includes("progress");
+                    let actionColor = isInProgress ? "#2ea043" : "#81b64c";
+                    let actionText = isInProgress ? "▶ Resume" : "▶ Replay";
+
                     let card = `
                     <div class="vault-card">
                         <div style="display:flex; justify-content:space-between; align-items:center;">
@@ -895,22 +916,6 @@
                 $.post('/delete_match', { id: id }, function() {
                     window.refreshMatchVaultList();
                 }).fail(function() {
-                    window.refreshMatchVaultList();
-                });
-            };
-
-            // Delete All Matches
-            window.clearAllArchiveMatches = function() {
-                if (!confirm("Are you sure you want to permanently clear all game history?")) return;
-                
-                localStorage.removeItem('chess_vault_offline_matches');
-                localStorage.removeItem('saved_games_list');
-                localStorage.removeItem('chess_current_db_id');
-                localStorage.removeItem('chess_active_match');
-
-                $.post('/delete_all_matches', function() {
-                    window.refreshMatchVaultList();
-                }).always(function() {
                     window.refreshMatchVaultList();
                 });
             };
