@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>JoHnnY</title>
-    <link rel="stylesheet" href="/static/style.css?v=102">
+    <link rel="stylesheet" href="/static/style.css?v=105">
     <style>
         body {
             background: #161512 !important;
@@ -300,7 +300,7 @@
                 <select id="setup-mode" onchange="toggleSetupMode()">
                     <option value="pvb">Player vs Bot (Rated Match)</option>
                     <option value="bvb">Bot vs Bot (Rating Levels Match)</option>
-                    <option value="eve">Engine vs Engine (Different Engines Duel)</option>
+                    <option value="eve">Engine vs Engine (Duel)</option>
                     <option value="pvp" selected>Pass & Play (2 Players)</option>
                 </select>
             </div>
@@ -312,16 +312,16 @@
             <!-- Pass & Play 2-Player Names (H & G Default) -->
             <div id="setup-pvp-names-group" style="display: flex; flex-direction: column; width: 100%;">
                 <div class="setup-group">
-                    <label style="color:#81b64c;">White:</label>
+                    <label style="color:#81b64c;">White Name:</label>
                     <input type="text" id="setup-pvp-white" value="H" class="custom-input">
                 </div>
                 <div class="setup-group">
-                    <label style="color:#81b64c;">Black:</label>
+                    <label style="color:#81b64c;">Black Name:</label>
                     <input type="text" id="setup-pvp-black" value="G" class="custom-input">
                 </div>
             </div>
 
-            <!-- Single Player Name (for PvB) -->
+            <!-- Single Player Name (ONLY in Player vs Bot) -->
             <div class="setup-group" id="setup-username-group" style="display: none;">
                 <label>Your Name:</label>
                 <input type="text" id="setup-username" value="Player" class="custom-input" oninput="saveUsername()">
@@ -348,6 +348,7 @@
                 </div>
             </div>
 
+            <!-- Bot Selectors -->
             <div class="setup-group" id="setup-white-bot-group" style="display: none;">
                 <label style="color:#81b64c;">White Bot Level & Name:</label>
                 <div style="display: flex; gap: 5px; width: 100%;">
@@ -362,11 +363,11 @@
                         <option value="2500">Lvl 8 (2500+)</option>
                         <option value="2800">Max (2850+)</option>
                     </select>
-                    <input type="text" id="setup-white-bot-name" class="custom-input" style="flex: 1.3; margin-top: 0;" oninput="saveBotNameForElo('white')">
+                    <input type="text" id="setup-white-bot-name" value="Club Master" class="custom-input" style="flex: 1.3; margin-top: 0;" oninput="saveBotNameForElo('white')">
                 </div>
             </div>
             <div class="setup-group" id="setup-black-bot-group" style="display: none;">
-                <label id="opponent-elo-label" style="color:#f0c15c;">Opponent Bot Level & Name:</label>
+                <label id="opponent-elo-label" style="color:#f0c15c;">Black Bot Level & Name:</label>
                 <div style="display: flex; gap: 5px; width: 100%;">
                     <select id="setup-black-bot" onchange="loadBotNameForElo('black')" style="flex: 1.2;">
                         <option value="400">Lvl 1 (400)</option>
@@ -379,7 +380,7 @@
                         <option value="2500" selected>Lvl 8 (2500+)</option>
                         <option value="2800">Max (2850+)</option>
                     </select>
-                    <input type="text" id="setup-bot-name" class="custom-input" style="flex: 1.3; margin-top: 0;" oninput="saveBotNameForElo('black')">
+                    <input type="text" id="setup-bot-name" value="Stockfish GM" class="custom-input" style="flex: 1.3; margin-top: 0;" oninput="saveBotNameForElo('black')">
                 </div>
             </div>
             <div class="setup-group" id="setup-personality-group" style="display: none;">
@@ -448,7 +449,7 @@
                 <div id="kundli-progress-text" style="font-size: 11px; color: #81b64c; margin-bottom: 3px;">Ready to analyze...</div>
                 <div class="progress-bar-bg"><div id="kundli-progress-fill" class="progress-bar-fill"></div></div>
             </div>
-            <div style="background:#181715; padding:6px; border-radius:5px; border:1px solid #2e2c29;">
+            <div style="background:#181715; padding:6px; border-radius:5px; border:1px solid #2e2c29; margin-bottom:8px;">
                 <canvas id="kundli-eval-graph" width="310" height="75" class="eval-graph-canvas"></canvas>
             </div>
             <table class="kundli-table">
@@ -607,7 +608,7 @@
         </div>
     </div>
 
-    <!-- SAVED GAMES ARCHIVE MODAL (DUAL CONTAINER IDS) -->
+    <!-- SAVED GAMES ARCHIVE MODAL (SINGLE DEDICATED CONTAINER) -->
     <div id="vault-modal" class="modal-overlay" style="display: none;">
         <div class="modal-content kundli-box">
             <div class="sticky-top-bar">
@@ -618,9 +619,8 @@
                 <button onclick="manualSaveToVault()" style="flex:1; background:#81b64c; color:#fff; border:none; padding:8px; font-size:11.5px; font-weight:bold; border-radius:5px; cursor:pointer;">+ Save Current Game</button>
                 <button onclick="refreshMatchVaultList()" style="background:#2c2a27; color:#ddd; border:1px solid #3f3c38; padding:8px 12px; font-size:11.5px; border-radius:5px; cursor:pointer;">↻</button>
             </div>
-            <!-- Both selectors available so no script can ever fail -->
+            <!-- Single container: Eliminates duplicate sections -->
             <div id="vault-matches-list"></div>
-            <div id="vault-list"></div>
         </div>
     </div>
 
@@ -648,7 +648,7 @@
 
         <div class="timer-bar">
             <div class="player-info">
-                <div class="player-title-row"><span id="top-player-label" style="font-weight: 700; color: #aaa;">Black</span><span id="top-player-name" style="font-weight: 600;">Player 2</span></div>
+                <div class="player-title-row"><span id="top-player-label" style="font-weight: 700; color: #aaa;">Black</span><span id="top-player-name" style="font-weight: 600;">Stockfish GM (2500)</span></div>
                 <div id="top-captured" class="captured-pieces"></div>
             </div>
             <div class="timer-box" id="top-timer">10:00</div>
@@ -669,7 +669,7 @@
 
         <div class="timer-bar">
             <div class="player-info">
-                <div class="player-title-row"><span id="bottom-player-label" style="font-weight: 700; color: #fff;">White</span><span id="bottom-player-name" style="font-weight: 600;">Player 1</span><span id="live-player-elo-pill" class="elo-badge-live">1200 ELO</span></div>
+                <div class="player-title-row"><span id="bottom-player-label" style="font-weight: 700; color: #fff;">White</span><span id="bottom-player-name" style="font-weight: 600;">You</span><span id="live-player-elo-pill" class="elo-badge-live">1200 ELO</span></div>
                 <div id="bottom-captured" class="captured-pieces"></div>
             </div>
             <div class="timer-box" id="bottom-timer">10:00</div>
@@ -704,18 +704,18 @@
         </div>
     </div>
 
-    <!-- SCRIPTS (BUMPED VERSION TO BYPASS BROWSER CACHE) -->
+    <!-- SCRIPTS (CACHE-BUSTING QUERY STRINGS) -->
     <script src="/static/js/jquery.min.js"></script>
     <script src="/static/js/chess.min.js"></script>
-    <script src="/static/mod_core.js?v=205"></script>
-    <script src="/static/mod_openings.js?v=205"></script>
-    <script src="/static/mod_analysis.js?v=205"></script>
-    <script src="/static/mod_drawing.js?v=205"></script>
-    <script src="/static/mod_share_vault.js?v=205"></script>
-    <script src="/static/mod_extras.js?v=205"></script>
+    <script src="/static/mod_core.js?v=330"></script>
+    <script src="/static/mod_openings.js?v=330"></script>
+    <script src="/static/mod_analysis.js?v=330"></script>
+    <script src="/static/mod_drawing.js?v=330"></script>
+    <script src="/static/mod_share_vault.js?v=330"></script>
+    <script src="/static/mod_extras.js?v=330"></script>
 
     <!-- ======================================================================
-         MASTER CONTROLLER (OVERRIDES ALL CONFLICTS & GUARANTEES NAMES & ARCHIVE)
+         DEFINITIVE CONTROLLER: FIXES BVB NAMES, SETUP VISIBILITY & ARCHIVE
          ====================================================================== -->
     <script>
         (function() {
@@ -728,48 +728,44 @@
                 if (typeof renderBoard === 'function') renderBoard();
             };
 
-            // Setup Mode Switcher
+            // 1. SETUP TOGGLE: "Your Name" ONLY in PvB. Bot Selectors in BvB.
             window.toggleSetupMode = function() {
-                let m = (document.getElementById('setup-mode') || {}).value || 'pvb';
-                let isPvP = (m === 'pvp');
-
+                let m = (document.getElementById('setup-mode') || {}).value || 'pvp';
+                
                 let pvpGroup = document.getElementById('setup-pvp-names-group');
-                if (pvpGroup) pvpGroup.style.display = isPvP ? 'flex' : 'none';
-
-                let userGroup = document.getElementById('setup-username-group');
-                if (userGroup) userGroup.style.display = isPvP ? 'none' : 'block';
-
+                let uGroup = document.getElementById('setup-username-group');
                 let flipGroup = document.getElementById('setup-autoflip-group');
-                if (flipGroup) flipGroup.style.display = isPvP ? 'flex' : 'none';
-
                 let colorGroup = document.getElementById('setup-color-group');
+                let wBotGroup = document.getElementById('setup-white-bot-group');
+                let bBotGroup = document.getElementById('setup-black-bot-group');
+                let eveGroup = document.getElementById('setup-eve-group');
+                let thinkGroup = document.getElementById('setup-think-group');
+                let depthGroup = document.getElementById('setup-depth-group');
+                let personalityGroup = document.getElementById('setup-personality-group');
+
+                if (pvpGroup) pvpGroup.style.display = (m === 'pvp') ? 'flex' : 'none';
+                if (flipGroup) flipGroup.style.display = (m === 'pvp') ? 'flex' : 'none';
+                
+                // "Your Name" strictly shown ONLY in Player vs Bot (pvb)
+                if (uGroup) uGroup.style.display = (m === 'pvb') ? 'block' : 'none';
                 if (colorGroup) colorGroup.style.display = (m === 'pvb') ? 'flex' : 'none';
 
-                let whiteBotGroup = document.getElementById('setup-white-bot-group');
-                if (whiteBotGroup) whiteBotGroup.style.display = (m === 'bvb') ? 'flex' : 'none';
+                // Bot selectors for Bot vs Bot
+                if (wBotGroup) wBotGroup.style.display = (m === 'bvb') ? 'block' : 'none';
+                if (bBotGroup) bBotGroup.style.display = (m === 'pvb' || m === 'bvb') ? 'block' : 'none';
 
-                let blackBotGroup = document.getElementById('setup-black-bot-group');
-                if (blackBotGroup) blackBotGroup.style.display = (m === 'pvb' || m === 'bvb') ? 'flex' : 'none';
-
-                let eveGroup = document.getElementById('setup-eve-group');
                 if (eveGroup) eveGroup.style.display = (m === 'eve') ? 'flex' : 'none';
-
-                let thinkGroup = document.getElementById('setup-think-group');
-                if (thinkGroup) thinkGroup.style.display = isPvP ? 'none' : 'flex';
-
-                let depthGroup = document.getElementById('setup-depth-group');
-                if (depthGroup) depthGroup.style.display = isPvP ? 'none' : 'flex';
-
-                let personalityGroup = document.getElementById('setup-personality-group');
-                if (personalityGroup) personalityGroup.style.display = (m === 'pvb' || m === 'bvb') ? 'flex' : 'none';
+                if (thinkGroup) thinkGroup.style.display = (m === 'pvp') ? 'none' : 'flex';
+                if (depthGroup) depthGroup.style.display = (m === 'pvp') ? 'none' : 'flex';
+                if (personalityGroup) personalityGroup.style.display = (m === 'pvb' || m === 'bvb') ? 'block' : 'none';
 
                 let oppLbl = document.getElementById('opponent-elo-label');
                 if (oppLbl) oppLbl.innerText = (m === 'bvb') ? "Black Bot Level & Name:" : "Opponent Bot Level & Name:";
             };
 
-            // 1. MASTER PASS & PLAY NAMES APPLY (H, G, O, N - ALWAYS SHOW ON BOARD)
+            // 2. MASTER APPLY SETUP: Applies H/G in PvP, Real Bot Names in BvB
             window.applySetupAndStart = function() {
-                let mode = (document.getElementById('setup-mode') || {}).value || 'pvb';
+                let mode = (document.getElementById('setup-mode') || {}).value || 'pvp';
                 window.gameMode = mode;
 
                 let whiteVal = "Player 1";
@@ -780,21 +776,27 @@
                     let bInp = document.getElementById('setup-pvp-black');
                     whiteVal = (wInp && wInp.value.trim()) ? wInp.value.trim() : "Player 1";
                     blackVal = (bInp && bInp.value.trim()) ? bInp.value.trim() : "Player 2";
-
                     window.autoFlipPvP = ((document.getElementById('setup-autoflip') || {}).value === 'on');
                     window.playerColor = 'w';
                     window.currentBoardOrientation = 'w';
+                } else if (mode === 'bvb') {
+                    // Extract Bot names for Bot vs Bot mode
+                    let wInp = document.getElementById('setup-white-bot-name');
+                    let bInp = document.getElementById('setup-bot-name');
+                    whiteVal = (wInp && wInp.value.trim()) ? wInp.value.trim() : "Club Master";
+                    blackVal = (bInp && bInp.value.trim()) ? bInp.value.trim() : "Stockfish GM";
+                    window.currentBoardOrientation = 'w';
                 } else if (mode === 'pvb') {
                     let uInp = document.getElementById('setup-username');
-                    let botInp = document.getElementById('setup-bot-name');
+                    let bInp = document.getElementById('setup-bot-name');
                     whiteVal = (uInp && uInp.value.trim()) ? uInp.value.trim() : "You";
-                    blackVal = (botInp && botInp.value.trim()) ? botInp.value.trim() : "Stockfish GM";
+                    blackVal = (bInp && bInp.value.trim()) ? bInp.value.trim() : "Stockfish GM";
                 }
 
                 window.activeWhiteDisplayName = whiteVal;
                 window.activeBlackDisplayName = blackVal;
 
-                // Directly update HTML board names
+                // Write names directly to board headers
                 let bName = document.getElementById('bottom-player-name');
                 let bLbl = document.getElementById('bottom-player-label');
                 let tName = document.getElementById('top-player-name');
@@ -808,14 +810,14 @@
                 if (typeof closeModal === 'function') closeModal('setup-modal');
                 if (typeof window.startGame === 'function') window.startGame(true);
 
-                // Reinforce names after any startGame reset
+                // Reinforce board names after any internal reset
                 setTimeout(() => {
                     if (document.getElementById('bottom-player-name')) document.getElementById('bottom-player-name').innerText = window.activeWhiteDisplayName;
                     if (document.getElementById('top-player-name')) document.getElementById('top-player-name').innerText = window.activeBlackDisplayName;
-                }, 60);
+                }, 70);
             };
 
-            // Global Name Overrides for all modules (PGN & Status)
+            // Global Name Overrides
             window.getWhiteDisplayName = function() {
                 return window.activeWhiteDisplayName || (document.getElementById('bottom-player-name') || {}).innerText || "White";
             };
@@ -823,26 +825,18 @@
                 return window.activeBlackDisplayName || (document.getElementById('top-player-name') || {}).innerText || "Black";
             };
 
-            // 2. MASTER ARCHIVE RENDERER (DUAL CONTAINER & DUAL LOCAL+CLOUD SYNC)
+            // 3. CLEAN VAULT ARCHIVE: Single target rendering, strict deduplication
             window.refreshMatchVaultList = function() {
-                let targets = $('#vault-matches-list, #vault-list');
-                if (!targets.length) return;
+                let target = $('#vault-matches-list');
+                if (!target.length) target = $('#vault-list');
+                if (!target.length) return;
 
-                targets.html('<div style="text-align:center;padding:22px;color:#aaa;">Loading Games Archive...</div>');
+                target.html('<div style="text-align:center;padding:22px;color:#aaa;">Loading Games Archive...</div>');
 
-                // Read local saved games fallback
                 let localGames = [];
                 try {
-                    let raw = localStorage.getItem('chess_vault_offline_matches') || localStorage.getItem('saved_games_list') || '[]';
-                    let parsed = JSON.parse(raw);
-                    if (Array.isArray(parsed)) {
-                        localGames = parsed.map((item, idx) => {
-                            if (typeof item === 'string') {
-                                return { id: "local_" + idx, white: "Player 1", black: "Player 2", result: "Saved", date: "Local Match", pgn: item };
-                            }
-                            return item;
-                        });
-                    }
+                    let raw = localStorage.getItem('chess_vault_offline_matches') || '[]';
+                    localGames = JSON.parse(raw);
                 } catch(e) {}
 
                 $.get('/get_matches', function(data) {
@@ -859,13 +853,13 @@
                         }
                     });
 
-                    renderArchiveCards(unique, targets);
+                    renderArchiveList(unique, target);
                 }).fail(function() {
-                    renderArchiveCards(localGames, targets);
+                    renderArchiveList(localGames, target);
                 });
             };
 
-            function renderArchiveCards(list, container) {
+            function renderArchiveList(list, container) {
                 container.empty();
                 if (!list || list.length === 0) {
                     container.html('<div style="text-align:center;padding:26px;color:#777;">No saved games in archive yet.<br><br>Play a game or tap "+ Save Current Game" to add one!</div>');
@@ -880,7 +874,7 @@
                     let card = `
                     <div class="vault-card">
                         <div style="display:flex; justify-content:space-between; align-items:center;">
-                            <b style="color:#eee;">♔ ${m.white || 'White'} <span style="color:#777;">vs</span> ♚ ${m.black || 'Black'}</b>
+                            <b style="color:#eee;">♔ ${m.white || 'White'} <span style="color:#777;font-size:11px;">vs</span> ♚ ${m.black || 'Black'}</b>
                             <span style="font-size:10px; background:#2a2b2e; color:#81b64c; padding:2px 7px; border-radius:4px;">${m.result || 'Finished'}</span>
                         </div>
                         <div style="font-size:10.5px; color:#888; margin:5px 0;">${m.date || ''} • ${m.opening || 'Standard'}</div>
@@ -893,7 +887,7 @@
                 });
             }
 
-            // Direct Save Button
+            // Direct Save to Vault
             window.manualSaveToVault = function() {
                 let w = window.getWhiteDisplayName();
                 let b = window.getBlackDisplayName();
@@ -929,18 +923,14 @@
                 window.refreshMatchVaultList();
             };
 
-            // 3. AUTO-RENDER GRAPH WHEN REPORT IS OPENED
-            let origOpenDeepReport = window.openDeepReport;
+            // Deep Report Graph Trigger
             window.openDeepReport = function() {
                 $('#kundli-modal').css('display', 'flex');
-                if (typeof origOpenDeepReport === 'function') origOpenDeepReport();
                 setTimeout(() => {
                     if (typeof window.renderChessComGraphOnCanvas === 'function') {
                         window.renderChessComGraphOnCanvas('kundli-eval-graph');
-                    } else if (typeof window.drawKundliGraph === 'function') {
-                        window.drawKundliGraph();
                     }
-                }, 100);
+                }, 80);
             };
         })();
     </script>
