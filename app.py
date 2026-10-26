@@ -100,13 +100,14 @@ PRESET_NAMES = {
     "sf14": "Stockfish 14 (Sharp)"
 }
 
+# Default set to 8 Cores (Threads) and 512 MB (Hash RAM)
 engine_state = {
     "path": DEFAULT_ENGINE_PATH,
     "protocol": "uci",
     "real_name": "Stockfish 19 (Next-Gen NNUE)",
     "preset": "sf19",
-    "hash": 256,
-    "threads": 4,
+    "hash": 512,
+    "threads": 8,
     "use_nnue": True,
     "last_nps": 0,
     "last_depth": 0,
@@ -117,8 +118,8 @@ if os.path.exists(HW_CONFIG_FILE):
     try:
         with open(HW_CONFIG_FILE, 'r') as f:
             saved_hw = json.load(f)
-            engine_state["hash"] = min(4096, max(16, int(saved_hw.get("hash", 256))))
-            engine_state["threads"] = min(32, max(1, int(saved_hw.get("threads", 4))))
+            engine_state["hash"] = min(4096, max(16, int(saved_hw.get("hash", 512))))
+            engine_state["threads"] = min(32, max(1, int(saved_hw.get("threads", 8))))
             engine_state["use_nnue"] = bool(saved_hw.get("use_nnue", True))
             if saved_hw.get("path") and os.path.exists(saved_hw.get("path")):
                 engine_state["path"] = saved_hw.get("path")
@@ -285,7 +286,6 @@ def save_match():
     }
 
     try:
-        # 1. Frontend se valid ID aane par direct PATCH update karein
         if match_id and match_id not in ['null', 'undefined', '0']:
             res = requests.patch(
                 f"{SUPABASE_URL}/rest/v1/matches?id=eq.{match_id}",
@@ -295,7 +295,6 @@ def save_match():
             )
             return jsonify({"status": "updated", "id": match_id})
 
-        # 2. DUPLICATE LOCK: In Progress games ke liye duplicate check
         if "in progress" in result_status.lower():
             check = requests.get(
                 f"{SUPABASE_URL}/rest/v1/matches?result=ilike.*In Progress*&order=id.desc&limit=1",
@@ -314,7 +313,6 @@ def save_match():
                     )
                     return jsonify({"status": "updated", "id": existing_id})
 
-        # 3. Naye match ke start hone par nayi row create karein
         headers = {**SUPABASE_HEADERS, "Prefer": "return=representation"}
         res = requests.post(
             f"{SUPABASE_URL}/rest/v1/matches",
@@ -640,9 +638,9 @@ def multipv():
 @app.route('/update_engine', methods=['POST'])
 def update_engine():
     if 'hash' in request.form: 
-        engine_state["hash"] = min(4096, max(16, int(request.form.get('hash', 256))))
+        engine_state["hash"] = min(4096, max(16, int(request.form.get('hash', 512))))
     if 'threads' in request.form: 
-        engine_state["threads"] = min(32, max(1, int(request.form.get('threads', 4))))
+        engine_state["threads"] = min(32, max(1, int(request.form.get('threads', 8))))
     if 'use_nnue' in request.form: 
         engine_state["use_nnue"] = (str(request.form.get('use_nnue')).lower() in ['true', 'on', '1'])
     with engine_lock:
