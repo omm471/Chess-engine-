@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>JoHnnY</title>
-    <link rel="stylesheet" href="/static/style.css?v=160">
+    <link rel="stylesheet" href="/static/style.css?v=170">
     <style>
         body {
             background: #161512 !important;
@@ -60,6 +60,35 @@
         }
         .dragging-source-piece { opacity: 0 !important; visibility: hidden !important; }
         .drag-target-hover { box-shadow: inset 0 0 0 3px rgba(255, 255, 255, 0.82) !important; }
+
+        /* ====================================================================
+           CHESS.COM STYLE KING FALLEN, WINNER & DRAW ANIMATIONS
+           ==================================================================== */
+        .king-loser-sq {
+            background: radial-gradient(circle, #e63946 0%, #8b0000 100%) !important;
+            box-shadow: inset 0 0 14px rgba(0, 0, 0, 0.8) !important;
+            z-index: 5 !important;
+        }
+        .king-fallen-piece {
+            transform: rotate(-26deg) translateY(4px) scale(0.90) !important;
+            transition: transform 0.45s cubic-bezier(0.175, 0.885, 0.32, 1.275) !important;
+            filter: drop-shadow(0 8px 10px rgba(0, 0, 0, 0.85)) !important;
+        }
+        .king-winner-sq {
+            background: radial-gradient(circle, #81b64c 0%, #22541d 100%) !important;
+            box-shadow: inset 0 0 14px rgba(255, 235, 130, 0.75) !important;
+            z-index: 5 !important;
+        }
+        .king-winner-piece {
+            transform: scale(1.14) translateY(-2px) !important;
+            filter: drop-shadow(0 0 10px rgba(255, 215, 0, 0.9)) !important;
+            transition: transform 0.35s ease !important;
+        }
+        .king-draw-sq {
+            background: radial-gradient(circle, #38bdf8 0%, #1e3a8a 100%) !important;
+            box-shadow: inset 0 0 12px rgba(0, 0, 0, 0.65) !important;
+            z-index: 5 !important;
+        }
 
         .sidebar-backdrop { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.65); z-index: 1100; display: none; }
         .sidebar-drawer {
@@ -122,12 +151,8 @@
         .setup-group label { display: block; font-size: 12px; font-weight: bold; margin-bottom: 4px; color: #81b64c; }
         .custom-input, select { width: 100%; box-sizing: border-box; padding: 8px 10px; background: #161512; border: 1px solid #383632; border-radius: 5px; color: #fff; font-size: 12.5px; }
 
-        /* ====================================================================
-           PRECISE LEFT-ALIGNED SETTINGS MODAL LAYOUT (NO CENTER STACKING)
-           ==================================================================== */
-        #settings-modal .modal-content, #settings-modal .setup-box {
-            text-align: left !important;
-        }
+        /* Left-aligned Settings Modal */
+        #settings-modal .modal-content, #settings-modal .setup-box { text-align: left !important; }
         #settings-modal .chessis-sec-title {
             color: #5c9ded !important; font-size: 11px !important; font-weight: 700 !important;
             text-align: left !important; margin: 14px 0 6px 0 !important; text-transform: uppercase !important;
@@ -138,15 +163,9 @@
             align-items: center !important; padding: 10px 4px !important; border-bottom: 1px solid #2d2b28 !important;
             text-align: left !important; width: 100% !important; box-sizing: border-box !important;
         }
-        #settings-modal .chessis-row > div:first-child {
-            text-align: left !important; flex: 1 !important; margin-right: 8px !important;
-        }
-        #settings-modal .chessis-row-title {
-            color: #e8e8e8 !important; font-size: 12.5px !important; font-weight: 600 !important; text-align: left !important;
-        }
-        #settings-modal .chessis-row-sub {
-            color: #8c8c8c !important; font-size: 10.5px !important; margin-top: 2px !important; text-align: left !important;
-        }
+        #settings-modal .chessis-row > div:first-child { text-align: left !important; flex: 1 !important; margin-right: 8px !important; }
+        #settings-modal .chessis-row-title { color: #e8e8e8 !important; font-size: 12.5px !important; font-weight: 600 !important; text-align: left !important; }
+        #settings-modal .chessis-row-sub { color: #8c8c8c !important; font-size: 10.5px !important; margin-top: 2px !important; text-align: left !important; }
         #settings-modal .chessis-row select {
             width: auto !important; min-width: 100px !important; max-width: 160px !important;
             padding: 6px 8px !important; margin: 0 !important; text-align: left !important; flex-shrink: 0 !important;
@@ -173,46 +192,34 @@
             width: 100% !important; height: 100% !important; font-size: 32px; cursor: pointer;
         }
 
-        /* 100% SAFE BOARD THEMES (NO BLACK SQUARES) */
+        /* 100% Safe Board Themes */
         body.theme-green .square.light { background-color: #eeeed2; }
         body.theme-green .square.dark  { background-color: #769656; }
-
         body.theme-wood .square.light  { background-color: #f0d9b5; }
         body.theme-wood .square.dark   { background-color: #b58863; }
-
         body.theme-blue .square.light  { background-color: #dee3e6; }
         body.theme-blue .square.dark   { background-color: #8ca2ad; }
-
         body.theme-dark .square.light  { background-color: #a0a0a0; }
         body.theme-dark .square.dark   { background-color: #4c4c4c; }
 
         body.theme-board-a .square.light { background-color: #f0d9b5 !important; }
         body.theme-board-a .square.dark  { background-color: #b58863 !important; }
-
         body.theme-board-b .square.light { background-color: #ffffdd !important; }
         body.theme-board-b .square.dark  { background-color: #86a666 !important; }
-
         body.theme-board-c .square.light { background-color: #e3c099 !important; }
         body.theme-board-c .square.dark  { background-color: #8c5a2b !important; }
-
         body.theme-board-d .square.light { background-color: #e0f2fe !important; }
         body.theme-board-d .square.dark  { background-color: #38bdf8 !important; }
-
         body.theme-board-e .square.light { background-color: #cbd5e1 !important; }
         body.theme-board-e .square.dark  { background-color: #475569 !important; }
-
         body.theme-board-f .square.light { background-color: #dbeafe !important; }
         body.theme-board-f .square.dark  { background-color: #3b82f6 !important; }
-
         body.theme-board-g .square.light { background-color: #bae6fd !important; }
         body.theme-board-g .square.dark  { background-color: #0284c7 !important; }
-
         body.theme-board-h .square.light { background-color: #e2e8f0 !important; }
         body.theme-board-h .square.dark  { background-color: #166534 !important; }
-
         body.theme-board-i .square.light { background-color: #f8fafc !important; }
         body.theme-board-i .square.dark  { background-color: #94a3b8 !important; }
-
         body.theme-board-j .square.light { background-color: #e2e8f0 !important; }
         body.theme-board-j .square.dark  { background-color: #1e293b !important; }
 
@@ -227,8 +234,8 @@
         body.theme-board-i #board { background-image: url('/static/boards/i.png') !important; background-size: cover !important; }
         body.theme-board-j #board { background-image: url('/static/boards/j.png') !important; background-size: cover !important; }
 
-        body.has-board-img[class*="theme-board-"] .square.light:not(.selected):not(.last-move):not(.premove-sq):not(.highlight-check),
-        body.has-board-img[class*="theme-board-"] .square.dark:not(.selected):not(.last-move):not(.premove-sq):not(.highlight-check) {
+        body.has-board-img[class*="theme-board-"] .square.light:not(.selected):not(.last-move):not(.premove-sq):not(.highlight-check):not(.king-loser-sq):not(.king-winner-sq):not(.king-draw-sq),
+        body.has-board-img[class*="theme-board-"] .square.dark:not(.selected):not(.last-move):not(.premove-sq):not(.highlight-check):not(.king-loser-sq):not(.king-winner-sq):not(.king-draw-sq) {
             background-color: transparent !important;
         }
 
@@ -243,7 +250,7 @@
 </head>
 <body class="theme-green">
 
-    <!-- SIDEBAR DRAWER -->
+    <!-- SLIDE-OUT SIDEBAR DRAWER -->
     <div id="sidebar-backdrop" class="sidebar-backdrop" onclick="toggleSidebarDrawer(false)"></div>
     <div id="chess-sidebar-drawer" class="sidebar-drawer">
         <div style="display:flex; justify-content:space-between; align-items:center; padding-bottom:10px; margin-bottom:10px; border-bottom:1px solid #33312e;">
@@ -334,7 +341,6 @@
             </div>
             <div class="setup-group">
                 <label>Game Mode:</label>
-                <!-- Default is Player vs Bot -->
                 <select id="setup-mode" onchange="toggleSetupMode()">
                     <option value="pvb" selected>Player vs Bot (Rated Match)</option>
                     <option value="bvb">Bot vs Bot (Rating Levels Match)</option>
@@ -485,7 +491,7 @@
         </div>
     </div>
 
-    <!-- 5. SETTINGS MODAL (BULLETPROOF FAIL-SAFE + CLEAN ALIGNMENT) -->
+    <!-- 5. SETTINGS MODAL -->
     <div id="settings-modal" class="modal-overlay" style="display: none;">
         <div class="modal-content setup-box">
             <div class="sticky-top-bar">
@@ -683,6 +689,13 @@
                 <button id="btn-front-resign" class="front-ctrl-btn" onclick="resignGame()">Resign</button><button id="btn-front-draw" class="front-ctrl-btn" onclick="offerDrawToBot()">Offer Draw</button><button id="btn-front-flip" class="front-ctrl-btn" onclick="flipBoardUI()">Flip</button><button id="btn-board-hint" class="front-ctrl-btn front-btn-hint" onclick="requestHint()">Hint</button>
             </div>
 
+            <div id="draw-palette-bar" class="draw-palette">
+                <div style="display:flex; gap:6px; align-items:center;">
+                    <span class="color-dot active-dot" style="background:#ffaa00;" onclick="setDrawColor('rgba(255, 170, 0, 0.75)', this)"></span><span class="color-dot" style="background:#e63946;" onclick="setDrawColor('rgba(230, 57, 70, 0.75)', this)"></span><span class="color-dot" style="background:#739552;" onclick="setDrawColor('rgba(115, 149, 82, 0.78)', this)"></span><span class="color-dot" style="background:#4a8ff0;" onclick="setDrawColor('rgba(74, 143, 240, 0.75)', this)"></span>
+                </div>
+                <div style="display:flex; gap:4px;"><button class="draw-action-btn" onclick="undoDrawAnnotation()">Undo</button><button class="draw-action-btn" onclick="redoDrawAnnotation()">Redo</button><button class="draw-action-btn" onclick="clearCustomAnnotations()">Clear</button></div>
+            </div>
+
             <div id="formal-main-bar" class="formal-bar">
                 <button id="btn-new-game" class="formal-btn formal-btn-primary" onclick="openSetupModal()">New Game</button><button id="btn-draw-mode" class="formal-btn" onclick="toggleDrawMode()">Draw</button><button id="btn-focus-mode" class="formal-btn" onclick="toggleFocusMode()">Fullscreen</button><button id="btn-deep-report" class="formal-btn formal-btn-accent" onclick="openDeepReport()">Report</button><button id="btn-tools-menu" class="formal-btn" onclick="openToolsMenuModal()">Menu</button>
             </div>
@@ -692,24 +705,130 @@
     <!-- SCRIPTS -->
     <script src="/static/js/jquery.min.js"></script>
     <script src="/static/js/chess.min.js"></script>
-    <script src="/static/mod_core.js?v=460"></script>
-    <script src="/static/mod_openings.js?v=460"></script>
-    <script src="/static/mod_analysis.js?v=460"></script>
-    <script src="/static/mod_drawing.js?v=460"></script>
-    <script src="/static/mod_share_vault.js?v=460"></script>
-    <script src="/static/mod_extras.js?v=460"></script>
+    <script src="/static/mod_core.js?v=470"></script>
+    <script src="/static/mod_openings.js?v=470"></script>
+    <script src="/static/mod_analysis.js?v=470"></script>
+    <script src="/static/mod_drawing.js?v=470"></script>
+    <script src="/static/mod_share_vault.js?v=470"></script>
+    <script src="/static/mod_extras.js?v=470"></script>
 
     <!-- ======================================================================
-         DEFINITIVE MASTER CONTROLLER: GUARANTEES SETTINGS MODAL & THEMES
+         DEFINITIVE MASTER CONTROLLER: DYNAMIC KING ANIMATIONS (MATE/RESIGN/DRAW)
          ====================================================================== -->
     <script>
         (function() {
-            // 1. FAIL-SAFE SETTINGS MODAL OPEN & CLOSE
+            // ================================================================
+            // 1. KING HIGHLIGHT & FALLEN ANIMATION ENGINE
+            // ================================================================
+            window.activeGameEndStatus = null; // { type: 'mate'|'resign'|'draw', loser: 'w'|'b', winner: 'w'|'b' }
+
+            window.clearKingEndEffects = function() {
+                $('.square').removeClass('king-loser-sq king-winner-sq king-draw-sq');
+                $('.square img, .square .piece, .square > div').removeClass('king-fallen-piece king-winner-piece');
+            };
+
+            window.applyKingEndEffects = function() {
+                if (typeof game === 'undefined') return;
+
+                // 1. Clear previous effects
+                window.clearKingEndEffects();
+
+                let isMate = (typeof game.in_checkmate === 'function' && game.in_checkmate());
+                let isDraw = (typeof game.in_draw === 'function' && game.in_draw()) || 
+                             (typeof game.in_stalemate === 'function' && game.in_stalemate()) ||
+                             (typeof game.in_threefold_repetition === 'function' && game.in_threefold_repetition()) ||
+                             (typeof game.insufficient_material === 'function' && game.insufficient_material());
+
+                let status = window.activeGameEndStatus;
+
+                if (!status) {
+                    if (isMate) {
+                        let loserSide = game.turn(); // The side that has no moves
+                        let winnerSide = (loserSide === 'w') ? 'b' : 'w';
+                        status = { type: 'mate', loser: loserSide, winner: winnerSide };
+                    } else if (isDraw) {
+                        status = { type: 'draw' };
+                    }
+                }
+
+                if (!status) return;
+
+                // Find King Squares
+                let whiteKingSq = null, blackKingSq = null;
+                try {
+                    let b = game.board();
+                    for (let r = 0; r < 8; r++) {
+                        for (let c = 0; c < 8; c++) {
+                            let p = b[r][c];
+                            if (p && p.type === 'k') {
+                                let sq = String.fromCharCode(97 + c) + (8 - r);
+                                if (p.color === 'w') whiteKingSq = sq;
+                                else blackKingSq = sq;
+                            }
+                        }
+                    }
+                } catch(e) {}
+
+                if (status.type === 'draw') {
+                    // Draw: Both King Squares get Cyan/Blue Radial Glow
+                    if (whiteKingSq) $(`[data-square="${whiteKingSq}"], .square-${whiteKingSq}`).addClass('king-draw-sq');
+                    if (blackKingSq) $(`[data-square="${blackKingSq}"], .square-${blackKingSq}`).addClass('king-draw-sq');
+                } else {
+                    // Decisive: Checkmate or Resignation
+                    let loserSq = (status.loser === 'w') ? whiteKingSq : blackKingSq;
+                    let winnerSq = (status.winner === 'w') ? whiteKingSq : blackKingSq;
+
+                    if (loserSq) {
+                        let $loserCell = $(`[data-square="${loserSq}"], .square-${loserSq}`);
+                        $loserCell.addClass('king-loser-sq');
+                        // Apply fallen tilt animation to the piece inside
+                        $loserCell.find('img, .piece, div[class*="piece"]').addClass('king-fallen-piece');
+                    }
+
+                    if (winnerSq) {
+                        let $winnerCell = $(`[data-square="${winnerSq}"], .square-${winnerSq}`);
+                        $winnerCell.addClass('king-winner-sq');
+                        $winnerCell.find('img, .piece, div[class*="piece"]').addClass('king-winner-piece');
+                    }
+                }
+            };
+
+            // Hook into Board Rendering: Whenever board re-renders, re-apply effects if match is ended
+            let _origRenderBoard = window.renderBoard;
+            window.renderBoard = function() {
+                if (typeof _origRenderBoard === 'function') _origRenderBoard.apply(this, arguments);
+                setTimeout(window.applyKingEndEffects, 20);
+            };
+
+            // Hook Resign Button
+            let _origResignGame = window.resignGame;
+            window.resignGame = function() {
+                let loserColor = window.playerColor || 'w';
+                if (window.gameMode === 'bvb') loserColor = 'w'; // Default white for engine duel test
+                let winnerColor = (loserColor === 'w') ? 'b' : 'w';
+                window.activeGameEndStatus = { type: 'resign', loser: loserColor, winner: winnerColor };
+
+                if (typeof _origResignGame === 'function') _origResignGame();
+                else if (typeof window.showModal === 'function') window.showModal('game-modal');
+                
+                setTimeout(window.applyKingEndEffects, 50);
+            };
+
+            // Hook Offer Draw Button
+            let _origOfferDraw = window.offerDrawToBot;
+            window.offerDrawToBot = function() {
+                window.activeGameEndStatus = { type: 'draw' };
+                if (typeof _origOfferDraw === 'function') _origOfferDraw();
+                setTimeout(window.applyKingEndEffects, 50);
+            };
+
+            // ================================================================
+            // 2. SETTINGS & MODAL ENGINE
+            // ================================================================
             window.openSettingsModal = function() {
                 let m = document.getElementById('settings-modal');
                 if (m) m.style.display = 'flex';
 
-                // Sync currently active theme & pieces to select boxes
                 try {
                     let savedTheme = localStorage.getItem('saved_chess_theme') || 'theme-green';
                     let themeSel = document.getElementById('setting-board-theme');
@@ -720,7 +839,6 @@
                     if (pSel) pSel.value = savedPieces;
                 } catch(e) {}
 
-                // Safely load engines in background without blocking opening
                 try {
                     if (typeof window.refreshEngineListInSettings === 'function') {
                         window.refreshEngineListInSettings();
@@ -785,7 +903,9 @@
                 if (typeof renderBoard === 'function') renderBoard();
             };
 
-            // 2. SETUP TOGGLE
+            // ================================================================
+            // 3. SETUP CONTROLLER & START GAME HOOK
+            // ================================================================
             window.toggleSetupMode = function() {
                 let m = (document.getElementById('setup-mode') || {}).value || 'pvb';
                 let pvpGroup = document.getElementById('setup-pvp-names-group');
@@ -805,10 +925,13 @@
                 if (oppLbl) oppLbl.innerText = (m === 'bvb') ? "Black Bot Level & Name:" : "Opponent Bot Level & Name:";
             };
 
-            // 3. MASTER APPLY SETUP
             window.applySetupAndStart = function() {
                 let mode = (document.getElementById('setup-mode') || {}).value || 'pvb';
                 window.gameMode = mode;
+
+                // Reset end game effects on fresh game
+                window.activeGameEndStatus = null;
+                window.clearKingEndEffects();
 
                 let whiteVal = "Player 1";
                 let blackVal = "Player 2";
@@ -885,7 +1008,9 @@
                 return window.activeBlackDisplayName || (document.getElementById('top-player-name') || {}).innerText || "Black";
             };
 
+            // ================================================================
             // 4. CLEAN VAULT ARCHIVE
+            // ================================================================
             window.refreshMatchVaultList = function() {
                 let target = $('#vault-matches-list');
                 if (!target.length) return;
