@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>JoHnnY</title>
-    <link rel="stylesheet" href="/static/style.css?v=170">
+    <link rel="stylesheet" href="/static/style.css?v=180">
     <style>
         body {
             background: #161512 !important;
@@ -61,9 +61,7 @@
         .dragging-source-piece { opacity: 0 !important; visibility: hidden !important; }
         .drag-target-hover { box-shadow: inset 0 0 0 3px rgba(255, 255, 255, 0.82) !important; }
 
-        /* ====================================================================
-           CHESS.COM STYLE KING FALLEN, WINNER & DRAW ANIMATIONS
-           ==================================================================== */
+        /* KING GAME-END ANIMATIONS */
         .king-loser-sq {
             background: radial-gradient(circle, #e63946 0%, #8b0000 100%) !important;
             box-shadow: inset 0 0 14px rgba(0, 0, 0, 0.8) !important;
@@ -128,8 +126,10 @@
         .board-wrapper { position: relative; width: 320px; height: 320px; touch-action: none; }
         #arrow-overlay { position: absolute; top: 0; left: 0; width: 320px; height: 320px; pointer-events: none !important; z-index: 8; }
         #custom-draw-overlay { position: absolute; top: 0; left: 0; width: 320px; height: 320px; pointer-events: none; z-index: 12; }
+        #custom-draw-overlay.drawing-active { pointer-events: auto !important; touch-action: none !important; cursor: crosshair !important; }
 
         .bottom-controls-panel { width: 344px; display: flex; flex-direction: column; gap: 4px; }
+        #telemetry-bar { width: 100%; background: #1c1b18; border: 1px solid #2e2c29; color: #81b64c; font-size: 11px; font-weight: 600; padding: 5px 8px; border-radius: 4px; display: flex; justify-content: space-between; box-sizing: border-box; }
         #multipv-bar { width: 100%; background: #1c1b18; border: 1px solid #2e2c29; color: #b0b0b0; font-size: 10.5px; padding: 4px 8px; border-radius: 4px; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; box-sizing: border-box; }
         #status { width: 100%; background: #1c1b18; border: 1px solid #2e2c29; color: #e0e0e0; font-size: 11px; font-weight: 600; padding: 5px; border-radius: 4px; text-align: center; box-sizing: border-box; }
 
@@ -138,6 +138,13 @@
         .front-board-bar { display: flex; gap: 4px; width: 100%; }
         .front-ctrl-btn { flex: 1; background: #282623; color: #d8d8d8; border: 1px solid #3a3732; padding: 7px 4px; font-size: 11px; font-weight: 600; border-radius: 4px; cursor: pointer; }
         .front-btn-hint { background: #38311e; border-color: #8a7332; color: #f0c15c; }
+
+        /* DRAW PALETTE BAR (FIXED ALIGNMENT) */
+        .draw-palette { display: none; width: 100%; background: #1c1b18; border: 1px solid #3a3732; border-radius: 4px; padding: 5px 8px; box-sizing: border-box; align-items: center; justify-content: space-between; margin: 1px 0; }
+        .color-dot { width: 20px; height: 20px; border-radius: 50%; border: 2px solid transparent; cursor: pointer; display: inline-block; }
+        .color-dot.active-dot { border-color: #fff; transform: scale(1.12); }
+        .draw-action-btn { background: #282623; color: #ddd; border: 1px solid #444; padding: 5px 10px; font-size: 11px; font-weight: 600; border-radius: 4px; cursor: pointer; }
+
         .formal-bar { display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px; width: 100%; }
         .formal-btn { background: #282623; color: #e0e0e0; border: 1px solid #3a3732; padding: 8px 2px; font-size: 11px; font-weight: 700; border-radius: 4px; cursor: pointer; }
         .formal-btn-primary { background: #81b64c; border-color: #81b64c; color: #fff; }
@@ -151,7 +158,14 @@
         .setup-group label { display: block; font-size: 12px; font-weight: bold; margin-bottom: 4px; color: #81b64c; }
         .custom-input, select { width: 100%; box-sizing: border-box; padding: 8px 10px; background: #161512; border: 1px solid #383632; border-radius: 5px; color: #fff; font-size: 12.5px; }
 
-        /* Left-aligned Settings Modal */
+        /* PLAY SIDE BUTTONS */
+        .color-selector { display: flex; gap: 8px; justify-content: space-between; margin-top: 4px; }
+        .color-selector label { flex: 1; cursor: pointer; margin: 0; }
+        .color-selector input[type="radio"] { display: none; }
+        .color-icon { display: flex; align-items: center; justify-content: center; height: 38px; border-radius: 5px; border: 1px solid #383632; background: #181715; font-size: 13px; font-weight: bold; transition: 0.2s; }
+        .color-selector input[type="radio"]:checked + .color-icon { border-color: #81b64c; background: #232c1c; box-shadow: 0 0 6px rgba(129, 182, 76, 0.4); }
+
+        /* LEFT-ALIGNED SETTINGS MODAL */
         #settings-modal .modal-content, #settings-modal .setup-box { text-align: left !important; }
         #settings-modal .chessis-sec-title {
             color: #5c9ded !important; font-size: 11px !important; font-weight: 700 !important;
@@ -332,7 +346,7 @@
         </div>
     </div>
 
-    <!-- 3. NEW GAME SETUP MODAL -->
+    <!-- 3. NEW GAME SETUP MODAL (ALL FEATURES FULLY RESTORED) -->
     <div id="setup-modal" class="modal-overlay" style="display: none;">
         <div class="modal-content setup-box">
             <div class="sticky-top-bar">
@@ -355,12 +369,13 @@
                 <input type="text" id="setup-username" value="Player" class="custom-input">
             </div>
 
+            <!-- Play Side with Stylized Buttons (PvB Only) -->
             <div class="setup-group" id="setup-color-group">
                 <label>Play Side:</label>
-                <div class="color-selector" style="display:flex; gap:12px;">
-                    <label><input type="radio" name="play_color" value="w" checked> White (♔)</label>
-                    <label><input type="radio" name="play_color" value="random"> Random (?)</label>
-                    <label><input type="radio" name="play_color" value="b"> Black (♚)</label>
+                <div class="color-selector">
+                    <label><input type="radio" name="play_color" value="w" checked><div class="color-icon white-icon" style="color:#fff;">♔ White</div></label>
+                    <label><input type="radio" name="play_color" value="random"><div class="color-icon random-icon" style="color:#f0c15c;">? Random</div></label>
+                    <label><input type="radio" name="play_color" value="b"><div class="color-icon black-icon" style="color:#bbb;">♚ Black</div></label>
                 </div>
             </div>
 
@@ -377,6 +392,18 @@
                 <div class="setup-group" id="setup-autoflip-group">
                     <label>Auto-Flip Board:</label>
                     <select id="setup-autoflip"><option value="on" selected>ON</option><option value="off">OFF</option></select>
+                </div>
+            </div>
+
+            <!-- Engine vs Engine Selectors (RESTORED) -->
+            <div class="setup-group" id="setup-eve-group" style="display: none; flex-direction: column; gap: 8px;">
+                <div>
+                    <label style="color:#81b64c; font-size:11.5px;">White Engine:</label>
+                    <select id="setup-white-engine" style="width:100%; margin-top:3px;"></select>
+                </div>
+                <div>
+                    <label style="color:#f0c15c; font-size:11.5px;">Black Engine:</label>
+                    <select id="setup-black-engine" style="width:100%; margin-top:3px;"></select>
                 </div>
             </div>
 
@@ -417,12 +444,39 @@
                 </div>
             </div>
 
+            <!-- Bot Playing Style (RESTORED) -->
+            <div class="setup-group" id="setup-personality-group">
+                <label>Bot Playing Style:</label>
+                <select id="setup-personality">
+                    <option value="default" selected>Standard Universal</option>
+                    <option value="human_club">Human Club Style</option>
+                    <option value="tal">Aggressive Tactical (Tal)</option>
+                    <option value="karpov">Solid Positional (Karpov)</option>
+                    <option value="carlsen">Endgame Precision (Carlsen)</option>
+                </select>
+            </div>
+
+            <!-- Bot Think Time Slider (RESTORED) -->
+            <div class="setup-group" id="setup-think-group">
+                <label>Bot Think Time per Move: <span id="setup-think-label" style="color:#5c9ded; font-weight:bold;">0.8s / move</span></label>
+                <input type="range" id="setup-think-time" min="0.1" max="5.0" step="0.1" value="0.8" style="width:100%;" oninput="document.getElementById('setup-think-label').innerText=this.value+'s / move'">
+            </div>
+
+            <!-- Engine Calculation Depth Slider (RESTORED) -->
+            <div class="setup-group" id="setup-depth-group">
+                <label>Engine Calculation Depth: <span id="setup-depth-label" style="color:#81b64c; font-weight:bold;">Depth 20</span></label>
+                <input type="range" id="setup-depth-slider" min="4" max="28" step="1" value="20" style="width:100%;" oninput="document.getElementById('setup-depth-label').innerText='Depth '+this.value">
+            </div>
+
             <div class="setup-group">
                 <label>Time Control:</label>
                 <select id="setup-time">
                     <option value="0|0">Unlimited (∞)</option>
+                    <option value="1|0">Bullet (1m)</option>
                     <option value="3|2">Blitz (3m + 2s)</option>
+                    <option value="5|3">Blitz (5m + 3s)</option>
                     <option value="10|0" selected>Rapid (10m)</option>
+                    <option value="15|10">Rapid (15m + 10s)</option>
                 </select>
             </div>
             <button class="play-now-btn" style="width:100%; padding:10px; background:#2563eb; color:#fff; font-weight:bold; border:none; border-radius:5px; cursor:pointer;" onclick="applySetupAndStart()">Play</button>
@@ -499,7 +553,7 @@
                 <button class="big-close-btn" onclick="closeModal('settings-modal')">Close</button>
             </div>
             <div style="background:#161512; border:1px solid #312f2c; border-radius:5px; padding:8px 10px; text-align:left; font-size:11px; color:#aaa;">
-                <div>Active Engine: <b id="active-engine-realname" style="color:#81b64c;">Stockfish 16.1</b> (<span id="active-engine-proto" style="color:#5c9ded;">UCI</span>)</div>
+                <div>Active Engine: <b id="active-engine-realname" style="color:#81b64c;">Stockfish 19</b> (<span id="active-engine-proto" style="color:#5c9ded;">UCI</span>)</div>
                 <div style="margin-top:3px;">Live Hardware: <b id="live-hw-status" style="color:#f0c15c;">8 Cores • 512 MB Hash • NNUE ON</b></div>
             </div>
             <div class="chessis-sec-title">Select Chess Engine</div>
@@ -573,7 +627,7 @@
                 <select id="setting-show-lines"><option value="off" selected>OFF</option><option value="on">ON</option></select>
             </div>
             <div class="chessis-row"><div class="chessis-row-title">Show Engine Speed / Depth Bar</div>
-                <select id="setting-show-telemetry"><option value="off" selected>OFF</option><option value="on">ON</option></select>
+                <select id="setting-show-telemetry" onchange="toggleTelemetryBarVisibility()"><option value="on" selected>ON</option><option value="off">OFF</option></select>
             </div>
             <button onclick="saveSettings()" style="width: 100%; padding: 10px; background: #81b64c; border:none; border-radius:5px; color:#fff; font-weight:bold; margin-top: 10px; cursor:pointer;">Save & Apply</button>
         </div>
@@ -607,7 +661,7 @@
         </div>
     </div>
 
-    <!-- SAVED GAMES ARCHIVE MODAL (SINGLE CLEAN CONTAINER - ONLY 3-DOT MENU) -->
+    <!-- SAVED GAMES ARCHIVE MODAL -->
     <div id="vault-modal" class="modal-overlay" style="display: none;">
         <div class="modal-content kundli-box">
             <div class="sticky-top-bar">
@@ -631,7 +685,7 @@
                     <div class="app-logo">JOHNNY <span>CHESS</span></div>
                 </div>
                 <div style="display:flex; align-items:center; gap:5px;">
-                    <div class="hw-pill" id="top-engine-pill" onclick="openSettingsModal()">Stockfish 16.1 • 8C/512MB</div>
+                    <div class="hw-pill" id="top-engine-pill" onclick="openSettingsModal()">Stockfish 19 • 8C/512MB</div>
                     <button class="header-icon-btn" onclick="openSettingsModal()" title="Settings">⚙</button>
                 </div>
             </div>
@@ -674,6 +728,12 @@
         </div>
 
         <div class="bottom-controls-panel">
+            <!-- LIVE TELEMETRY BAR: SPEED (NPS) & DEPTH (RESTORED) -->
+            <div id="telemetry-bar">
+                <span>Speed: <b id="telemetry-nps" style="color:#f0c15c;">--</b> kN/s</span>
+                <span>Depth: <b id="telemetry-depth" style="color:#5c9ded;">--</b></span>
+                <span>Engine: <b id="telemetry-engine" style="color:#e0e0e0;">Stockfish 19</b></span>
+            </div>
             <div id="multipv-bar" style="display: none;">Engine Lines: Waiting for move...</div>
             <div id="main-eval-graph-wrap" class="main-graph-wrap" style="display: none; width:100%; border:1px solid #2e2c29; border-radius:4px; overflow:hidden;">
                 <canvas id="main-eval-graph" width="340" height="38" class="eval-graph-canvas"></canvas>
@@ -689,11 +749,19 @@
                 <button id="btn-front-resign" class="front-ctrl-btn" onclick="resignGame()">Resign</button><button id="btn-front-draw" class="front-ctrl-btn" onclick="offerDrawToBot()">Offer Draw</button><button id="btn-front-flip" class="front-ctrl-btn" onclick="flipBoardUI()">Flip</button><button id="btn-board-hint" class="front-ctrl-btn front-btn-hint" onclick="requestHint()">Hint</button>
             </div>
 
+            <!-- DRAW PALETTE BAR (RESTORED TO NATURAL FLOW) -->
             <div id="draw-palette-bar" class="draw-palette">
                 <div style="display:flex; gap:6px; align-items:center;">
-                    <span class="color-dot active-dot" style="background:#ffaa00;" onclick="setDrawColor('rgba(255, 170, 0, 0.75)', this)"></span><span class="color-dot" style="background:#e63946;" onclick="setDrawColor('rgba(230, 57, 70, 0.75)', this)"></span><span class="color-dot" style="background:#739552;" onclick="setDrawColor('rgba(115, 149, 82, 0.78)', this)"></span><span class="color-dot" style="background:#4a8ff0;" onclick="setDrawColor('rgba(74, 143, 240, 0.75)', this)"></span>
+                    <span class="color-dot active-dot" style="background:#ffaa00;" onclick="setDrawColor('rgba(255, 170, 0, 0.75)', this)"></span>
+                    <span class="color-dot" style="background:#e63946;" onclick="setDrawColor('rgba(230, 57, 70, 0.75)', this)"></span>
+                    <span class="color-dot" style="background:#739552;" onclick="setDrawColor('rgba(115, 149, 82, 0.78)', this)"></span>
+                    <span class="color-dot" style="background:#4a8ff0;" onclick="setDrawColor('rgba(74, 143, 240, 0.75)', this)"></span>
                 </div>
-                <div style="display:flex; gap:4px;"><button class="draw-action-btn" onclick="undoDrawAnnotation()">Undo</button><button class="draw-action-btn" onclick="redoDrawAnnotation()">Redo</button><button class="draw-action-btn" onclick="clearCustomAnnotations()">Clear</button></div>
+                <div style="display:flex; gap:4px;">
+                    <button class="draw-action-btn" onclick="undoDrawAnnotation()">Undo</button>
+                    <button class="draw-action-btn" onclick="redoDrawAnnotation()">Redo</button>
+                    <button class="draw-action-btn" onclick="clearCustomAnnotations()">Clear</button>
+                </div>
             </div>
 
             <div id="formal-main-bar" class="formal-bar">
@@ -705,23 +773,18 @@
     <!-- SCRIPTS -->
     <script src="/static/js/jquery.min.js"></script>
     <script src="/static/js/chess.min.js"></script>
-    <script src="/static/mod_core.js?v=470"></script>
-    <script src="/static/mod_openings.js?v=470"></script>
-    <script src="/static/mod_analysis.js?v=470"></script>
-    <script src="/static/mod_drawing.js?v=470"></script>
-    <script src="/static/mod_share_vault.js?v=470"></script>
-    <script src="/static/mod_extras.js?v=470"></script>
+    <script src="/static/mod_core.js?v=480"></script>
+    <script src="/static/mod_openings.js?v=480"></script>
+    <script src="/static/mod_analysis.js?v=480"></script>
+    <script src="/static/mod_drawing.js?v=480"></script>
+    <script src="/static/mod_share_vault.js?v=480"></script>
+    <script src="/static/mod_extras.js?v=480"></script>
 
-    <!-- ======================================================================
-         DEFINITIVE MASTER CONTROLLER: DYNAMIC KING ANIMATIONS (MATE/RESIGN/DRAW)
-         ====================================================================== -->
+    <!-- MASTER CONTROLLER SCRIPT -->
     <script>
         (function() {
-            // ================================================================
-            // 1. KING HIGHLIGHT & FALLEN ANIMATION ENGINE
-            // ================================================================
-            window.activeGameEndStatus = null; // { type: 'mate'|'resign'|'draw', loser: 'w'|'b', winner: 'w'|'b' }
-
+            // 1. KING END EFFECTS
+            window.activeGameEndStatus = null;
             window.clearKingEndEffects = function() {
                 $('.square').removeClass('king-loser-sq king-winner-sq king-draw-sq');
                 $('.square img, .square .piece, .square > div').removeClass('king-fallen-piece king-winner-piece');
@@ -729,8 +792,6 @@
 
             window.applyKingEndEffects = function() {
                 if (typeof game === 'undefined') return;
-
-                // 1. Clear previous effects
                 window.clearKingEndEffects();
 
                 let isMate = (typeof game.in_checkmate === 'function' && game.in_checkmate());
@@ -740,20 +801,17 @@
                              (typeof game.insufficient_material === 'function' && game.insufficient_material());
 
                 let status = window.activeGameEndStatus;
-
                 if (!status) {
                     if (isMate) {
-                        let loserSide = game.turn(); // The side that has no moves
+                        let loserSide = game.turn();
                         let winnerSide = (loserSide === 'w') ? 'b' : 'w';
                         status = { type: 'mate', loser: loserSide, winner: winnerSide };
                     } else if (isDraw) {
                         status = { type: 'draw' };
                     }
                 }
-
                 if (!status) return;
 
-                // Find King Squares
                 let whiteKingSq = null, blackKingSq = null;
                 try {
                     let b = game.board();
@@ -770,21 +828,17 @@
                 } catch(e) {}
 
                 if (status.type === 'draw') {
-                    // Draw: Both King Squares get Cyan/Blue Radial Glow
                     if (whiteKingSq) $(`[data-square="${whiteKingSq}"], .square-${whiteKingSq}`).addClass('king-draw-sq');
                     if (blackKingSq) $(`[data-square="${blackKingSq}"], .square-${blackKingSq}`).addClass('king-draw-sq');
                 } else {
-                    // Decisive: Checkmate or Resignation
                     let loserSq = (status.loser === 'w') ? whiteKingSq : blackKingSq;
                     let winnerSq = (status.winner === 'w') ? whiteKingSq : blackKingSq;
 
                     if (loserSq) {
                         let $loserCell = $(`[data-square="${loserSq}"], .square-${loserSq}`);
                         $loserCell.addClass('king-loser-sq');
-                        // Apply fallen tilt animation to the piece inside
                         $loserCell.find('img, .piece, div[class*="piece"]').addClass('king-fallen-piece');
                     }
-
                     if (winnerSq) {
                         let $winnerCell = $(`[data-square="${winnerSq}"], .square-${winnerSq}`);
                         $winnerCell.addClass('king-winner-sq');
@@ -793,143 +847,101 @@
                 }
             };
 
-            // Hook into Board Rendering: Whenever board re-renders, re-apply effects if match is ended
             let _origRenderBoard = window.renderBoard;
             window.renderBoard = function() {
                 if (typeof _origRenderBoard === 'function') _origRenderBoard.apply(this, arguments);
-                setTimeout(window.applyKingEndEffects, 20);
+                setTimeout(window.applyKingEndEffects, 25);
             };
 
-            // Hook Resign Button
-            let _origResignGame = window.resignGame;
             window.resignGame = function() {
                 let loserColor = window.playerColor || 'w';
-                if (window.gameMode === 'bvb') loserColor = 'w'; // Default white for engine duel test
+                if (window.gameMode === 'bvb') loserColor = 'w';
                 let winnerColor = (loserColor === 'w') ? 'b' : 'w';
                 window.activeGameEndStatus = { type: 'resign', loser: loserColor, winner: winnerColor };
 
-                if (typeof _origResignGame === 'function') _origResignGame();
-                else if (typeof window.showModal === 'function') window.showModal('game-modal');
-                
+                if (typeof window.showModal === 'function') window.showModal('game-modal');
+                else $('#game-modal').show();
                 setTimeout(window.applyKingEndEffects, 50);
             };
 
-            // Hook Offer Draw Button
-            let _origOfferDraw = window.offerDrawToBot;
             window.offerDrawToBot = function() {
                 window.activeGameEndStatus = { type: 'draw' };
-                if (typeof _origOfferDraw === 'function') _origOfferDraw();
+                if (typeof window.showModal === 'function') window.showModal('game-modal');
+                else $('#game-modal').show();
                 setTimeout(window.applyKingEndEffects, 50);
             };
 
-            // ================================================================
-            // 2. SETTINGS & MODAL ENGINE
-            // ================================================================
-            window.openSettingsModal = function() {
-                let m = document.getElementById('settings-modal');
-                if (m) m.style.display = 'flex';
-
-                try {
-                    let savedTheme = localStorage.getItem('saved_chess_theme') || 'theme-green';
-                    let themeSel = document.getElementById('setting-board-theme');
-                    if (themeSel) themeSel.value = savedTheme;
-
-                    let savedPieces = localStorage.getItem('saved_chess_piece_style') || 'wikipedia';
-                    let pSel = document.getElementById('setting-piece-style');
-                    if (pSel) pSel.value = savedPieces;
-                } catch(e) {}
-
-                try {
-                    if (typeof window.refreshEngineListInSettings === 'function') {
-                        window.refreshEngineListInSettings();
-                    }
-                } catch(e) {}
-            };
-
-            window.closeModal = function(id) {
-                let m = document.getElementById(id);
-                if (m) m.style.display = 'none';
-            };
-
-            window.saveSettings = function() {
-                let themeSel = document.getElementById('setting-board-theme');
-                if (themeSel) {
-                    let theme = themeSel.value;
-                    localStorage.setItem('saved_chess_theme', theme);
-                    if (typeof window.applyThemeAndPieces === 'function') {
-                        window.applyThemeAndPieces();
-                    }
-                }
-
-                let pSel = document.getElementById('setting-piece-style');
-                if (pSel) {
-                    localStorage.setItem('saved_chess_piece_style', pSel.value);
-                    if (typeof renderBoard === 'function') renderBoard();
-                }
-
-                try {
-                    if (typeof window.applyLiveEngineHardware === 'function') {
-                        window.applyLiveEngineHardware();
-                    }
-                } catch(e) {}
-
-                closeModal('settings-modal');
-                if (typeof showAndroidToast === 'function') {
-                    showAndroidToast("⚙ Settings Saved & Applied");
+            // 2. TOGGLE DRAW PALETTE (FIXES OVERLAPPING / DISALIGNMENT)
+            window.toggleDrawMode = function() {
+                let palette = $('#draw-palette-bar');
+                let overlay = $('#custom-draw-overlay');
+                if (palette.is(':visible')) {
+                    palette.hide();
+                    overlay.removeClass('drawing-active');
+                } else {
+                    palette.css('display', 'flex');
+                    overlay.addClass('drawing-active');
                 }
             };
 
-            // Theme Application with Auto Image Verification
-            window.applyThemeAndPieces = function() {
-                let themeSel = document.getElementById('setting-board-theme');
-                let theme = themeSel ? themeSel.value : (localStorage.getItem('saved_chess_theme') || 'theme-green');
-                
-                document.body.className = document.body.className.replace(/\btheme-[^\s]+\b/g, '').trim();
-                document.body.classList.remove('has-board-img');
-                document.body.classList.add(theme);
-
-                if (theme.startsWith('theme-board-')) {
-                    let charCode = theme.replace('theme-board-', '');
-                    let testImg = new Image();
-                    testImg.onload = function() {
-                        document.body.classList.add('has-board-img');
-                    };
-                    testImg.onerror = function() {
-                        document.body.classList.remove('has-board-img');
-                    };
-                    testImg.src = '/static/boards/' + charCode + '.png';
-                }
-
-                if (typeof renderBoard === 'function') renderBoard();
+            // 3. TELEMETRY BAR VISIBILITY
+            window.toggleTelemetryBarVisibility = function() {
+                let sel = document.getElementById('setting-show-telemetry');
+                let isShow = sel ? (sel.value === 'on') : true;
+                $('#telemetry-bar').toggle(isShow);
             };
 
-            // ================================================================
-            // 3. SETUP CONTROLLER & START GAME HOOK
-            // ================================================================
+            // Hook Global Telemetry updates from Engine
+            let _origUpdateTelemetry = window.updateTelemetry;
+            window.updateTelemetry = function(nps, depth, engineName) {
+                if (typeof _origUpdateTelemetry === 'function') _origUpdateTelemetry(nps, depth, engineName);
+                if (nps) $('#telemetry-nps').text(Math.round(nps / 1000));
+                if (depth) $('#telemetry-depth').text(depth);
+                if (engineName) $('#telemetry-engine').text(engineName);
+            };
+
+            // 4. SETUP TOGGLE (ALL SLIDERS & EVE RESTORED)
             window.toggleSetupMode = function() {
                 let m = (document.getElementById('setup-mode') || {}).value || 'pvb';
+                
                 let pvpGroup = document.getElementById('setup-pvp-names-group');
                 let uGroup = document.getElementById('setup-username-group');
                 let colorGroup = document.getElementById('setup-color-group');
+                let eveGroup = document.getElementById('setup-eve-group');
                 let wBotGroup = document.getElementById('setup-white-bot-group');
                 let bBotGroup = document.getElementById('setup-black-bot-group');
+                let personalityGroup = document.getElementById('setup-personality-group');
+                let thinkGroup = document.getElementById('setup-think-group');
+                let depthGroup = document.getElementById('setup-depth-group');
 
+                // PvP Mode
                 if (pvpGroup) pvpGroup.style.display = (m === 'pvp') ? 'flex' : 'none';
-                if (uGroup) uGroup.style.display = (m === 'pvb') ? 'block' : 'none';
-                if (colorGroup) colorGroup.style.display = (m === 'pvb') ? 'flex' : 'none';
 
+                // PvB Mode Only
+                if (uGroup) uGroup.style.display = (m === 'pvb') ? 'block' : 'none';
+                if (colorGroup) colorGroup.style.display = (m === 'pvb') ? 'block' : 'none';
+
+                // EvE Mode Only (Engine vs Engine)
+                if (eveGroup) eveGroup.style.display = (m === 'eve') ? 'flex' : 'none';
+
+                // Bot selectors
                 if (wBotGroup) wBotGroup.style.display = (m === 'bvb') ? 'block' : 'none';
                 if (bBotGroup) bBotGroup.style.display = (m === 'pvb' || m === 'bvb') ? 'block' : 'none';
+
+                // Playing Style, Think Time, Depth Sliders (Active in PvB, BvB, and EvE)
+                let showSliders = (m === 'pvb' || m === 'bvb' || m === 'eve');
+                if (personalityGroup) personalityGroup.style.display = (m === 'pvb' || m === 'bvb') ? 'block' : 'none';
+                if (thinkGroup) thinkGroup.style.display = showSliders ? 'block' : 'none';
+                if (depthGroup) depthGroup.style.display = showSliders ? 'block' : 'none';
 
                 let oppLbl = document.getElementById('opponent-elo-label');
                 if (oppLbl) oppLbl.innerText = (m === 'bvb') ? "Black Bot Level & Name:" : "Opponent Bot Level & Name:";
             };
 
+            // 5. MASTER APPLY SETUP
             window.applySetupAndStart = function() {
                 let mode = (document.getElementById('setup-mode') || {}).value || 'pvb';
                 window.gameMode = mode;
-
-                // Reset end game effects on fresh game
                 window.activeGameEndStatus = null;
                 window.clearKingEndEffects();
 
@@ -953,7 +965,6 @@
 
                     let wRatingStr = (parseInt(wLevel) >= 2850) ? "2850+" : wLevel;
                     let bRatingStr = (parseInt(bLevel) >= 2850) ? "2850+" : bLevel;
-
                     whiteVal = `${wName} (${wRatingStr} ELO)`;
                     blackVal = `${bName} (${bRatingStr} ELO)`;
                     window.currentBoardOrientation = 'w';
@@ -982,6 +993,11 @@
                         whiteVal = `${bName} (${bRatingStr} ELO)`;
                         blackVal = uName;
                     }
+                } else if (mode === 'eve') {
+                    let wEng = (document.getElementById('setup-white-engine') || {}).value || "Stockfish 19";
+                    let bEng = (document.getElementById('setup-black-engine') || {}).value || "Stockfish 16.1";
+                    whiteVal = wEng;
+                    blackVal = bEng;
                 }
 
                 window.activeWhiteDisplayName = whiteVal;
@@ -1008,23 +1024,81 @@
                 return window.activeBlackDisplayName || (document.getElementById('top-player-name') || {}).innerText || "Black";
             };
 
-            // ================================================================
-            // 4. CLEAN VAULT ARCHIVE
-            // ================================================================
+            // 6. SETTINGS MODAL & THEMES
+            window.openSettingsModal = function() {
+                let m = document.getElementById('settings-modal');
+                if (m) m.style.display = 'flex';
+                try {
+                    let savedTheme = localStorage.getItem('saved_chess_theme') || 'theme-green';
+                    let themeSel = document.getElementById('setting-board-theme');
+                    if (themeSel) themeSel.value = savedTheme;
+
+                    let savedPieces = localStorage.getItem('saved_chess_piece_style') || 'wikipedia';
+                    let pSel = document.getElementById('setting-piece-style');
+                    if (pSel) pSel.value = savedPieces;
+                } catch(e) {}
+                try {
+                    if (typeof window.refreshEngineListInSettings === 'function') {
+                        window.refreshEngineListInSettings();
+                    }
+                } catch(e) {}
+            };
+
+            window.closeModal = function(id) {
+                let m = document.getElementById(id);
+                if (m) m.style.display = 'none';
+            };
+
+            window.saveSettings = function() {
+                let themeSel = document.getElementById('setting-board-theme');
+                if (themeSel) {
+                    let theme = themeSel.value;
+                    localStorage.setItem('saved_chess_theme', theme);
+                    if (typeof window.applyThemeAndPieces === 'function') {
+                        window.applyThemeAndPieces();
+                    }
+                }
+                let pSel = document.getElementById('setting-piece-style');
+                if (pSel) {
+                    localStorage.setItem('saved_chess_piece_style', pSel.value);
+                    if (typeof renderBoard === 'function') renderBoard();
+                }
+                window.toggleTelemetryBarVisibility();
+                closeModal('settings-modal');
+            };
+
+            window.applyThemeAndPieces = function() {
+                let themeSel = document.getElementById('setting-board-theme');
+                let theme = themeSel ? themeSel.value : (localStorage.getItem('saved_chess_theme') || 'theme-green');
+                document.body.className = document.body.className.replace(/\btheme-[^\s]+\b/g, '').trim();
+                document.body.classList.remove('has-board-img');
+                document.body.classList.add(theme);
+
+                if (theme.startsWith('theme-board-')) {
+                    let charCode = theme.replace('theme-board-', '');
+                    let testImg = new Image();
+                    testImg.onload = function() {
+                        document.body.classList.add('has-board-img');
+                    };
+                    testImg.onerror = function() {
+                        document.body.classList.remove('has-board-img');
+                    };
+                    testImg.src = '/static/boards/' + charCode + '.png';
+                }
+                if (typeof renderBoard === 'function') renderBoard();
+            };
+
+            // 7. ARCHIVE
             window.refreshMatchVaultList = function() {
                 let target = $('#vault-matches-list');
                 if (!target.length) return;
-
                 target.html('<div style="text-align:center;padding:22px;color:#aaa;">Loading Games Archive...</div>');
-
                 $.get('/get_matches', function(data) {
                     let matches = (data && data.matches) ? data.matches : [];
                     renderArchiveList(matches, target);
                 }).fail(function() {
                     let localGames = [];
-                    try {
-                        localGames = JSON.parse(localStorage.getItem('chess_vault_offline_matches') || '[]');
-                    } catch(e) {}
+                    try { localGames = JSON.parse(localStorage.getItem('chess_vault_offline_matches') || '[]'); } catch(e) {}
                     renderArchiveList(localGames, target);
                 });
             };
@@ -1032,32 +1106,24 @@
             function renderArchiveList(list, container) {
                 container.empty();
                 if (!list || list.length === 0) {
-                    container.html('<div style="text-align:center;padding:26px;color:#777;">No saved games in archive yet.<br><br>Play a game or tap "+ Save Current Game" to add one!</div>');
+                    container.html('<div style="text-align:center;padding:26px;color:#777;">No saved games in archive yet.</div>');
                     return;
                 }
-
                 let finishedSignatures = new Set();
                 list.forEach(m => {
                     let res = (m.result || "").toLowerCase();
-                    if (!res.includes("progress")) {
-                        finishedSignatures.add(`${m.white}_${m.black}`);
-                    }
+                    if (!res.includes("progress")) finishedSignatures.add(`${m.white}_${m.black}`);
                 });
 
                 let cleanList = list.filter(m => {
                     let res = (m.result || "").toLowerCase();
                     let sig = `${m.white}_${m.black}`;
-                    if (res.includes("progress") && finishedSignatures.has(sig)) {
-                        return false;
-                    }
-                    return true;
+                    return !(res.includes("progress") && finishedSignatures.has(sig));
                 });
 
                 cleanList.forEach(m => {
                     let isInProgress = (m.result || "").toLowerCase().includes("progress");
-                    let actionColor = isInProgress ? "#2ea043" : "#81b64c";
                     let actionText = isInProgress ? "▶ Resume" : "▶ Replay";
-
                     let card = `
                     <div class="vault-card">
                         <div style="display:flex; justify-content:space-between; align-items:center;">
@@ -1081,32 +1147,20 @@
                     local = local.filter(m => String(m.id) !== String(id));
                     localStorage.setItem('chess_vault_offline_matches', JSON.stringify(local));
                 } catch(e) {}
-
-                $.post('/delete_match', { id: id }, function() {
-                    window.refreshMatchVaultList();
-                }).fail(function() {
-                    window.refreshMatchVaultList();
-                });
+                $.post('/delete_match', { id: id }, function() { window.refreshMatchVaultList(); });
             };
 
             window.manualSaveToVault = function() {
-                let w = window.getWhiteDisplayName();
-                let b = window.getBlackDisplayName();
-
                 let payload = {
-                    white: w,
-                    black: b,
+                    white: window.getWhiteDisplayName(),
+                    black: window.getBlackDisplayName(),
                     result: "Saved Match",
                     opening: (document.getElementById('opening-bar') || {}).innerText || "Standard Opening",
                     fen: (typeof game !== 'undefined') ? game.fen() : "",
                     pgn: (typeof window.buildBrandedPGN === 'function') ? window.buildBrandedPGN() : ""
                 };
-
                 $.post('/save_match', payload, function() {
                     alert("💾 Match saved to Archive!");
-                    window.refreshMatchVaultList();
-                }).fail(function() {
-                    alert("💾 Match saved!");
                     window.refreshMatchVaultList();
                 });
             };
@@ -1119,6 +1173,12 @@
                     }
                 }, 80);
             };
+
+            // Initial view sync
+            $(document).ready(function() {
+                window.toggleSetupMode();
+                window.toggleTelemetryBarVisibility();
+            });
         })();
     </script>
 </body>
