@@ -40,17 +40,73 @@ SUPABASE_HEADERS = {
 
 LOCAL_MATCHES_FILE = os.path.abspath('saved_matches_local.json')
 
-ZIP_THEMES_PATH = os.path.join(os.path.abspath('static'), 'chessthemes.zip')
-BOARDS_DIR = os.path.join(os.path.abspath('static'), 'boards')
+# ============================================================================
+# BULLETPROOF OFFLINE BOARD THEMES EXTRACTOR (FLATTEN & AUTO-FIX)
+# ============================================================================
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+STATIC_DIR = os.path.join(BASE_DIR, 'static')
+BOARDS_DIR = os.path.join(STATIC_DIR, 'boards')
+os.makedirs(BOARDS_DIR, exist_ok=True)
 
-if os.path.exists(ZIP_THEMES_PATH) and not os.path.exists(BOARDS_DIR):
-    try:
-        os.makedirs(BOARDS_DIR, exist_ok=True)
-        with zipfile.ZipFile(ZIP_THEMES_PATH, 'r') as zf:
-            zf.extractall(BOARDS_DIR)
-        print("[✔] Board Themes extracted successfully.", flush=True)
-    except Exception as e:
-        print("[!] Theme extraction error:", e, flush=True)
+possible_zips = [
+    os.path.join(STATIC_DIR, 'chessthemes.zip'),
+    os.path.join(BASE_DIR, 'chessthemes.zip'),
+    os.path.abspath('chessthemes.zip')
+]
+
+# Check if a.png is already extracted directly inside static/boards
+needs_extraction = not os.path.exists(os.path.join(BOARDS_DIR, 'a.png'))
+
+if needs_extraction:
+    found_zip = None
+    for zp in possible_zips:
+        if os.path.exists(zp):
+            found_zip = zp
+            break
+
+    if found_zip:
+        try:
+            with zipfile.ZipFile(found_zip, 'r') as zf:
+                for member in zf.infolist():
+                    if member.is_dir():
+                        continue
+                    fname = os.path.basename(member.filename)
+                    if not fname:
+                        continue
+                    # Flatten: extract all images directly into static/boards/
+                    target_file = os.path.join(BOARDS_DIR, fname.lower())
+                    with zf.open(member) as src, open(target_file, 'wb') as dst:
+                        shutil.copyfileobj(src, dst)
+            print("[✔] Board Themes extracted and flattened successfully.", flush=True)
+        except Exception as e:
+            print("[!] Theme extraction error:", e, flush=True)
+
+# Flatten any nested subfolders if they were created earlier
+if os.path.exists(BOARDS_DIR):
+    for root_d, _, files in os.walk(BOARDS_DIR):
+        if root_d == BOARDS_DIR:
+            continue
+        for f in files:
+            src_p = os.path.join(root_d, f)
+            dst_p = os.path.join(BOARDS_DIR, f.lower())
+            if not os.path.exists(dst_p):
+                try:
+                    shutil.copy2(src_p, dst_p)
+                except Exception:
+                    pass
+
+    # Auto-normalize: If images are .jpg, .jpeg, or uppercase, create .png alias
+    for char in ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j']:
+        target_png = os.path.join(BOARDS_DIR, f"{char}.png")
+        if not os.path.exists(target_png):
+            for alt_ext in ['.jpg', '.jpeg', '.webp', '.PNG', '.JPG', '.JPEG']:
+                cand = os.path.join(BOARDS_DIR, f"{char}{alt_ext}")
+                if os.path.exists(cand):
+                    try:
+                        shutil.copy2(cand, target_png)
+                    except Exception:
+                        pass
+                    break
 
 JS_DIR = os.path.join(os.path.abspath('static'), 'js')
 os.makedirs(JS_DIR, exist_ok=True)
@@ -263,6 +319,20 @@ def score_to_cp_and_winpct(sc):
 def index():
     return render_template('index.html')
 
+# Dedicated route for serving offline board textures
+@app.route('/static/boards/<path:filename>')
+def serve_board_theme_file(filename):
+    direct = os.path.join(BOARDS_DIR, filename.lower())
+    if os.path.exists(direct):
+        return send_from_directory(BOARDS_DIR, filename.lower())
+
+    base_name = os.path.splitext(filename)[0].lower()
+    if os.path.exists(BOARDS_DIR):
+        for f in os.listdir(BOARDS_DIR):
+            if os.path.splitext(f)[0].lower() == base_name:
+                return send_from_directory(BOARDS_DIR, f)
+    return send_from_directory(BOARDS_DIR, filename)
+
 # ============================================================================
 # SUPABASE DATABASE ROUTES (FAIL-SAFE CLOUD + LOCAL SYNC)
 # ============================================================================
@@ -358,7 +428,6 @@ def save_match():
 
             # Insert as a new match row
             headers = {**SUPABASE_HEADERS, "Prefer": "return=representation"}
-            # Remove string id before creating Supabase auto-increment row
             cloud_payload = {k: v for k, v in match_payload.items() if k != "id"}
             res = requests.post(
                 f"{SUPABASE_URL}/rest/v1/matches",
@@ -438,10 +507,8 @@ def delete_match():
 
 @app.route('/delete_all_matches', methods=['POST'])
 def delete_all_matches():
-    # Clear local
     save_local_matches([])
 
-    # Clear cloud
     if requests is not None:
         try:
             requests.delete(
