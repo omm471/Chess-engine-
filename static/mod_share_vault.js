@@ -1,17 +1,17 @@
 /* ============================================================================
-   static/mod_share_vault.js (v425 - Hijack-Free Engine Downloader & Clean Vault)
-   - Fixed Click Hijack: Removed rogue button:contains("Download") listener
-   - Single Container Guard: Prevents duplicate cards in archive
-   - Unique Device ID: Har phone ka cloud archive 100% private
-   - Direct Phone Storage Saver: Saves PGN directly to Download/ChessAIPro/
-   - Master Multi-PGN Exporter: Bundles all distinct match history into 1 file
-   - In-Flight Request Lock: Prevents duplicate rows when moves happen rapidly
+   static/mod_share_vault.js (v430 - Full PGN Move History Replay & Clean Vault)
+   - Fixed Move History: Fully parses PGN into gameHistory for step-by-step replay (< > |< >|)
+   - Complete Resume: Resumes match with all past moves intact
+   - Specific Card PGN Saver: Saves the exact match's PGN from vault card
+   - Offline Safe: Falls back to localStorage cache if network is unavailable
    - Native In-App Custom Confirm Dialog (Android WebView compatible)
+   - Zero Click Hijacking on Engine Downloads
    ============================================================================ */
 
 window.currentActiveMatchDbId = localStorage.getItem('chess_current_db_id') || null;
 window.isSavingToCloud = false;
 window.pendingCloudSave = null;
+window.vaultMatchesById = {};
 
 // Har phone ke liye unique private ID jo kabhi clash nahi hogi
 function getOrCreateDeviceId() {
@@ -152,7 +152,6 @@ window.saveSingleMatchPGN = function() {
     let timeStamp = new Date().toISOString().slice(0, 10).replace(/-/g, '') + "_" + Date.now().toString().slice(-4);
     let fileName = `Match_${w}_vs_${b}_${timeStamp}.pgn`;
 
-    // 1. Native Android Storage Bridge call
     if (window.AndroidBridge && window.AndroidBridge.savePgnNative) {
         window.AndroidBridge.savePgnNative(pgnText, fileName, false);
         return;
@@ -162,7 +161,41 @@ window.saveSingleMatchPGN = function() {
         return;
     }
 
-    // 2. Python server fallback
+    $.post('/save_to_device_storage', { pgn: pgnText, filename: fileName }, function(res) {
+        if (res && res.status === 'success') {
+            showAndroidToast(`💾 Saved to ChessAIPro folder (${fileName})`);
+        } else {
+            triggerBrowserFileDownload(pgnText, fileName);
+            showAndroidToast(`💾 Saved to Downloads folder (${fileName})`);
+        }
+    }).fail(function() {
+        triggerBrowserFileDownload(pgnText, fileName);
+        showAndroidToast(`💾 Saved to Downloads folder (${fileName})`);
+    });
+};
+
+window.saveVaultMatchPGN = function(id) {
+    let match = (window.vaultMatchesById && window.vaultMatchesById[id]) ? window.vaultMatchesById[id] : null;
+    let pgnText = (match && match.pgn) ? match.pgn : "";
+    if (!pgnText) {
+        window.saveSingleMatchPGN();
+        return;
+    }
+
+    let w = (match.white || 'White').replace(/[^a-zA-Z0-9]/g, '_');
+    let b = (match.black || 'Black').replace(/[^a-zA-Z0-9]/g, '_');
+    let timeStamp = new Date().toISOString().slice(0, 10).replace(/-/g, '') + "_" + Date.now().toString().slice(-4);
+    let fileName = `Match_${w}_vs_${b}_${timeStamp}.pgn`;
+
+    if (window.AndroidBridge && window.AndroidBridge.savePgnNative) {
+        window.AndroidBridge.savePgnNative(pgnText, fileName, false);
+        return;
+    }
+    if (window.Android && window.Android.savePgnNative) {
+        window.Android.savePgnNative(pgnText, fileName, false);
+        return;
+    }
+
     $.post('/save_to_device_storage', { pgn: pgnText, filename: fileName }, function(res) {
         if (res && res.status === 'success') {
             showAndroidToast(`💾 Saved to ChessAIPro folder (${fileName})`);
@@ -218,7 +251,6 @@ window.exportAllMatchesMultiPGN = function() {
         let timeStamp = new Date().toISOString().slice(0, 10).replace(/-/g, '');
         let fileName = `Master_All_Matches_${timeStamp}.pgn`;
 
-        // Native Android Storage Bridge call
         if (window.AndroidBridge && window.AndroidBridge.savePgnNative) {
             window.AndroidBridge.savePgnNative(fullMasterPgn, fileName, true);
             return;
@@ -228,7 +260,6 @@ window.exportAllMatchesMultiPGN = function() {
             return;
         }
 
-        // Fallback to Python server or browser
         $.post('/save_to_device_storage', { pgn: fullMasterPgn, filename: fileName }, function(res) {
             if (res && res.status === 'success') {
                 showAndroidToast(`📚 Master PGN saved (${pgnCollection.length} matches)`);
@@ -414,7 +445,7 @@ window.triggerDeleteAllHistoryAction = function() {
         "Delete All Games?",
         "Are you sure you want to permanently clear your entire game history on this device?",
         function() {
-            $.post('/delete_all_matches', { device_id: devId }, function(res) {
+            $.post('/delete_all_matches', { device_id: devId }, function() {
                 window.currentActiveMatchDbId = null;
                 localStorage.removeItem('chess_current_db_id');
                 localStorage.removeItem('chess_active_match');
@@ -428,10 +459,76 @@ window.triggerDeleteAllHistoryAction = function() {
 };
 
 // ============================================================================
-// ARCHIVE MATCH LIST RENDERER (SINGLE CONTAINER TARGET - NO DUPLICATES)
+// ARCHIVE MATCH LIST RENDERER (WITH FULL PGN REPLAY SUPPORT)
 // ============================================================================
+function renderVaultCards(matches, container) {
+    container.empty();
+    window.vaultMatchesById = {};
+
+    if (!matches || matches.length === 0) {
+        container.html('<div style="text-align:center;padding:34px;color:#777;">No saved games in your archive yet.</div>');
+        return;
+    }
+
+    let finishedSignatures = new Set();
+    matches.forEach(m => {
+        if (m && m.id) window.vaultMatchesById[m.id] = m;
+        let res = (m.result || "").toString().toLowerCase();
+        if (!res.includes("progress")) {
+            finishedSignatures.add(`${m.white}_${m.black}`);
+        }
+    });
+
+    let cleanList = matches.filter(m => {
+        let res = (m.result || "").toString().toLowerCase();
+        let sig = `${m.white}_${m.black}`;
+        return !(res.includes("progress") && finishedSignatures.has(sig));
+    });
+
+    cleanList.forEach(m => {
+        let resultLower = (m.result || "").toString().toLowerCase();
+        let isInProgress = resultLower.includes("in progress") || resultLower.includes("progress");
+        let actionBtnText = isInProgress ? "▶ Resume" : "▶ Replay";
+        let actionBtnColor = isInProgress ? "#2ea043" : "#81b64c";
+
+        let moveCount = "1 move";
+        if (m.pgn) {
+            let moveTokens = m.pgn.replace(/\[.*?\]/g, '').replace(/\{.*?\}/g, '').trim().split(/\s+/).filter(Boolean);
+            let turns = moveTokens.filter(t => !t.includes('.') && !t.includes('-') && t !== '*');
+            if (turns.length > 0) moveCount = `${Math.ceil(turns.length / 2)} moves`;
+        } else if (m.fen) {
+            let parts = m.fen.split(' ');
+            if (parts.length >= 6) {
+                let fullMoves = parseInt(parts[5]);
+                if (!isNaN(fullMoves) && fullMoves > 0) moveCount = `${fullMoves} moves`;
+            }
+        }
+
+        let itemHtml = `
+        <div class="vault-card" style="background:#1e1e1e;border:1px solid #333;border-radius:8px;padding:12px;margin-bottom:10px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;">
+                <div style="font-weight:bold;color:#eee;">♔ ${m.white} <span style="color:#777;font-size:12px;">vs</span> ♚ ${m.black}</div>
+                <span style="font-size:11px;background:#2a2b2e;padding:2px 8px;border-radius:4px;color:${isInProgress ? '#e3b341' : '#81b64c'};">${m.result}</span>
+            </div>
+            <div style="font-size:11px;color:#888;margin:5px 0;">
+                <span style="color:#81b64c;">${m.opening || 'Standard'}</span> • ${moveCount} • ${m.date}
+            </div>
+            <div style="display:flex;gap:6px;margin-bottom:8px;">
+                <span style="font-size:11px;background:#26272b;color:#ccc;padding:2px 6px;border-radius:4px;">White Acc: <b>${m.w_acc || '--%'}</b></span>
+                <span style="font-size:11px;background:#26272b;color:#ccc;padding:2px 6px;border-radius:4px;">Black Acc: <b>${m.b_acc || '--%'}</b></span>
+            </div>
+            <div style="display:flex;gap:6px;">
+                <button onclick="window.loadVaultMatch('${m.id}', '${m.fen || ''}', ${isInProgress}, '${m.white || ''}', '${m.black || ''}')" style="flex:1.2;background:${actionBtnColor};color:#fff;border:none;padding:7px;border-radius:4px;font-weight:bold;cursor:pointer;">${actionBtnText}</button>
+                <button onclick="window.viewVaultMatchReport('${encodeURIComponent(m.pgn || '')}')" style="flex:1;background:#2b5278;color:#fff;border:none;padding:7px;border-radius:4px;font-weight:bold;cursor:pointer;">📊 Report</button>
+                <button onclick="window.saveVaultMatchPGN('${m.id}')" style="flex:1;background:#3a3b40;color:#ddd;border:none;padding:7px;border-radius:4px;font-weight:bold;cursor:pointer;">💾 PGN</button>
+                <button onclick="window.deleteSingleMatch('${m.id}')" style="background:#da3633;color:#fff;border:none;padding:7px 12px;border-radius:4px;cursor:pointer;font-weight:bold;">✕</button>
+            </div>
+        </div>`;
+        container.append(itemHtml);
+    });
+}
+
 window.refreshMatchVaultList = function() {
-    // Single container guard to prevent double-appending cards
     let container = $('#vault-matches-list');
     if (!container.length) container = $('#vault-list');
     if (!container.length) {
@@ -439,55 +536,21 @@ window.refreshMatchVaultList = function() {
     }
     if (!container.length) return;
 
-    container.html('<div style="text-align:center;padding:24px;color:#aaa;">Loading Cloud Archive...</div>');
+    container.html('<div style="text-align:center;padding:24px;color:#aaa;">Loading Games Archive...</div>');
 
     let devId = getOrCreateDeviceId();
     $.get('/get_matches', { device_id: devId }, function(data) {
-        container.empty();
         let matches = data.matches || [];
-
-        if (matches.length === 0) {
-            container.html('<div style="text-align:center;padding:34px;color:#777;">No saved games in your archive yet.</div>');
-            return;
-        }
-
-        matches.forEach(m => {
-            let resultLower = (m.result || "").toString().toLowerCase();
-            let isInProgress = resultLower.includes("in progress") || resultLower.includes("progress");
-            let actionBtnText = isInProgress ? "▶ Resume" : "▶ Replay";
-            let actionBtnColor = isInProgress ? "#2ea043" : "#81b64c";
-
-            let moveCount = "1 move";
-            if (m.fen) {
-                let parts = m.fen.split(' ');
-                if (parts.length >= 6) {
-                    let fullMoves = parseInt(parts[5]);
-                    if (!isNaN(fullMoves)) moveCount = `${fullMoves} moves`;
-                }
-            }
-
-            let itemHtml = `
-            <div class="vault-card" style="background:#1e1e1e;border:1px solid #333;border-radius:8px;padding:12px;margin-bottom:10px;">
-                <div style="display:flex;justify-content:space-between;align-items:center;">
-                    <div style="font-weight:bold;color:#eee;">♔ ${m.white} <span style="color:#777;font-size:12px;">vs</span> ♚ ${m.black}</div>
-                    <span style="font-size:11px;background:#2a2b2e;padding:2px 8px;border-radius:4px;color:${isInProgress ? '#e3b341' : '#81b64c'};">${m.result}</span>
-                </div>
-                <div style="font-size:11px;color:#888;margin:5px 0;">
-                    <span style="color:#81b64c;">${m.opening || 'Standard'}</span> • ${moveCount} • ${m.date}
-                </div>
-                <div style="display:flex;gap:6px;margin-bottom:8px;">
-                    <span style="font-size:11px;background:#26272b;color:#ccc;padding:2px 6px;border-radius:4px;">White Acc: <b>${m.w_acc || '--%'}</b></span>
-                    <span style="font-size:11px;background:#26272b;color:#ccc;padding:2px 6px;border-radius:4px;">Black Acc: <b>${m.b_acc || '--%'}</b></span>
-                </div>
-                <div style="display:flex;gap:6px;">
-                    <button onclick="window.loadVaultMatch('${m.id}', '${m.fen}', ${isInProgress}, '${m.white || ''}', '${m.black || ''}')" style="flex:1.2;background:${actionBtnColor};color:#fff;border:none;padding:7px;border-radius:4px;font-weight:bold;cursor:pointer;">${actionBtnText}</button>
-                    <button onclick="window.viewVaultMatchReport('${encodeURIComponent(m.pgn || '')}')" style="flex:1;background:#2b5278;color:#fff;border:none;padding:7px;border-radius:4px;font-weight:bold;cursor:pointer;">📊 Report</button>
-                    <button onclick="window.saveSingleMatchPGN()" style="flex:1;background:#3a3b40;color:#ddd;border:none;padding:7px;border-radius:4px;font-weight:bold;cursor:pointer;">💾 PGN</button>
-                    <button onclick="window.deleteSingleMatch('${m.id}')" style="background:#da3633;color:#fff;border:none;padding:7px 12px;border-radius:4px;cursor:pointer;font-weight:bold;">✕</button>
-                </div>
-            </div>`;
-            container.append(itemHtml);
-        });
+        try {
+            localStorage.setItem('chess_vault_offline_matches', JSON.stringify(matches));
+        } catch(e) {}
+        renderVaultCards(matches, container);
+    }).fail(function() {
+        let localMatches = [];
+        try {
+            localMatches = JSON.parse(localStorage.getItem('chess_vault_offline_matches') || '[]');
+        } catch(e) {}
+        renderVaultCards(localMatches, container);
     });
 };
 
@@ -511,27 +574,115 @@ window.copySingleVaultPgn = function(encodedPgn) {
     });
 };
 
+// ============================================================================
+// LOAD MATCH WITH FULL MOVE HISTORY (REPLAY & RESUME 100% FIXED)
+// ============================================================================
 window.loadVaultMatch = function(id, fen, isResume, whiteName, blackName) {
-    if (!fen) return;
+    let match = (window.vaultMatchesById && window.vaultMatchesById[id]) ? window.vaultMatchesById[id] : null;
+    if (!match) {
+        try {
+            let local = JSON.parse(localStorage.getItem('chess_vault_offline_matches') || '[]');
+            match = local.find(m => String(m.id) === String(id));
+        } catch(e) {}
+    }
+
     if (typeof closeModal === 'function') closeModal('vault-modal');
     else $('#vault-modal').hide();
 
-    if (typeof game !== 'undefined') {
-        game.load(fen);
-        gameHistory = [{ fen: fen, moveObj: null }];
-        historyIndex = 0;
-        selectedSquare = null;
-        currentLegalMoves = [];
+    let pgnData = (match && match.pgn) ? match.pgn : "";
+    let finalFen = (match && match.fen) ? match.fen : (fen || "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
+    let white = (match && match.white) ? match.white : (whiteName || "White");
+    let black = (match && match.black) ? match.black : (blackName || "Black");
+
+    if (typeof stopAllActiveMatchProcesses === 'function') stopAllActiveMatchProcesses();
+    window.activeGameEndStatus = null;
+    if (typeof window.clearKingEndEffects === 'function') window.clearKingEndEffects();
+
+    let tempGame = new Chess();
+    let pgnLoaded = false;
+    if (pgnData && pgnData.trim().length > 0) {
+        try {
+            pgnLoaded = tempGame.load_pgn(pgnData);
+        } catch(e) {
+            pgnLoaded = false;
+        }
+        if (!pgnLoaded || tempGame.history().length === 0) {
+            try {
+                let movesOnly = pgnData.replace(/\[.*?\]/g, '').replace(/\{.*?\}/g, '').replace(/\d+\.+/g, '').replace(/(1-0|0-1|1\/2-1\/2|\*)/g, '').trim();
+                let tokens = movesOnly.split(/\s+/).filter(Boolean);
+                let fallbackG = new Chess();
+                tokens.forEach(tok => fallbackG.move(tok, { sloppy: true }));
+                if (fallbackG.history().length > 0) {
+                    tempGame = fallbackG;
+                    pgnLoaded = true;
+                }
+            } catch(e) {}
+        }
     }
 
-    if (whiteName && typeof safeText === 'function') {
-        safeText('bottom-player-name', whiteName);
-        safeText('bottom-player-label', 'White:');
+    if (pgnLoaded && tempGame.history().length > 0) {
+        let moves = tempGame.history({ verbose: true });
+        let replayG = new Chess();
+        let newHistory = [{
+            fen: replayG.fen(),
+            move: null,
+            moveObj: null,
+            soundType: 'move',
+            evalScore: 50.0,
+            evalText: "0.0",
+            cp: 0,
+            bestMoveUci: "",
+            bestMoveSan: ""
+        }];
+
+        moves.forEach(function(mv) {
+            let res = replayG.move(mv);
+            if (!res) return;
+            let sType = (typeof detectMoveSoundType === 'function') ? detectMoveSoundType(replayG, res) : (res.captured ? 'capture' : (res.san && res.san.includes('+') ? 'check' : 'move'));
+            newHistory.push({
+                fen: replayG.fen(),
+                move: { from: res.from, to: res.to },
+                moveObj: res,
+                soundType: sType,
+                evalScore: 50.0,
+                evalText: "0.0",
+                cp: 0,
+                bestMoveUci: "",
+                bestMoveSan: ""
+            });
+        });
+
+        game = replayG;
+        gameHistory = newHistory;
+        historyIndex = isResume ? (newHistory.length - 1) : 0;
+    } else {
+        game.load(finalFen);
+        gameHistory = [{
+            fen: game.fen(),
+            move: null,
+            moveObj: null,
+            soundType: 'move',
+            evalScore: 50.0,
+            evalText: "0.0",
+            cp: 0,
+            bestMoveUci: "",
+            bestMoveSan: ""
+        }];
+        historyIndex = 0;
     }
-    if (blackName && typeof safeText === 'function') {
-        safeText('top-player-name', blackName);
-        safeText('top-player-label', 'Black:');
+
+    window.activeWhiteDisplayName = white;
+    window.activeBlackDisplayName = black;
+    if (typeof safeText === 'function') {
+        safeText('bottom-player-name', white);
+        safeText('bottom-player-label', 'White');
+        safeText('top-player-name', black);
+        safeText('top-player-label', 'Black');
     }
+
+    selectedSquare = null;
+    currentLegalMoves = [];
+    premoveQueue = [];
 
     if (isResume) {
         window.currentActiveMatchDbId = id;
@@ -539,7 +690,7 @@ window.loadVaultMatch = function(id, fen, isResume, whiteName, blackName) {
         if (typeof matchEnded !== 'undefined') matchEnded = false;
         if (typeof isAnalysisBranchMode !== 'undefined') isAnalysisBranchMode = false;
 
-        let bStr = (blackName || '').toLowerCase();
+        let bStr = (black || '').toLowerCase();
         if (bStr.includes('stockfish') || bStr.includes('bot') || bStr.includes('ai') || bStr.includes('gm')) {
             if (typeof gameMode !== 'undefined') gameMode = 'pvb';
             if (typeof playerColor !== 'undefined') playerColor = 'w';
@@ -548,6 +699,8 @@ window.loadVaultMatch = function(id, fen, isResume, whiteName, blackName) {
         }
 
         if (typeof renderBoard === 'function') renderBoard();
+        if (typeof updateEvalBar === 'function') updateEvalBar(historyIndex);
+        if (typeof updateMaterial === 'function') updateMaterial(game.fen());
         if (typeof updateStatus === 'function') updateStatus();
         if (typeof startTimer === 'function') startTimer();
         $('#status').text("Resumed match from archive.");
@@ -559,8 +712,14 @@ window.loadVaultMatch = function(id, fen, isResume, whiteName, blackName) {
         if (typeof matchEnded !== 'undefined') matchEnded = true;
         if (typeof isAnalysisBranchMode !== 'undefined') isAnalysisBranchMode = true;
         if (typeof stopAllActiveMatchProcesses === 'function') stopAllActiveMatchProcesses();
+        
         if (typeof renderBoard === 'function') renderBoard();
-        $('#status').text("Replay Mode (Finished Match)");
+        if (typeof updateEvalBar === 'function') updateEvalBar(historyIndex);
+        if (typeof updateMaterial === 'function') updateMaterial(gameHistory[historyIndex].fen);
+        if (typeof showAnalysisStatus === 'function') showAnalysisStatus();
+        if (typeof drawAllEvalGraphs === 'function') drawAllEvalGraphs();
+
+        $('#status').text(`Replay: ${white} vs ${black} (Use > or >| to view moves)`);
     }
 };
 
@@ -569,11 +728,25 @@ window.deleteSingleMatch = function(id) {
         "Delete Match?",
         "Are you sure you want to delete this match record?",
         function() {
-            $.post('/delete_match', { id: id }, function() {
+            let devId = getOrCreateDeviceId();
+            $.post('/delete_match', { id: id, device_id: devId }, function() {
                 if (window.currentActiveMatchDbId == id) {
                     window.currentActiveMatchDbId = null;
                     localStorage.removeItem('chess_current_db_id');
                 }
+                try {
+                    let local = JSON.parse(localStorage.getItem('chess_vault_offline_matches') || '[]');
+                    local = local.filter(m => String(m.id) !== String(id));
+                    localStorage.setItem('chess_vault_offline_matches', JSON.stringify(local));
+                } catch(e) {}
+                window.refreshMatchVaultList();
+                showAndroidToast("Match deleted");
+            }).fail(function() {
+                try {
+                    let local = JSON.parse(localStorage.getItem('chess_vault_offline_matches') || '[]');
+                    local = local.filter(m => String(m.id) !== String(id));
+                    localStorage.setItem('chess_vault_offline_matches', JSON.stringify(local));
+                } catch(e) {}
                 window.refreshMatchVaultList();
                 showAndroidToast("Match deleted");
             });
@@ -584,7 +757,7 @@ window.deleteSingleMatch = function(id) {
 // ============================================================================
 // SINGLE MATCH SAVER WITH DEVICE ISOLATION & IN-FLIGHT QUEUE
 // ============================================================================
-window.saveCurrentMatchToVault = function(resultTitle) {
+window.saveCurrentMatchToVault = function(resultTitle, onComplete) {
     let pgn = window.buildBrandedPGN ? window.buildBrandedPGN() : (typeof game !== 'undefined' ? game.pgn() : "");
     let fen = (typeof game !== 'undefined') ? game.fen() : "";
     let localDate = getUserDeviceFormattedDate();
@@ -623,6 +796,8 @@ window.saveCurrentMatchToVault = function(resultTitle) {
             localStorage.removeItem('chess_current_db_id');
         }
 
+        if (typeof onComplete === 'function') onComplete(data);
+
         if (window.pendingCloudSave) {
             let next = window.pendingCloudSave;
             window.pendingCloudSave = null;
@@ -631,11 +806,21 @@ window.saveCurrentMatchToVault = function(resultTitle) {
         }
     }).fail(function() {
         window.isSavingToCloud = false;
+        try {
+            let offlineList = JSON.parse(localStorage.getItem('chess_vault_offline_matches') || '[]');
+            payload.id = payload.id || ("offline_" + Date.now());
+            let existingIdx = offlineList.findIndex(x => x.id === payload.id);
+            if (existingIdx >= 0) offlineList[existingIdx] = payload;
+            else offlineList.unshift(payload);
+            localStorage.setItem('chess_vault_offline_matches', JSON.stringify(offlineList));
+        } catch(e) {}
+        if (typeof onComplete === 'function') onComplete(null);
     });
 };
 
 window.manualSaveToVault = function() {
-    window.saveCurrentMatchToVault("Saved Match");
-    showAndroidToast("💾 Match saved to Vault");
-    window.refreshMatchVaultList();
+    window.saveCurrentMatchToVault("Saved Match", function() {
+        showAndroidToast("💾 Match saved to Vault");
+        window.refreshMatchVaultList();
+    });
 };
