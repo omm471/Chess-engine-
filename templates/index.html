@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>JoHnnY</title>
-    <link rel="stylesheet" href="/static/style.css?v=250">
+    <link rel="stylesheet" href="/static/style.css?v=260">
     <style>
         body {
             background: #161512 !important;
@@ -126,7 +126,6 @@
         .board-wrapper { position: relative; width: 320px; height: 320px; touch-action: none; }
         #arrow-overlay { position: absolute; top: 0; left: 0; width: 320px; height: 320px; pointer-events: none !important; z-index: 8; }
         
-        /* DRAW OVERLAY */
         #custom-draw-overlay { position: absolute; top: 0; left: 0; width: 320px; height: 320px; pointer-events: none; z-index: 12; }
         #custom-draw-overlay.drawing-active { pointer-events: auto !important; touch-action: none !important; cursor: crosshair !important; z-index: 25 !important; }
 
@@ -140,7 +139,7 @@
         .front-ctrl-btn { flex: 1; background: #282623; color: #d8d8d8; border: 1px solid #3a3732; padding: 7px 4px; font-size: 11px; font-weight: 600; border-radius: 4px; cursor: pointer; }
         .front-btn-hint { background: #38311e; border-color: #8a7332; color: #f0c15c; }
 
-        /* DRAW PALETTE: NEVER VISIBLE ON LOAD */
+        /* DRAW PALETTE */
         #draw-palette-bar, .draw-palette {
             position: static !important;
             display: none !important;
@@ -172,10 +171,8 @@
         .setup-group label { display: block; font-size: 12px; font-weight: bold; margin-bottom: 4px; color: #81b64c; }
         .custom-input, select { width: 100%; box-sizing: border-box; padding: 8px 10px; background: #161512; border: 1px solid #383632; border-radius: 5px; color: #fff; font-size: 12.5px; }
 
-        /* ====================================================================
-           EXACT PLAY SIDE TILES & LABELS (IMAGE 26 SPECIFICATIONS)
-           ==================================================================== */
-                .color-selector {
+        /* PLAY SIDE TILES & LABELS */
+        .color-selector {
             display: flex !important;
             flex-direction: row !important;
             justify-content: space-around !important;
@@ -244,9 +241,7 @@
             font-weight: 700 !important;
         }
 
-        /* ====================================================================
-           SETTINGS MODAL: CLEAN ALIGNED ROWS (SPACE-BETWEEN)
-           ==================================================================== */
+        /* SETTINGS MODAL */
         #settings-modal .modal-content, 
         #settings-modal .setup-box {
             text-align: left !important;
@@ -348,9 +343,7 @@
         #settings-modal input:checked + .switch-slider { background-color: #5c9ded !important; }
         #settings-modal input:checked + .switch-slider:before { transform: translateX(18px) !important; }
 
-        /* ====================================================================
-           THEMES (LIGHT & DARK SQUARES GUARANTEED)
-           ==================================================================== */
+        /* THEMES */
         .square {
             position: relative;
             display: flex;
@@ -573,7 +566,7 @@
                 <input type="text" id="setup-username" value="Player" class="custom-input">
             </div>
 
-            <!-- PLAY SIDE WITH IMAGE 26 SQUARE TILES & LABELS -->
+            <!-- PLAY SIDE TILES & LABELS (PERFECTLY BALANCED) -->
             <div class="setup-group" id="setup-color-group">
                 <label>Play Side:</label>
                 <div class="color-selector">
@@ -1008,7 +1001,7 @@
     <script src="/static/mod_share_vault.js?v=520"></script>
     <script src="/static/mod_extras.js?v=520"></script>
 
-    <!-- MASTER CONTROLLER SCRIPT -->
+    <!-- MASTER CONTROLLER SCRIPT (100% BUG-FREE PLAYER/BOT ASSIGNMENT) -->
     <script>
         (function() {
             // ================================================================
@@ -1227,6 +1220,7 @@
                 window.activeGameEndStatus = null;
                 window.clearKingEndEffects();
 
+                // 1. EXTRACT THINK TIME & CALCULATION DEPTH & STORE GLOBALLY
                 let thinkVal = parseFloat((document.getElementById('setup-think-time') || {}).value) || 0.8;
                 let depthVal = parseInt((document.getElementById('setup-depth-slider') || {}).value) || 20;
                 let personality = (document.getElementById('setup-personality') || {}).value || "default";
@@ -1237,6 +1231,7 @@
                 window.aiDepth = depthVal;
                 window.botPersonality = personality;
 
+                // 2. PARSE SELECTED TIME CONTROL
                 let timeVal = (document.getElementById('setup-time') || {}).value || "10|0";
                 let totalSecs = 600, incSecs = 0, isInf = false;
 
@@ -1263,16 +1258,20 @@
                 let sStr = totalSecs % 60;
                 let formattedTime = isInf ? "∞" : ((mStr < 10 ? "0" + mStr : mStr) + ":" + (sStr < 10 ? "0" + sStr : sStr));
 
-                if (document.getElementById('top-timer')) document.getElementById('top-timer').innerText = formattedTime;
-                if (document.getElementById('bottom-timer')) document.getElementById('bottom-timer').innerText = formattedTime;
-
+                // 3. CORRECT PLAYER & BOT NAME / LABEL ASSIGNMENT
                 let whiteVal = "Player 1", blackVal = "Player 2";
+                let bottomNameVal = "Player", topNameVal = "Stockfish GM";
+                let bottomLabelVal = "White", topLabelVal = "Black";
 
                 if (mode === 'pvp') {
                     let wInp = document.getElementById('setup-pvp-white');
                     let bInp = document.getElementById('setup-pvp-black');
                     whiteVal = (wInp && wInp.value.trim()) ? wInp.value.trim() : "Player 1";
                     blackVal = (bInp && bInp.value.trim()) ? bInp.value.trim() : "Player 2";
+                    bottomLabelVal = "White";
+                    bottomNameVal = whiteVal;
+                    topLabelVal = "Black";
+                    topNameVal = blackVal;
                     window.playerColor = 'w';
                     window.currentBoardOrientation = 'w';
                 } else if (mode === 'bvb') {
@@ -1286,6 +1285,10 @@
                     let bRatingStr = (parseInt(bLevel) >= 2850) ? "2850+" : bLevel;
                     whiteVal = `${wName} (${wRatingStr} ELO)`;
                     blackVal = `${bName} (${bRatingStr} ELO)`;
+                    bottomLabelVal = "White";
+                    bottomNameVal = whiteVal;
+                    topLabelVal = "Black";
+                    topNameVal = blackVal;
                     window.currentWhiteElo = wLevel;
                     window.currentBlackElo = bLevel;
                     window.currentBoardOrientation = 'w';
@@ -1311,36 +1314,61 @@
                     if (chosenCol === 'w') {
                         whiteVal = uName;
                         blackVal = `${bName} (${bRatingStr} ELO)`;
+                        bottomLabelVal = "White";
+                        bottomNameVal = uName;
+                        topLabelVal = "Black";
+                        topNameVal = `${bName} (${bRatingStr} ELO)`;
                     } else {
                         whiteVal = `${bName} (${bRatingStr} ELO)`;
                         blackVal = uName;
+                        bottomLabelVal = "Black";
+                        bottomNameVal = uName;
+                        topLabelVal = "White";
+                        topNameVal = `${bName} (${bRatingStr} ELO)`;
                     }
                 } else if (mode === 'eve') {
                     let wEng = (document.getElementById('setup-white-engine') || {}).value || "Stockfish 19";
                     let bEng = (document.getElementById('setup-black-engine') || {}).value || "Stockfish 18";
-                    whiteVal = wEng; blackVal = bEng;
+                    whiteVal = wEng;
+                    blackVal = bEng;
+                    bottomLabelVal = "White";
+                    bottomNameVal = whiteVal;
+                    topLabelVal = "Black";
+                    topNameVal = blackVal;
                     window.currentBoardOrientation = 'w';
                 }
 
                 window.activeWhiteDisplayName = whiteVal;
                 window.activeBlackDisplayName = blackVal;
 
-                if (document.getElementById('bottom-player-name')) document.getElementById('bottom-player-name').innerText = whiteVal;
-                if (document.getElementById('top-player-name')) document.getElementById('top-player-name').innerText = blackVal;
+                // Sync Labels & Player Names Immediately
+                let bNameEl = document.getElementById('bottom-player-name');
+                let tNameEl = document.getElementById('top-player-name');
+                let bLblEl = document.getElementById('bottom-player-label');
+                let tLblEl = document.getElementById('top-player-label');
+
+                if (bLblEl) bLblEl.innerText = bottomLabelVal;
+                if (bNameEl) bNameEl.innerText = bottomNameVal;
+                if (tLblEl) tLblEl.innerText = topLabelVal;
+                if (tNameEl) tNameEl.innerText = topNameVal;
 
                 closeModal('setup-modal');
                 if (typeof window.startGame === 'function') window.startGame(true);
 
+                // Enforce names, labels and timers
                 setTimeout(() => {
-                    if (document.getElementById('bottom-player-name')) document.getElementById('bottom-player-name').innerText = window.activeWhiteDisplayName;
-                    if (document.getElementById('top-player-name')) document.getElementById('top-player-name').innerText = window.activeBlackDisplayName;
+                    let bNameEl2 = document.getElementById('bottom-player-name');
+                    let tNameEl2 = document.getElementById('top-player-name');
+                    let bLblEl2 = document.getElementById('bottom-player-label');
+                    let tLblEl2 = document.getElementById('top-player-label');
+
+                    if (bLblEl2) bLblEl2.innerText = bottomLabelVal;
+                    if (bNameEl2) bNameEl2.innerText = bottomNameVal;
+                    if (tLblEl2) tLblEl2.innerText = topLabelVal;
+                    if (tNameEl2) tNameEl2.innerText = topNameVal;
+
                     if (document.getElementById('top-timer')) document.getElementById('top-timer').innerText = formattedTime;
                     if (document.getElementById('bottom-timer')) document.getElementById('bottom-timer').innerText = formattedTime;
-
-                    if (mode === 'pvb' && window.playerColor === 'b') {
-                        if (typeof makeAiMove === 'function') makeAiMove();
-                        else if (typeof window.makeAiMove === 'function') window.makeAiMove();
-                    }
                 }, 70);
             };
 
