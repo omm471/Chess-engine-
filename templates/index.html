@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>JoHnnY</title>
-    <link rel="stylesheet" href="/static/style.css?v=270">
+    <link rel="stylesheet" href="/static/style.css?v=280">
     <style>
         body {
             background: #161512 !important;
@@ -102,6 +102,34 @@
             background: #38bdf8 !important;
             border-radius: 0 !important;
             z-index: 5 !important;
+        }
+
+        /* ====================================================================
+           LAST-MOVE & SELECTION HIGHLIGHTS (ALWAYS VISIBLE OVER ALL THEMES)
+           ==================================================================== */
+        body .square.last-move,
+        body[class*="theme-"] .square.last-move,
+        body[class*="theme-"] .square.light.last-move,
+        body[class*="theme-"] .square.dark.last-move {
+            background-color: rgba(245, 246, 130, 0.62) !important;
+        }
+        body .square.selected,
+        body[class*="theme-"] .square.selected,
+        body[class*="theme-"] .square.light.selected,
+        body[class*="theme-"] .square.dark.selected {
+            background-color: rgba(245, 246, 130, 0.88) !important;
+        }
+        body .square.highlight-check,
+        body[class*="theme-"] .square.highlight-check,
+        body[class*="theme-"] .square.light.highlight-check,
+        body[class*="theme-"] .square.dark.highlight-check {
+            background-color: rgba(235, 40, 40, 0.85) !important;
+        }
+        body .square.premove-sq,
+        body[class*="theme-"] .square.premove-sq,
+        body[class*="theme-"] .square.light.premove-sq,
+        body[class*="theme-"] .square.dark.premove-sq {
+            background-color: rgba(235, 64, 52, 0.62) !important;
         }
 
         .sidebar-backdrop { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.65); z-index: 1100; display: none; }
@@ -372,35 +400,35 @@
             box-sizing: border-box !important;
         }
 
-        body.theme-green .square.light { background-color: #eeeed2 !important; }
-        body.theme-green .square.dark  { background-color: #769656 !important; }
-        body.theme-wood .square.light  { background-color: #f0d9b5 !important; }
-        body.theme-wood .square.dark   { background-color: #b58863 !important; }
-        body.theme-blue .square.light  { background-color: #dee3e6 !important; }
-        body.theme-blue .square.dark   { background-color: #8ca2ad !important; }
-        body.theme-dark .square.light  { background-color: #a0a0a0 !important; }
-        body.theme-dark .square.dark   { background-color: #4c4c4c !important; }
+        body.theme-green .square.light { background-color: #eeeed2; }
+        body.theme-green .square.dark  { background-color: #769656; }
+        body.theme-wood .square.light  { background-color: #f0d9b5; }
+        body.theme-wood .square.dark   { background-color: #b58863; }
+        body.theme-blue .square.light  { background-color: #dee3e6; }
+        body.theme-blue .square.dark   { background-color: #8ca2ad; }
+        body.theme-dark .square.light  { background-color: #a0a0a0; }
+        body.theme-dark .square.dark   { background-color: #4c4c4c; }
 
-        body.theme-board-a .square.light { background-color: #f0d9b5 !important; }
-        body.theme-board-a .square.dark  { background-color: #b58863 !important; }
-        body.theme-board-b .square.light { background-color: #ffffdd !important; }
-        body.theme-board-b .square.dark  { background-color: #86a666 !important; }
-        body.theme-board-c .square.light { background-color: #e3c099 !important; }
-        body.theme-board-c .square.dark  { background-color: #8c5a2b !important; }
-        body.theme-board-d .square.light { background-color: #e0f2fe !important; }
-        body.theme-board-d .square.dark  { background-color: #38bdf8 !important; }
-        body.theme-board-e .square.light { background-color: #cbd5e1 !important; }
-        body.theme-board-e .square.dark  { background-color: #475569 !important; }
-        body.theme-board-f .square.light { background-color: #dbeafe !important; }
-        body.theme-board-f .square.dark  { background-color: #3b82f6 !important; }
-        body.theme-board-g .square.light { background-color: #bae6fd !important; }
-        body.theme-board-g .square.dark  { background-color: #0284c7 !important; }
-        body.theme-board-h .square.light { background-color: #e2e8f0 !important; }
-        body.theme-board-h .square.dark  { background-color: #166534 !important; }
-        body.theme-board-i .square.light { background-color: #f8fafc !important; }
-        body.theme-board-i .square.dark  { background-color: #94a3b8 !important; }
-        body.theme-board-j .square.light { background-color: #e2e8f0 !important; }
-        body.theme-board-j .square.dark  { background-color: #1e293b !important; }
+        body.theme-board-a .square.light { background-color: #f0d9b5; }
+        body.theme-board-a .square.dark  { background-color: #b58863; }
+        body.theme-board-b .square.light { background-color: #ffffdd; }
+        body.theme-board-b .square.dark  { background-color: #86a666; }
+        body.theme-board-c .square.light { background-color: #e3c099; }
+        body.theme-board-c .square.dark  { background-color: #8c5a2b; }
+        body.theme-board-d .square.light { background-color: #e0f2fe; }
+        body.theme-board-d .square.dark  { background-color: #38bdf8; }
+        body.theme-board-e .square.light { background-color: #cbd5e1; }
+        body.theme-board-e .square.dark  { background-color: #475569; }
+        body.theme-board-f .square.light { background-color: #dbeafe; }
+        body.theme-board-f .square.dark  { background-color: #3b82f6; }
+        body.theme-board-g .square.light { background-color: #bae6fd; }
+        body.theme-board-g .square.dark  { background-color: #0284c7; }
+        body.theme-board-h .square.light { background-color: #e2e8f0; }
+        body.theme-board-h .square.dark  { background-color: #166534; }
+        body.theme-board-i .square.light { background-color: #f8fafc; }
+        body.theme-board-i .square.dark  { background-color: #94a3b8; }
+        body.theme-board-j .square.light { background-color: #e2e8f0; }
+        body.theme-board-j .square.dark  { background-color: #1e293b; }
 
         body.theme-board-a #board { background-image: url('/static/boards/a.png') !important; background-size: cover !important; }
         body.theme-board-b #board { background-image: url('/static/boards/b.png') !important; background-size: cover !important; }
@@ -412,11 +440,6 @@
         body.theme-board-h #board { background-image: url('/static/boards/h.png') !important; background-size: cover !important; }
         body.theme-board-i #board { background-image: url('/static/boards/i.png') !important; background-size: cover !important; }
         body.theme-board-j #board { background-image: url('/static/boards/j.png') !important; background-size: cover !important; }
-
-        .square.selected { background-color: rgba(245, 246, 130, 0.8) !important; }
-        .square.last-move { background-color: rgba(245, 246, 130, 0.55) !important; }
-        .square.premove-sq { background-color: rgba(235, 64, 52, 0.55) !important; }
-        .square.highlight-check { background-color: rgba(235, 40, 40, 0.85) !important; }
 
         #kundli-modal .modal-content, #kundli-modal .kundli-box { text-align: left !important; }
         .kundli-table { width: 100% !important; table-layout: fixed !important; border-collapse: collapse !important; font-size: 10.5px !important; margin-top: 6px !important; background: #181715 !important; }
@@ -1135,7 +1158,6 @@
                     if (loserSq) {
                         let $loserCell = $(`[data-square="${loserSq}"]`);
                         $loserCell.addClass('king-loser-sq');
-                        // Sirf King ko hi tilt karo!
                         $loserCell.find('.piece').addClass('king-fallen-piece');
                     }
                     if (winnerSq) {
@@ -1449,8 +1471,10 @@
             };
 
             // ================================================================
-            // 7. ARCHIVE DEDUPLICATION
+            // 7. ARCHIVE DEDUPLICATION & COMPLETE PGN REPLAY
             // ================================================================
+            window.vaultMatchesById = {};
+
             window.refreshMatchVaultList = function() {
                 let target = $('#vault-matches-list');
                 if (!target.length) return;
@@ -1467,12 +1491,14 @@
 
             function renderArchiveList(list, container) {
                 container.empty();
+                window.vaultMatchesById = {};
                 if (!list || list.length === 0) {
                     container.html('<div style="text-align:center;padding:26px;color:#777;">No saved games in archive yet.</div>');
                     return;
                 }
                 let finishedSignatures = new Set();
                 list.forEach(m => {
+                    window.vaultMatchesById[m.id] = m;
                     let res = (m.result || "").toLowerCase();
                     if (!res.includes("progress")) finishedSignatures.add(`${m.white}_${m.black}`);
                 });
@@ -1494,7 +1520,7 @@
                         </div>
                         <div style="font-size:10.5px; color:#888; margin:5px 0;">${m.date || ''} • ${m.opening || 'Standard'}</div>
                         <div style="display:flex; gap:6px; margin-top:6px;">
-                            <button onclick="window.loadVaultMatch('${m.id}', '${m.fen || ''}', false, '${m.white || ''}', '${m.black || ''}')" style="flex:1; background:#81b64c; color:#fff; border:none; padding:7px; border-radius:4px; font-weight:bold; cursor:pointer;">${actionText}</button>
+                            <button onclick="window.loadVaultMatch('${m.id}', '${m.fen || ''}', ${isInProgress}, '${m.white || ''}', '${m.black || ''}')" style="flex:1; background:#81b64c; color:#fff; border:none; padding:7px; border-radius:4px; font-weight:bold; cursor:pointer;">${actionText}</button>
                             <button onclick="window.saveSingleMatchPGN()" style="flex:1; background:#3a3b40; color:#ddd; border:none; padding:7px; border-radius:4px; cursor:pointer; font-weight:bold;">💾 Save PGN</button>
                             <button onclick="deleteSingleMatchFromVault('${m.id}')" style="background:#da3633; color:#fff; border:none; padding:7px 12px; border-radius:4px; cursor:pointer; font-weight:bold;">✕</button>
                         </div>
@@ -1502,6 +1528,102 @@
                     container.append(card);
                 });
             }
+
+            // LOAD SAVED MATCH WITH COMPLETE MOVE HISTORY (REPLAY FIX)
+            window.loadVaultMatch = function(id, fen, isResume, white, black) {
+                let match = window.vaultMatchesById ? window.vaultMatchesById[id] : null;
+                closeModal('vault-modal');
+
+                let pgnData = (match && match.pgn) ? match.pgn : "";
+                let whiteName = (match && match.white) ? match.white : (white || "White");
+                let blackName = (match && match.black) ? match.black : (black || "Black");
+
+                if (typeof stopAllActiveMatchProcesses === 'function') stopAllActiveMatchProcesses();
+                window.activeGameEndStatus = null;
+                window.clearKingEndEffects();
+
+                let tempGame = new Chess();
+                let pgnLoaded = false;
+                if (pgnData && pgnData.trim().length > 0) {
+                    try {
+                        pgnLoaded = tempGame.load_pgn(pgnData);
+                    } catch(e) {
+                        pgnLoaded = false;
+                    }
+                }
+
+                if (pgnLoaded && tempGame.history().length > 0) {
+                    let moves = tempGame.history({ verbose: true });
+                    let replayG = new Chess();
+                    let newHistory = [{
+                        fen: replayG.fen(),
+                        move: null,
+                        moveObj: null,
+                        soundType: 'move',
+                        evalScore: 50.0,
+                        evalText: "0.0",
+                        cp: 0,
+                        bestMoveUci: "",
+                        bestMoveSan: ""
+                    }];
+
+                    moves.forEach(function(mv) {
+                        let res = replayG.move(mv);
+                        let snd = (res.captured ? 'capture' : (res.san && res.san.includes('+') ? 'check' : 'move'));
+                        newHistory.push({
+                            fen: replayG.fen(),
+                            move: { from: res.from, to: res.to },
+                            moveObj: res,
+                            soundType: snd,
+                            evalScore: 50.0,
+                            evalText: "0.0",
+                            cp: 0,
+                            bestMoveUci: "",
+                            bestMoveSan: ""
+                        });
+                    });
+
+                    game = replayG;
+                    gameHistory = newHistory;
+                    historyIndex = isResume ? (newHistory.length - 1) : 0;
+                } else {
+                    let targetFen = (match && match.fen) ? match.fen : (fen || "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
+                    game.load(targetFen);
+                    gameHistory = [{
+                        fen: game.fen(),
+                        move: null,
+                        moveObj: null,
+                        soundType: 'move',
+                        evalScore: 50.0,
+                        evalText: "0.0",
+                        cp: 0,
+                        bestMoveUci: "",
+                        bestMoveSan: ""
+                    }];
+                    historyIndex = 0;
+                }
+
+                window.activeWhiteDisplayName = whiteName;
+                window.activeBlackDisplayName = blackName;
+                let bNameEl = document.getElementById('bottom-player-name');
+                let tNameEl = document.getElementById('top-player-name');
+                let bLbl = document.getElementById('bottom-player-label');
+                let tLbl = document.getElementById('top-player-label');
+
+                if (bNameEl) bNameEl.innerText = whiteName;
+                if (tNameEl) tNameEl.innerText = blackName;
+                if (bLbl) bLbl.innerText = "White";
+                if (tLbl) tLbl.innerText = "Black";
+                window.currentBoardOrientation = 'w';
+
+                if (typeof renderBoard === 'function') renderBoard();
+                if (typeof updateEvalBar === 'function') updateEvalBar(historyIndex);
+                if (typeof updateMaterial === 'function') updateMaterial(gameHistory[historyIndex].fen);
+                if (typeof showAnalysisStatus === 'function') showAnalysisStatus();
+                if (typeof drawAllEvalGraphs === 'function') drawAllEvalGraphs();
+
+                $('#status').text(isResume ? "Match Resumed" : `Replaying: ${whiteName} vs ${blackName}`);
+            };
 
             window.deleteSingleMatchFromVault = function(id) {
                 try {
@@ -1519,7 +1641,7 @@
                     result: "Saved Match",
                     opening: (document.getElementById('opening-bar') || {}).innerText || "Standard Opening",
                     fen: (typeof game !== 'undefined') ? game.fen() : "",
-                    pgn: (typeof window.buildBrandedPGN === 'function') ? window.buildBrandedPGN() : ""
+                    pgn: (typeof window.buildBrandedPGN === 'function') ? window.buildBrandedPGN() : ((typeof game !== 'undefined') ? game.pgn() : "")
                 };
                 $.post('/save_match', payload, function() {
                     alert("💾 Match saved to Archive!");
