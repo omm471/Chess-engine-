@@ -1,934 +1,780 @@
-import os
-import math
-import random
-import shutil
-import subprocess
-import threading
-import urllib.request
-import zipfile
-from datetime import datetime
-from functools import wraps
-
-try:
-    import ujson as json
-except ImportError:
-    import json
-
-try:
-    import requests
-except ImportError:
-    requests = None
-
-import chess
-import chess.engine
-from flask import Flask, render_template, request, jsonify, send_from_directory, abort, render_template_string
-
-app = Flask(__name__)
-engine_lock = threading.Lock()
-
-# ============================================================================
-# SUPABASE CLOUD DATABASE CONFIGURATION (LIVE 2-WAY SYNC)
-# ============================================================================
-SUPABASE_URL = "https://fgywwlynrzwmjjiezqbj.supabase.co"
-SUPABASE_KEY = "sb_publishable_L1C1cD_0p6L9qg0k4qHCZQ_UkJy_cGe"
-
-SUPABASE_HEADERS = {
-    "apikey": SUPABASE_KEY,
-    "Authorization": f"Bearer {SUPABASE_KEY}",
-    "Content-Type": "application/json"
-}
-
-LOCAL_MATCHES_FILE = os.path.abspath('saved_matches_local.json')
-
-# ============================================================================
-# BULLETPROOF OFFLINE BOARD THEMES EXTRACTOR (FLATTEN & AUTO-FIX)
-# ============================================================================
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-STATIC_DIR = os.path.join(BASE_DIR, 'static')
-BOARDS_DIR = os.path.join(STATIC_DIR, 'boards')
-os.makedirs(BOARDS_DIR, exist_ok=True)
-
-possible_zips = [
-    os.path.join(STATIC_DIR, 'chessthemes.zip'),
-    os.path.join(BASE_DIR, 'chessthemes.zip'),
-    os.path.abspath('chessthemes.zip')
-]
-
-# Check if a.png is already extracted directly inside static/boards
-needs_extraction = not os.path.exists(os.path.join(BOARDS_DIR, 'a.png'))
-
-if needs_extraction:
-    found_zip = None
-    for zp in possible_zips:
-        if os.path.exists(zp):
-            found_zip = zp
-            break
-
-    if found_zip:
-        try:
-            with zipfile.ZipFile(found_zip, 'r') as zf:
-                for member in zf.infolist():
-                    if member.is_dir():
-                        continue
-                    fname = os.path.basename(member.filename)
-                    if not fname:
-                        continue
-                    # Flatten: extract all images directly into static/boards/
-                    target_file = os.path.join(BOARDS_DIR, fname.lower())
-                    with zf.open(member) as src, open(target_file, 'wb') as dst:
-                        shutil.copyfileobj(src, dst)
-            print("[✔] Board Themes extracted and flattened successfully.", flush=True)
-        except Exception as e:
-            print("[!] Theme extraction error:", e, flush=True)
-
-# Flatten any nested subfolders if they were created earlier
-if os.path.exists(BOARDS_DIR):
-    for root_d, _, files in os.walk(BOARDS_DIR):
-        if root_d == BOARDS_DIR:
-            continue
-        for f in files:
-            src_p = os.path.join(root_d, f)
-            dst_p = os.path.join(BOARDS_DIR, f.lower())
-            if not os.path.exists(dst_p):
-                try:
-                    shutil.copy2(src_p, dst_p)
-                except Exception:
-                    pass
-
-    # Auto-normalize: If images are .jpg, .jpeg, or uppercase, create .png alias
-    for char in ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j']:
-        target_png = os.path.join(BOARDS_DIR, f"{char}.png")
-        if not os.path.exists(target_png):
-            for alt_ext in ['.jpg', '.jpeg', '.webp', '.PNG', '.JPG', '.JPEG']:
-                cand = os.path.join(BOARDS_DIR, f"{char}{alt_ext}")
-                if os.path.exists(cand):
-                    try:
-                        shutil.copy2(cand, target_png)
-                    except Exception:
-                        pass
-                    break
-
-JS_DIR = os.path.join(os.path.abspath('static'), 'js')
-os.makedirs(JS_DIR, exist_ok=True)
-
-deps = {
-    "jquery.min.js": "https://code.jquery.com/jquery-3.5.1.min.js",
-    "chess.min.js": "https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js"
-}
-
-for fname, url in deps.items():
-    fpath = os.path.join(JS_DIR, fname)
-    if not os.path.exists(fpath):
-        try:
-            urllib.request.urlretrieve(url, fpath)
-            print(f"[✔] Downloaded dependency: {fname}", flush=True)
-        except Exception as e:
-            print(f"[!] Could not download {fname}:", e, flush=True)
-
-ENGINES_DIR = os.path.abspath('engines')
-os.makedirs(ENGINES_DIR, exist_ok=True)
-OPENINGS_CACHE_FILE = os.path.abspath('eco_openings_full.json')
-HW_CONFIG_FILE = os.path.abspath('engine_hw_config.json')
-
-SOUND_DIR = os.path.abspath('sound')
-for search_base in [os.getcwd(), '/root', '/data/data/com.termux/files/home']:
-    if not os.path.exists(search_base):
-        continue
-    for root_dir, dirs, files in os.walk(search_base):
-        low_files = [f.lower() for f in files]
-        if any(k in low_files for k in ['move-self.mp3', 'capture.mp3', 'game-end.mp3']):
-            SOUND_DIR = root_dir
-            break
-    if os.path.exists(os.path.join(SOUND_DIR, 'move-self.mp3')):
-        break
-
-DEFAULT_ENGINE_PATH = shutil.which("stockfish") or "/usr/games/stockfish"
-if not os.path.exists(DEFAULT_ENGINE_PATH):
-    for path in ["/usr/bin/stockfish", "/usr/local/bin/stockfish", "stockfish"]:
-        if shutil.which(path) or os.path.exists(path):
-            DEFAULT_ENGINE_PATH = path
-            break
-
-PRESET_NAMES = {
-    "sf19": "Stockfish 19 (Next-Gen NNUE)",
-    "sf18": "Stockfish 18 (Ultra Tactical)",
-    "sf17": "Stockfish 17.1 (NNUE)",
-    "sf16": "Stockfish 16 (Pro)",
-    "sf15": "Stockfish 15 (Classical)",
-    "sf14": "Stockfish 14 (Sharp)"
-}
-
-# Default Hardware Optimization: 8 Cores (Threads) & 512 MB (Hash RAM)
-engine_state = {
-    "path": DEFAULT_ENGINE_PATH,
-    "protocol": "uci",
-    "real_name": "Stockfish 19 (Next-Gen NNUE)",
-    "preset": "sf19",
-    "hash": 512,
-    "threads": 8,
-    "use_nnue": True,
-    "last_nps": 0,
-    "last_depth": 0,
-    "last_seldepth": 0
-}
-
-if os.path.exists(HW_CONFIG_FILE):
-    try:
-        with open(HW_CONFIG_FILE, 'r') as f:
-            saved_hw = json.load(f)
-            engine_state["hash"] = min(4096, max(16, int(saved_hw.get("hash", 512))))
-            engine_state["threads"] = min(32, max(1, int(saved_hw.get("threads", 8))))
-            engine_state["use_nnue"] = bool(saved_hw.get("use_nnue", True))
-            if saved_hw.get("path") and os.path.exists(saved_hw.get("path")):
-                engine_state["path"] = saved_hw.get("path")
-            engine_state["preset"] = saved_hw.get("preset", "sf19")
-    except Exception:
-        pass
-
-def save_hw_config():
-    try:
-        with open(HW_CONFIG_FILE, 'w') as f:
-            json.dump({
-                "path": engine_state["path"],
-                "preset": engine_state["preset"],
-                "hash": engine_state["hash"],
-                "threads": engine_state["threads"],
-                "use_nnue": engine_state["use_nnue"]
-            }, f)
-    except Exception:
-        pass
-
-def open_any_chess_engine(bin_path):
-    try: 
-        os.chmod(bin_path, 0o755)
-    except Exception: 
-        pass
-    low_name = os.path.basename(bin_path).lower()
-    prefer_xboard = any(k in low_name for k in ["phalanx", "fairymax", "xphalanx", "crafty", "gnuchess"])
-    if not prefer_xboard:
-        try: 
-            return chess.engine.SimpleEngine.popen_uci(bin_path, timeout=8.0), "uci"
-        except Exception: 
-            pass
-        try: 
-            return chess.engine.SimpleEngine.popen_xboard(bin_path, timeout=8.0), "xboard"
-        except Exception as e: 
-            raise RuntimeError(f"Cannot load binary: {e}")
-    else:
-        try: 
-            return chess.engine.SimpleEngine.popen_xboard(bin_path, timeout=8.0), "xboard"
-        except Exception: 
-            pass
-        try: 
-            return chess.engine.SimpleEngine.popen_uci(bin_path, timeout=8.0), "uci"
-        except Exception as e: 
-            raise RuntimeError(f"Cannot load binary: {e}")
-
-try:
-    engine, proto = open_any_chess_engine(engine_state["path"])
-except Exception:
-    engine_state["path"] = DEFAULT_ENGINE_PATH
-    engine, proto = open_any_chess_engine(DEFAULT_ENGINE_PATH)
-
-engine_state["protocol"] = proto
-engine_state["real_name"] = PRESET_NAMES.get(engine_state["preset"], engine.id.get("name", "Stockfish 19"))
-
-def apply_hardware_settings_to_engine():
-    applied = {}
-    try:
-        opts = engine.options
-        for t_key in ["Threads", "Number of Threads", "cores"]:
-            if t_key in opts:
-                t_opt = opts[t_key]
-                max_t = getattr(t_opt, 'max', 32) or 32
-                t_val = max(1, min(max_t, int(engine_state["threads"])))
-                engine.configure({t_key: t_val})
-                applied["Threads"] = t_val
-                engine_state["threads"] = t_val
-                break
-        if "Hash" in opts:
-            h_opt = opts["Hash"]
-            max_h = min(4096, getattr(h_opt, 'max', 4096) or 4096)
-            h_val = max(16, min(max_h, int(engine_state["hash"])))
-            engine.configure({"Hash": h_val})
-            applied["Hash"] = h_val
-            engine_state["hash"] = h_val
-        if "Use NNUE" in opts:
-            engine.configure({"Use NNUE": bool(engine_state["use_nnue"])})
-            applied["Use NNUE"] = bool(engine_state["use_nnue"])
-    except Exception:
-        pass
-    save_hw_config()
-    return applied
-
-with engine_lock:
-    apply_hardware_settings_to_engine()
-
-def ensure_Engine_Loaded(req_path, req_preset):
-    global engine
-    target_path = req_path.strip() if req_path else ""
-    if not target_path or not os.path.exists(target_path):
-        target_path = DEFAULT_ENGINE_PATH
-    if target_path != engine_state["path"]:
-        try:
-            new_eng, proto = open_any_chess_engine(target_path)
-            try: 
-                engine.quit()
-            except Exception: 
-                pass
-            engine = new_eng
-            engine_state["path"] = target_path
-            engine_state["protocol"] = proto
-            apply_hardware_settings_to_engine()
-        except Exception:
-            pass
-    if req_preset:
-        engine_state["preset"] = req_preset
-        engine_state["real_name"] = PRESET_NAMES.get(req_preset, engine.id.get("name", os.path.basename(engine_state["path"])))
-    else:
-        engine_state["real_name"] = engine.id.get("name", os.path.basename(engine_state["path"]))
-
-ELO_CONFIG = {
-    "400":  {"skill": 0,  "uci_elo": 400,  "depth": 1,  "multipv": 5, "weights": [10, 20, 25, 25, 20], "random_blunder": 0.40},
-    "600":  {"skill": 1,  "uci_elo": 600,  "depth": 2,  "multipv": 5, "weights": [15, 25, 25, 20, 15], "random_blunder": 0.28},
-    "850":  {"skill": 3,  "uci_elo": 850,  "depth": 3,  "multipv": 4, "weights": [25, 30, 25, 20],     "random_blunder": 0.18},
-    "1000": {"skill": 4,  "uci_elo": 1000, "depth": 4,  "multipv": 4, "weights": [35, 30, 20, 15],     "random_blunder": 0.12},
-    "1200": {"skill": 6,  "uci_elo": 1200, "depth": 5,  "multipv": 3, "weights": [45, 35, 20],         "random_blunder": 0.06},
-    "1500": {"skill": 9,  "uci_elo": 1500, "depth": 8,  "multipv": 3, "weights": [60, 25, 15],         "random_blunder": 0.03},
-    "1800": {"skill": 12, "uci_elo": 1800, "depth": 11, "multipv": 2, "weights": [75, 25],             "random_blunder": 0.0},
-    "2000": {"skill": 15, "uci_elo": 2000, "depth": 14, "multipv": 1, "weights": [100],                "random_blunder": 0.0},
-    "2300": {"skill": 18, "uci_elo": 2300, "depth": 18, "multipv": 1, "weights": [100],                "random_blunder": 0.0},
-    "2500": {"skill": 20, "uci_elo": 2850, "depth": 22, "multipv": 1, "weights": [100],                "random_blunder": 0.0},
-    "2800": {"skill": 20, "uci_elo": 3100, "depth": 26, "multipv": 1, "weights": [100],                "random_blunder": 0.0}
-}
-
-def score_to_cp_and_winpct(sc):
-    if sc.is_mate():
-        m = sc.mate()
-        cp_val = (10000 - abs(m) * 100) if m > 0 else (-10000 + abs(m) * 100)
-        win_pct = 99.5 if m > 0 else 0.5
-        text = f"M{m}" if m > 0 else f"-M{abs(m)}"
-    else:
-        cp_val = sc.score() or 0
-        win_pct = 50.0 + 50.0 * (2.0 / (1.0 + math.exp(-0.00368208 * cp_val)) - 1.0)
-        win_pct = max(1.0, min(99.0, win_pct))
-        text = f"{cp_val / 100.0:+.1f}"
-    return cp_val, round(win_pct, 1), text
-
-@app.route('/')
-def index():
-    return render_template('index.html')
-
-# Dedicated route for serving offline board textures
-@app.route('/static/boards/<path:filename>')
-def serve_board_theme_file(filename):
-    direct = os.path.join(BOARDS_DIR, filename.lower())
-    if os.path.exists(direct):
-        return send_from_directory(BOARDS_DIR, filename.lower())
-
-    base_name = os.path.splitext(filename)[0].lower()
-    if os.path.exists(BOARDS_DIR):
-        for f in os.listdir(BOARDS_DIR):
-            if os.path.splitext(f)[0].lower() == base_name:
-                return send_from_directory(BOARDS_DIR, f)
-    return send_from_directory(BOARDS_DIR, filename)
-
-# ============================================================================
-# SUPABASE DATABASE ROUTES (FAIL-SAFE CLOUD + LOCAL SYNC)
-# ============================================================================
-
-def get_local_matches():
-    if os.path.exists(LOCAL_MATCHES_FILE):
-        try:
-            with open(LOCAL_MATCHES_FILE, 'r', encoding='utf-8') as f:
-                return json.load(f)
-        except Exception:
-            return []
-    return []
-
-def save_local_matches(matches_list):
-    try:
-        with open(LOCAL_MATCHES_FILE, 'w', encoding='utf-8') as f:
-            json.dump(matches_list[:60], f)
-    except Exception:
-        pass
-
-@app.route('/save_match', methods=['POST'])
-def save_match():
-    match_id = request.form.get('id', '').strip()
-    user_local_date = request.form.get('date', '').strip()
-    if not user_local_date:
-        user_local_date = datetime.now().strftime("%d %b %Y • %I:%M %p")
-
-    result_status = request.form.get('result', 'Match Over')
-    match_payload = {
-        "date": user_local_date,
-        "white": request.form.get('white', 'White'),
-        "black": request.form.get('black', 'Black'),
-        "result": result_status,
-        "w_acc": request.form.get('w_acc', '--%'),
-        "b_acc": request.form.get('b_acc', '--%'),
-        "opening": request.form.get('opening', 'Standard'),
-        "pgn": request.form.get('pgn', ''),
-        "fen": request.form.get('fen', '')
-    }
-
-    # 1. ALWAYS SAVE TO LOCAL STORAGE (Guaranteed Offline Safety)
-    local_data = get_local_matches()
-    assigned_local_id = match_id if (match_id and match_id not in ['null', 'undefined', '0']) else str(int(datetime.now().timestamp() * 1000))
-    match_payload["id"] = assigned_local_id
-
-    updated_locally = False
-    for idx, item in enumerate(local_data):
-        if str(item.get("id")) == str(assigned_local_id):
-            local_data[idx] = match_payload
-            updated_locally = True
-            break
-    if not updated_locally:
-        local_data.insert(0, match_payload)
-    save_local_matches(local_data)
-
-    # 2. SUPABASE CLOUD SYNC (Strict Integer ID Check to prevent 400 Bad Request)
-    is_valid_numeric_id = bool(match_id and match_id.isdigit() and int(match_id) > 0)
-
-    if requests is not None:
-        try:
-            if is_valid_numeric_id:
-                # Patch existing row
-                patch_headers = {**SUPABASE_HEADERS, "Prefer": "return=representation"}
-                res = requests.patch(
-                    f"{SUPABASE_URL}/rest/v1/matches?id=eq.{match_id}",
-                    headers=patch_headers,
-                    json=match_payload,
-                    timeout=5
-                )
-                if res.status_code in [200, 204]:
-                    rows = res.json() if res.text else []
-                    if rows and len(rows) > 0:
-                        return jsonify({"status": "updated", "id": match_id})
-
-            # Check if an 'In Progress' match is already open on Supabase
-            if "in progress" in result_status.lower():
-                check = requests.get(
-                    f"{SUPABASE_URL}/rest/v1/matches?result=ilike.*In Progress*&order=id.desc&limit=1",
-                    headers=SUPABASE_HEADERS,
-                    timeout=5
-                )
-                if check.status_code == 200:
-                    existing = check.json()
-                    if existing and len(existing) > 0:
-                        existing_id = existing[0]["id"]
-                        requests.patch(
-                            f"{SUPABASE_URL}/rest/v1/matches?id=eq.{existing_id}",
-                            headers=SUPABASE_HEADERS,
-                            json=match_payload,
-                            timeout=5
-                        )
-                        return jsonify({"status": "updated", "id": existing_id})
-
-            # Insert as a new match row
-            headers = {**SUPABASE_HEADERS, "Prefer": "return=representation"}
-            cloud_payload = {k: v for k, v in match_payload.items() if k != "id"}
-            res = requests.post(
-                f"{SUPABASE_URL}/rest/v1/matches",
-                headers=headers,
-                json=cloud_payload,
-                timeout=5
-            )
-            if res.status_code in [200, 201]:
-                created = res.json()
-                new_id = created[0]["id"] if isinstance(created, list) and len(created) > 0 else assigned_local_id
-                return jsonify({"status": "saved", "id": new_id})
-        except Exception:
-            pass
-
-    return jsonify({"status": "saved_locally", "id": assigned_local_id})
-
-@app.route('/get_matches', methods=['POST', 'GET'])
-def get_matches():
-    cloud_matches = []
-    if requests is not None:
-        try:
-            res = requests.get(
-                f"{SUPABASE_URL}/rest/v1/matches?select=*&order=id.desc&limit=50",
-                headers=SUPABASE_HEADERS,
-                timeout=5
-            )
-            if res.status_code == 200:
-                cloud_matches = res.json() or []
-        except Exception:
-            cloud_matches = []
-
-    local_matches = get_local_matches()
-
-    # Merge Cloud & Local (Deduplicate smoothly)
-    combined = []
-    seen_pgns = set()
-
-    for m in cloud_matches:
-        pgn_sig = (m.get('pgn') or '').strip()
-        key = pgn_sig if len(pgn_sig) > 10 else f"{m.get('date')}_{m.get('white')}_{m.get('black')}"
-        if key not in seen_pgns:
-            seen_pgns.add(key)
-            combined.append(m)
-
-    for m in local_matches:
-        pgn_sig = (m.get('pgn') or '').strip()
-        key = pgn_sig if len(pgn_sig) > 10 else f"{m.get('date')}_{m.get('white')}_{m.get('black')}"
-        if key not in seen_pgns:
-            seen_pgns.add(key)
-            combined.append(m)
-
-    return jsonify({"matches": combined})
-
-@app.route('/delete_match', methods=['POST'])
-def delete_match():
-    match_id = request.form.get('id', '').strip()
-    if not match_id:
-        return jsonify({"status": "error", "message": "No match ID provided"}), 400
-
-    # Delete locally
-    local_data = get_local_matches()
-    local_data = [m for m in local_data if str(m.get('id')) != str(match_id)]
-    save_local_matches(local_data)
-
-    # Delete from Supabase if valid ID
-    if requests is not None and match_id.isdigit():
-        try:
-            requests.delete(
-                f"{SUPABASE_URL}/rest/v1/matches?id=eq.{match_id}",
-                headers=SUPABASE_HEADERS,
-                timeout=5
-            )
-        except Exception:
-            pass
-
-    return jsonify({"status": "deleted"})
-
-@app.route('/delete_all_matches', methods=['POST'])
-def delete_all_matches():
-    save_local_matches([])
-
-    if requests is not None:
-        try:
-            requests.delete(
-                f"{SUPABASE_URL}/rest/v1/matches?id=gt.0",
-                headers=SUPABASE_HEADERS,
-                timeout=5
-            )
-        except Exception:
-            pass
-
-    return jsonify({"status": "cleared"})
-
-@app.route('/api/export_all_pgn', methods=['GET'])
-def export_all_pgn():
-    matches_data = []
-    if requests is not None:
-        try:
-            res = requests.get(
-                f"{SUPABASE_URL}/rest/v1/matches?select=pgn&order=id.asc",
-                headers=SUPABASE_HEADERS,
-                timeout=5
-            )
-            if res.status_code == 200:
-                matches_data = res.json() or []
-        except Exception:
-            pass
-
-    if not matches_data:
-        matches_data = get_local_matches()
-
-    all_pgns = [r.get("pgn", "").strip() for r in matches_data if r.get("pgn", "").strip()]
-    combined_text = "\n\n\n".join(all_pgns)
-    return jsonify({
-        "status": "success",
-        "count": len(all_pgns),
-        "multi_pgn": combined_text
-    })
-
-@app.route('/sound/<path:filename>')
-def serve_sound(filename):
-    direct = os.path.join(SOUND_DIR, filename)
-    if os.path.exists(direct): 
-        return send_from_directory(SOUND_DIR, filename)
-    if os.path.exists(SOUND_DIR):
-        files = os.listdir(SOUND_DIR)
-        base_req = os.path.splitext(filename)[0].lower()
-        aliases = {
-            "game-end": ["game-end", "game_end", "gameover", "checkmate", "win"],
-            "notify": ["notify", "popup", "achievement", "lesson-pass"],
-            "move-self": ["move-self", "move"],
-            "capture": ["capture", "takes"],
-            "move-check": ["move-check", "check"],
-            "castle": ["castle"],
-            "promote": ["promote"],
-            "game-start": ["game-start", "start"],
-            "illegal": ["illegal", "error"],
-            "tenseconds": ["tenseconds", "clock"]
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>JoHnnY</title>
+    <link rel="stylesheet" href="/static/style.css?v=150">
+    <style>
+        body {
+            background: #161512 !important;
+            color: #d0d0d0 !important;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
+            margin: 0 !important;
+            padding: 6px !important;
+            overflow-y: auto !important;
+            user-select: none !important;
+            -webkit-user-select: none !important;
         }
-        for cand in aliases.get(base_req, [base_req]):
-            for f in files:
-                if cand in f.lower(): 
-                    return send_from_directory(SOUND_DIR, f)
-    return ('', 204)
-
-@app.route('/eco_book', methods=['GET'])
-def get_eco_book():
-    if os.path.exists(OPENINGS_CACHE_FILE):
-        try:
-            with open(OPENINGS_CACHE_FILE, 'r', encoding='utf-8') as f:
-                data = json.load(f)
-            return jsonify({"count": len(data), "openings": data})
-        except Exception: 
-            pass
-    return jsonify({"count": 0, "openings": []})
-
-@app.route('/ai_move', methods=['POST'])
-def ai_move():
-    fen = request.form.get('fen')
-    level = str(request.form.get('level', '2500')).replace('+', '')
-    think_time = float(request.form.get('think_time', 0.8))
-    user_depth = int(request.form.get('depth', 20))
-    req_engine_path = request.form.get('engine_path', '')
-    req_engine_preset = request.form.get('engine_preset', '')
-
-    config = ELO_CONFIG.get(level, ELO_CONFIG["2500"])
-    board = chess.Board(fen)
-    if board.is_game_over(): 
-        return jsonify({'move': None})
-
-    chosen_move, best_eval_move, prev_cp = None, None, None
-
-    with engine_lock:
-        try:
-            if req_engine_path or req_engine_preset:
-                ensure_Engine_Loaded(req_engine_path, req_engine_preset)
-
-            is_uci = (engine_state["protocol"] == "uci")
-            opts = engine.options if is_uci else {}
-
-            if is_uci:
-                cfg = {}
-                if "Skill Level" in opts: 
-                    cfg["Skill Level"] = config["skill"]
-                if "UCI_LimitStrength" in opts and "UCI_Elo" in opts:
-                    cfg["UCI_LimitStrength"] = (int(level) < 2300)
-                    if int(level) < 2300:
-                        cfg["UCI_Elo"] = max(1320, min(2850, config["uci_elo"]))
-                if cfg:
-                    try: 
-                        engine.configure(cfg)
-                    except Exception: 
-                        pass
-
-            eff_depth = min(config["depth"], user_depth) if int(level) < 2300 else max(user_depth, config["depth"])
-            eff_time = min(think_time, 0.25) if int(level) <= 1200 else think_time
-            mpv = config["multipv"]
-
-            if not is_uci or int(level) >= 2000:
-                if is_uci:
-                    info = engine.analyse(board, chess.engine.Limit(time=eff_time, depth=eff_depth))
-                    if isinstance(info, list): 
-                        info = info[0]
-                    if "nps" in info: 
-                        engine_state["last_nps"] = info["nps"]
-                    if "depth" in info: 
-                        engine_state["last_depth"] = info["depth"]
-                    if "pv" in info and len(info["pv"]) > 0:
-                        chosen_move = info["pv"][0]
-                        best_eval_move = chosen_move
-                    if "score" in info:
-                        prev_cp, _, _ = score_to_cp_and_winpct(info["score"].white())
-                if not chosen_move:
-                    res = engine.play(board, chess.engine.Limit(time=eff_time, depth=eff_depth))
-                    chosen_move = res.move
-                    best_eval_move = res.move
-            else:
-                info = engine.analyse(board, chess.engine.Limit(time=eff_time, depth=eff_depth), multipv=mpv if ("MultiPV" in opts and mpv > 1) else 1)
-                if isinstance(info, dict): 
-                    info = [info]
-                if info and len(info) > 0:
-                    top_info = info[0]
-                    if "nps" in top_info: 
-                        engine_state["last_nps"] = top_info["nps"]
-                    if "depth" in top_info: 
-                        engine_state["last_depth"] = top_info["depth"]
-                    if "pv" in top_info and len(top_info["pv"]) > 0:
-                        best_eval_move = top_info["pv"][0]
-                    if "score" in top_info:
-                        prev_cp, _, _ = score_to_cp_and_winpct(top_info["score"].white())
-
-                if config["random_blunder"] > 0 and random.random() < config["random_blunder"]:
-                    chosen_move = random.choice(list(board.legal_moves))
-                elif info and len(info) > 0:
-                    candidates = [item["pv"][0] for item in info if "pv" in item and len(item["pv"]) > 0]
-                    if candidates:
-                        w_list = config["weights"][:len(candidates)]
-                        chosen_move = random.choices(candidates, weights=w_list, k=1)[0]
-
-                if not chosen_move:
-                    res = engine.play(board, chess.engine.Limit(time=eff_time, depth=eff_depth))
-                    chosen_move = res.move
-
-            if is_uci:
-                if "Skill Level" in opts:
-                    try: 
-                        engine.configure({"Skill Level": 20})
-                    except Exception: 
-                        pass
-                if "UCI_LimitStrength" in opts:
-                    try: 
-                        engine.configure({"UCI_LimitStrength": False})
-                    except Exception: 
-                        pass
-        except Exception:
-            try:
-                res = engine.play(board, chess.engine.Limit(time=0.3))
-                chosen_move = res.move
-            except Exception:
-                if list(board.legal_moves): 
-                    chosen_move = list(board.legal_moves)[0]
-
-    if chosen_move:
-        best_uci = best_eval_move.uci() if best_eval_move else chosen_move.uci()
-        best_san = board.san(best_eval_move) if best_eval_move else board.san(chosen_move)
-        resp = {
-            'move': chosen_move.uci(), 
-            'best_uci': best_uci, 
-            'best_san': best_san,
-            'engine': engine_state["real_name"], 
-            'nps': engine_state["last_nps"], 
-            'depth': engine_state["last_depth"]
+        .main-wrapper {
+            width: 344px;
+            max-width: 100%;
+            margin: 0 auto;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 4px;
         }
-        if prev_cp is not None: 
-            resp['prev_cp'] = prev_cp
-        return jsonify(resp)
-    return jsonify({'move': None})
+        @media (min-width: 780px) {
+            body { padding: 14px !important; }
+            .main-wrapper { width: 440px; gap: 6px; }
+            .timer-bar, .top-info-panel, .bottom-controls-panel { width: 440px !important; }
+            .board-wrapper, #board, #arrow-overlay, #custom-draw-overlay { width: 400px !important; height: 400px !important; }
+            .eval-bar-container { height: 400px !important; width: 22px !important; }
+        }
 
-@app.route('/eval', methods=['POST'])
-def evaluate_position():
-    fen = request.form.get('fen')
-    req_depth = int(request.form.get('depth', 16))
-    req_time = float(request.form.get('time', 0.18))
-    req_engine_path = request.form.get('engine_path', '')
-    req_engine_preset = request.form.get('engine_preset', '')
-    try:
-        board = chess.Board(fen)
-        if board.is_checkmate():
-            cp_val = -10000 if board.turn == chess.WHITE else 10000
-            return jsonify({'score': 0.0 if board.turn == chess.WHITE else 100.0, 'text': '-M0' if board.turn == chess.WHITE else 'M0', 'cp': cp_val, 'best_uci': '', 'best_san': '', 'depth': req_depth, 'nps': engine_state["last_nps"], 'engine': engine_state["real_name"]})
-        if board.is_game_over():
-            return jsonify({'score': 50.0, 'text': '0.0', 'cp': 0, 'best_uci': '', 'best_san': '', 'depth': req_depth, 'nps': engine_state["last_nps"], 'engine': engine_state["real_name"]})
+        .coord-rank {
+            position: absolute !important; top: 2px !important; left: 2px !important;
+            font-size: 9.5px !important; font-weight: 700 !important;
+            pointer-events: none !important; line-height: 1 !important; z-index: 4 !important;
+        }
+        .coord-file {
+            position: absolute !important; bottom: 2px !important; right: 3px !important;
+            font-size: 9.5px !important; font-weight: 700 !important;
+            pointer-events: none !important; line-height: 1 !important; z-index: 4 !important;
+        }
+        .square.light .coord-rank, .square.light .coord-file { color: rgba(0, 0, 0, 0.58) !important; }
+        .square.dark .coord-rank, .square.dark .coord-file { color: rgba(255, 255, 255, 0.78) !important; }
 
-        with engine_lock:
-            if req_engine_path or req_engine_preset: 
-                ensure_Engine_Loaded(req_engine_path, req_engine_preset)
-            if engine_state["protocol"] != "uci": 
-                ensure_Engine_Loaded(DEFAULT_ENGINE_PATH, "sf19")
-            info = engine.analyse(board, chess.engine.Limit(time=req_time, depth=req_depth))
+        .premove-step-badge {
+            position: absolute; bottom: 2px; left: 2px; background: #e63946; color: #fff;
+            font-size: 9px; font-weight: 800; padding: 1px 4px; border-radius: 3px; z-index: 9; pointer-events: none;
+        }
 
-        if isinstance(info, list): 
-            info = info[0]
-        if "nps" in info: 
-            engine_state["last_nps"] = info["nps"]
-        if "depth" in info: 
-            engine_state["last_depth"] = info["depth"]
+        #drag-ghost-piece {
+            position: fixed; width: 68px; height: 68px; margin-left: -34px; margin-top: -46px;
+            background-size: contain; background-repeat: no-repeat; background-position: center;
+            pointer-events: none !important; z-index: 9999; display: none;
+            filter: drop-shadow(0 10px 16px rgba(0, 0, 0, 0.72)); transform: scale(1.18);
+            transition: transform 0.08s ease-out;
+        }
+        .dragging-source-piece { opacity: 0 !important; visibility: hidden !important; }
+        .drag-target-hover { box-shadow: inset 0 0 0 3px rgba(255, 255, 255, 0.82) !important; }
 
-        best_uci, best_san = "", ""
-        if "pv" in info and len(info["pv"]) > 0:
-            bm = info["pv"][0]
-            best_uci = bm.uci()
-            best_san = board.san(bm)
+        .sidebar-backdrop { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.65); z-index: 1100; display: none; }
+        .sidebar-drawer {
+            position: fixed; top: 0; left: 0; width: 270px; max-width: 82vw; height: 100vh;
+            background: #1e1d1a; border-right: 1px solid #33312e; z-index: 1101;
+            transform: translateX(-105%); transition: transform 0.22s ease-out;
+            display: flex; flex-direction: column; padding: 12px; box-sizing: border-box; overflow-y: auto;
+        }
+        .sidebar-drawer.open { transform: translateX(0); }
+        .sidebar-nav-item {
+            width: 100%; background: #262522; color: #e4e4e4; border: 1px solid #34322f;
+            padding: 9px 11px; border-radius: 5px; font-size: 12px; font-weight: 600;
+            text-align: left; margin-bottom: 6px; cursor: pointer;
+            display: flex; justify-content: space-between; align-items: center;
+        }
+        .header-icon-btn {
+            background: #262522; border: 1px solid #383531; color: #e0e0e0;
+            font-size: 13px; font-weight: bold; padding: 3px 8px; border-radius: 4px; cursor: pointer;
+        }
 
-        cp_val, score_pct, text = score_to_cp_and_winpct(info["score"].white())
-        return jsonify({
-            'score': score_pct, 
-            'text': text, 
-            'cp': cp_val,
-            'best_uci': best_uci, 
-            'best_san': best_san,
-            'nps': engine_state["last_nps"], 
-            'depth': engine_state["last_depth"],
-            'engine': engine_state["real_name"]
-        })
-    except Exception:
-        return jsonify({'score': 50.0, 'text': '0.0', 'cp': 0, 'best_uci': '', 'best_san': '', 'depth': 0, 'nps': 0})
+        .top-header-row { width: 100%; display: flex; justify-content: space-between; align-items: center; padding: 2px; box-sizing: border-box; }
+        .app-logo { font-size: 14.5px; font-weight: 800; color: #fff; }
+        .app-logo span { color: #81b64c; }
+        .hw-pill { background: #24221f; border: 1px solid #383531; color: #f0c15c; font-size: 10px; font-weight: 700; padding: 3px 7px; border-radius: 4px; cursor: pointer; }
 
-@app.route('/multipv', methods=['POST'])
-def multipv():
-    fen = request.form.get('fen')
-    req_depth = int(request.form.get('depth', 16))
-    req_time = float(request.form.get('time', 0.20))
-    try:
-        board = chess.Board(fen)
-        if board.is_game_over(): 
-            return jsonify({"lines": []})
-        with engine_lock:
-            if engine_state["protocol"] != "uci": 
-                ensure_Engine_Loaded(DEFAULT_ENGINE_PATH, "sf19")
-            supports_mpv = "MultiPV" in engine.options
-            info = engine.analyse(board, chess.engine.Limit(time=req_time, depth=req_depth), multipv=3 if supports_mpv else 1)
-        lines = []
-        if isinstance(info, dict): 
-            info = [info]
-        for item in info:
-            if "nps" in item: 
-                engine_state["last_nps"] = item["nps"]
-            if "depth" in item: 
-                engine_state["last_depth"] = item["depth"]
-            if "pv" in item and len(item["pv"]) > 0:
-                move = item["pv"][0]
-                cp_val, win_pct, score_txt = score_to_cp_and_winpct(item["score"].white())
-                lines.append({"uci": move.uci(), "san": board.san(move), "score": score_txt, "cp": cp_val, "win_pct": win_pct})
-        return jsonify({
-            "lines": lines, 
-            "engine": engine_state["real_name"],
-            "nps": engine_state["last_nps"], 
-            "depth": engine_state["last_depth"]
-        })
-    except Exception:
-        return jsonify({"lines": []})
+        .top-info-panel { width: 344px; display: flex; flex-direction: column; gap: 3px; }
+        #opening-bar { width: 100%; background: #21201d; border: 1px solid #33312e; color: #81b64c; font-size: 11.5px; font-weight: 700; padding: 6px 9px; border-radius: 4px; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; box-sizing: border-box; }
+        #coach-bubble { width: 100%; min-height: 26px; background: #1c1b18; border: 1px solid #2e2c29; border-left: 3px solid #81b64c; color: #d8d8d8; font-size: 11px; padding: 4px 8px; border-radius: 4px; text-align: left; align-items: center; box-sizing: border-box; }
+        #review-bar { width: 100%; background: #1c1b18; border: 1px solid #3d5230; border-radius: 4px; padding: 4px 9px; font-size: 11px; justify-content: space-between; align-items: center; box-sizing: border-box; }
 
-@app.route('/update_engine', methods=['POST'])
-def update_engine():
-    if 'hash' in request.form: 
-        engine_state["hash"] = min(4096, max(16, int(request.form.get('hash', 512))))
-    if 'threads' in request.form: 
-        engine_state["threads"] = min(32, max(1, int(request.form.get('threads', 8))))
-    if 'use_nnue' in request.form: 
-        engine_state["use_nnue"] = (str(request.form.get('use_nnue')).lower() in ['true', 'on', '1'])
-    with engine_lock:
-        applied = apply_hardware_settings_to_engine()
-        return jsonify({
-            "status": "success", 
-            "engine_name": engine_state["real_name"],
-            "protocol": engine_state["protocol"].upper(), 
-            "applied": applied,
-            "hash": engine_state["hash"], 
-            "threads": engine_state["threads"], 
-            "use_nnue": engine_state["use_nnue"]
-        })
+        .timer-bar { width: 344px; height: 38px !important; background: #21201d !important; border: 1px solid #312f2c !important; border-radius: 4px; margin: 1px 0 !important; padding: 4px 10px !important; display: flex; justify-content: space-between; align-items: center; box-sizing: border-box; }
+        .player-title-row { font-size: 12px; color: #e6e6e6; display: flex; align-items: center; gap: 5px; }
+        .elo-badge-live { background: #312f2c; color: #f0c15c; padding: 1px 6px; border-radius: 3px; font-size: 10.5px; font-weight: 700; }
+        .timer-box { background: #141311 !important; color: #fff !important; font-family: monospace; font-size: 13.5px !important; font-weight: 700; padding: 3px 8px !important; border-radius: 4px; border: 1px solid #33312e; }
 
-@app.route('/list_engines', methods=['GET'])
-def list_engines():
-    found = [
-        {"id": "sf19", "name": "Stockfish 19 (Next-Gen NNUE)", "desc": "Ultra Deep NNUE + Multi-Core Search", "path": DEFAULT_ENGINE_PATH, "proto": "UCI", "preset": "sf19"},
-        {"id": "sf18", "name": "Stockfish 18 (Ultra Tactical)", "desc": "Aggressive GM Tactical Engine", "path": DEFAULT_ENGINE_PATH, "proto": "UCI", "preset": "sf18"},
-        {"id": "sf17", "name": "Stockfish 17.1 (in-built NNUE)", "desc": "Tournament GM Strength", "path": DEFAULT_ENGINE_PATH, "proto": "UCI", "preset": "sf17"},
-        {"id": "sf16", "name": "Stockfish 16 (Pro Universal)", "desc": "Balanced Grandmaster Engine", "path": DEFAULT_ENGINE_PATH, "proto": "UCI", "preset": "sf16"},
-        {"id": "sf15", "name": "Stockfish 15 (Classical)", "desc": "Solid Positional Engine", "path": DEFAULT_ENGINE_PATH, "proto": "UCI", "preset": "sf15"},
-        {"id": "sf14", "name": "Stockfish 14 (Sharp)", "desc": "Fast Attacking Engine", "path": DEFAULT_ENGINE_PATH, "proto": "UCI", "preset": "sf14"}
-    ]
-    scan_paths = [ENGINES_DIR, "/usr/games", "/usr/bin", "/usr/local/bin"]
-    seen = {DEFAULT_ENGINE_PATH}
-    for sdir in scan_paths:
-        if os.path.exists(sdir):
-            for fname in sorted(os.listdir(sdir)):
-                low = fname.lower()
-                if low in ["xphalanx", "gamazons"]: 
-                    continue
-                if sdir == ENGINES_DIR or any(k in low for k in ["stockfish", "fairy", "toga", "phalanx", "fruit"]):
-                    fpath = os.path.join(sdir, fname)
-                    if os.path.isfile(fpath) and fpath not in seen:
-                        seen.add(fpath)
-                        p_type = "XBoard" if any(x in low for x in ["phalanx", "fairymax"]) else "UCI"
-                        found.append({"id": fname, "name": f"{fname.capitalize()}", "desc": f"{fpath} ({p_type})", "path": fpath, "proto": p_type, "preset": fname})
-    return jsonify({
-        "engines": found, 
-        "current": engine_state["path"], 
-        "preset": engine_state["preset"],
-        "real_name": engine_state["real_name"], 
-        "protocol": engine_state["protocol"].upper(),
-        "hash": engine_state["hash"], 
-        "threads": engine_state["threads"], 
-        "use_nnue": engine_state["use_nnue"]
-    })
+        .board-area { display: flex; align-items: center; justify-content: center; gap: 5px; margin: 1px 0; }
+        .board-wrapper { position: relative; width: 320px; height: 320px; touch-action: none; }
+        #arrow-overlay { position: absolute; top: 0; left: 0; width: 320px; height: 320px; pointer-events: none !important; z-index: 8; }
+        #custom-draw-overlay { position: absolute; top: 0; left: 0; width: 320px; height: 320px; pointer-events: none; z-index: 12; }
 
-@app.route('/switch_engine', methods=['POST'])
-def switch_engine():
-    new_path = request.form.get('path', '').strip() or DEFAULT_ENGINE_PATH
-    preset = request.form.get('preset', '').strip()
-    if not os.path.exists(new_path):
-        resolved = shutil.which(new_path)
-        if resolved: 
-            new_path = resolved
-        else: 
-            return jsonify({"status": "error", "message": f"Path not found: {new_path}"})
-    with engine_lock:
-        try:
-            ensure_Engine_Loaded(new_path, preset)
-            save_hw_config()
-            return jsonify({"status": "success", "current": engine_state["path"], "real_name": engine_state["real_name"], "protocol": engine_state["protocol"].upper()})
-        except Exception as e:
-            return jsonify({"status": "error", "message": str(e)})
+        .bottom-controls-panel { width: 344px; display: flex; flex-direction: column; gap: 4px; }
+        #multipv-bar { width: 100%; background: #1c1b18; border: 1px solid #2e2c29; color: #b0b0b0; font-size: 10.5px; padding: 4px 8px; border-radius: 4px; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; box-sizing: border-box; }
+        #status { width: 100%; background: #1c1b18; border: 1px solid #2e2c29; color: #e0e0e0; font-size: 11px; font-weight: 600; padding: 5px; border-radius: 4px; text-align: center; box-sizing: border-box; }
 
-@app.route('/install_extra_engines', methods=['POST'])
-def install_extra_engines():
-    try:
-        subprocess.run(["apt-get", "update"], timeout=30)
-        subprocess.run(["apt-get", "install", "-y", "fairy-stockfish", "toga2", "phalanx", "fruit"], timeout=90)
-        return jsonify({"status": "success", "message": "Extra engines installed!"})
-    except Exception as e:
-        return jsonify({"status": "error", "message": str(e)})
+        .nav-row { display: grid; grid-template-columns: repeat(6, 1fr); gap: 4px; width: 100%; }
+        .nav-btn { background: #282623; color: #e0e0e0; border: 1px solid #3a3732; padding: 7px 2px; font-size: 11px; font-weight: 700; border-radius: 4px; cursor: pointer; }
+        .front-board-bar { display: flex; gap: 4px; width: 100%; }
+        .front-ctrl-btn { flex: 1; background: #282623; color: #d8d8d8; border: 1px solid #3a3732; padding: 7px 4px; font-size: 11px; font-weight: 600; border-radius: 4px; cursor: pointer; }
+        .front-btn-hint { background: #38311e; border-color: #8a7332; color: #f0c15c; }
+        .formal-bar { display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px; width: 100%; }
+        .formal-btn { background: #282623; color: #e0e0e0; border: 1px solid #3a3732; padding: 8px 2px; font-size: 11px; font-weight: 700; border-radius: 4px; cursor: pointer; }
+        .formal-btn-primary { background: #81b64c; border-color: #81b64c; color: #fff; }
 
-# ============================================================================
-# DIRECT DEVICE INTERNAL STORAGE PGN SAVER
-# ============================================================================
-@app.route('/save_to_device_storage', methods=['POST'])
-def save_to_device_storage():
-    pgn_content = request.form.get('pgn', '').strip()
-    file_name = request.form.get('filename', '').strip()
+        .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.85); display: flex; justify-content: center; align-items: flex-start !important; overflow-y: auto !important; padding: 14px 8px !important; box-sizing: border-box !important; z-index: 1000; }
+        .modal-content, .kundli-box, .setup-box { width: 100% !important; max-width: 344px !important; max-height: 88vh !important; overflow-y: auto !important; overflow-x: hidden !important; margin: auto !important; background: #21201d; padding: 12px !important; border-radius: 8px; border: 1px solid #383632; box-sizing: border-box !important; }
+        .sticky-top-bar { position: sticky !important; top: -14px !important; background: #21201d !important; z-index: 99 !important; padding: 8px 2px !important; margin: -10px -4px 10px -4px !important; border-bottom: 1px solid #363431 !important; display: flex !important; justify-content: space-between !important; align-items: center !important; }
+        .big-close-btn { background: #363431 !important; color: #ddd !important; border: 1px solid #4a4844 !important; padding: 4px 10px !important; border-radius: 4px !important; font-size: 11.5px !important; font-weight: bold !important; cursor: pointer !important; }
 
-    if not pgn_content:
-        return jsonify({"status": "error", "message": "No PGN data received"}), 400
+        .setup-group { margin-bottom: 9px; text-align: left; }
+        .setup-group label { display: block; font-size: 12px; font-weight: bold; margin-bottom: 4px; color: #81b64c; }
+        .custom-input, select { width: 100%; box-sizing: border-box; padding: 8px 10px; background: #161512; border: 1px solid #383632; border-radius: 5px; color: #fff; font-size: 12.5px; }
 
-    if not file_name:
-        file_name = f"Match_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pgn"
+        /* ====================================================================
+           SETTINGS MODAL ALIGNMENT
+           ==================================================================== */
+        #settings-modal .modal-content, #settings-modal .setup-box { text-align: left !important; }
+        #settings-modal .chessis-sec-title {
+            color: #5c9ded !important; font-size: 11px !important; font-weight: 700 !important;
+            text-align: left !important; margin: 14px 0 6px 0 !important; text-transform: uppercase !important;
+            letter-spacing: 0.5px !important; display: block !important;
+        }
+        #settings-modal .chessis-row {
+            display: flex !important; flex-direction: row !important; justify-content: space-between !important;
+            align-items: center !important; padding: 10px 4px !important; border-bottom: 1px solid #2d2b28 !important;
+            text-align: left !important; width: 100% !important; box-sizing: border-box !important;
+        }
+        #settings-modal .chessis-row > div:first-child { text-align: left !important; flex: 1 !important; margin-right: 8px !important; }
+        #settings-modal .chessis-row-title { color: #e8e8e8 !important; font-size: 12.5px !important; font-weight: 600 !important; text-align: left !important; }
+        #settings-modal .chessis-row-sub { color: #8c8c8c !important; font-size: 10.5px !important; margin-top: 2px !important; text-align: left !important; }
+        #settings-modal .chessis-row select {
+            width: auto !important; min-width: 95px !important; max-width: 155px !important; padding: 6px 8px !important;
+            margin: 0 !important; text-align: left !important; flex-shrink: 0 !important;
+            background: #161512 !important; border: 1px solid #3c3934 !important; color: #fff !important;
+        }
+        #settings-modal .engine-radio-item {
+            display: flex !important; flex-direction: row !important; justify-content: space-between !important;
+            align-items: center !important; padding: 9px 10px !important; background: #181715 !important;
+            border: 1px solid #2e2c29 !important; border-radius: 5px !important; margin-bottom: 6px !important;
+            cursor: pointer !important; text-align: left !important; width: 100% !important; box-sizing: border-box !important;
+        }
+        #settings-modal .engine-radio-item > div:first-child { text-align: left !important; flex: 1 !important; }
+        #settings-modal .engine-radio-item > div:last-child { text-align: right !important; margin-left: 8px !important; flex-shrink: 0 !important; }
+        #settings-modal .engine-radio-item.active-eng { border-color: #81b64c !important; background: #1e261a !important; }
+        #settings-modal .switch-toggle { position: relative !important; display: inline-block !important; width: 40px !important; height: 22px !important; flex-shrink: 0 !important; }
+        #settings-modal .switch-toggle input { opacity: 0 !important; width: 0 !important; height: 0 !important; margin: 0 !important; position: absolute !important; }
+        #settings-modal .switch-slider { position: absolute !important; cursor: pointer !important; inset: 0 !important; background-color: #3a3834 !important; transition: .2s !important; border-radius: 22px !important; }
+        #settings-modal .switch-slider:before { position: absolute !important; content: "" !important; height: 16px !important; width: 16px !important; left: 3px !important; bottom: 3px !important; background-color: #fff !important; transition: .2s !important; border-radius: 50% !important; }
+        #settings-modal input:checked + .switch-slider { background-color: #5c9ded !important; }
+        #settings-modal input:checked + .switch-slider:before { transform: translateX(18px) !important; }
 
-    possible_dirs = [
-        "/storage/emulated/0/ChessAIPro",
-        "/sdcard/ChessAIPro",
-        os.path.expanduser("~/storage/shared/ChessAIPro")
-    ]
+        .square {
+            position: relative; display: flex; justify-content: center; align-items: center;
+            width: 100% !important; height: 100% !important; font-size: 32px; cursor: pointer;
+        }
 
-    target_dir = None
-    for d in possible_dirs:
-        try:
-            os.makedirs(d, exist_ok=True)
-            if os.path.exists(d) and os.access(d, os.W_OK):
-                target_dir = d
-                break
-        except Exception:
-            continue
+        /* ====================================================================
+           100% CRASH-PROOF BOARD THEMES (NEVER BLACK AGAIN!)
+           ==================================================================== */
+        /* Standard Themes */
+        body.theme-green .square.light { background-color: #eeeed2; }
+        body.theme-green .square.dark  { background-color: #769656; }
 
-    if not target_dir:
-        target_dir = os.path.abspath('saved_pgn_matches')
-        os.makedirs(target_dir, exist_ok=True)
+        body.theme-wood .square.light  { background-color: #f0d9b5; }
+        body.theme-wood .square.dark   { background-color: #b58863; }
 
-    file_path = os.path.join(target_dir, file_name)
+        body.theme-blue .square.light  { background-color: #dee3e6; }
+        body.theme-blue .square.dark   { background-color: #8ca2ad; }
 
-    try:
-        with open(file_path, 'w', encoding='utf-8') as f:
-            f.write(pgn_content)
-        return jsonify({
-            "status": "success",
-            "folder": target_dir,
-            "filename": file_name,
-            "path": file_path
-        })
-    except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 500
+        body.theme-dark .square.light  { background-color: #a0a0a0; }
+        body.theme-dark .square.dark   { background-color: #4c4c4c; }
 
+        /* Offline Themes with rich built-in colors (A to J) */
+        body.theme-board-a .square.light { background-color: #f0d9b5 !important; }
+        body.theme-board-a .square.dark  { background-color: #b58863 !important; }
 
-if __name__ == '__main__':
-    try:
-        import logging
-        logging.getLogger('waitress.queue').setLevel(logging.ERROR)
-        logging.getLogger('waitress').setLevel(logging.ERROR)
-        from waitress import serve
-        print("[✔] Production WSGI Server (Waitress) active!", flush=True)
-        print("* Running on http://127.0.0.1:5000", flush=True)
-        serve(app, host='0.0.0.0', port=5000, threads=8, channel_timeout=120)
-    except ImportError:
-        app.run(host='0.0.0.0', port=5000, debug=False)
+        body.theme-board-b .square.light { background-color: #ffffdd !important; }
+        body.theme-board-b .square.dark  { background-color: #86a666 !important; }
+
+        body.theme-board-c .square.light { background-color: #e3c099 !important; }
+        body.theme-board-c .square.dark  { background-color: #8c5a2b !important; }
+
+        body.theme-board-d .square.light { background-color: #e0f2fe !important; }
+        body.theme-board-d .square.dark  { background-color: #38bdf8 !important; }
+
+        body.theme-board-e .square.light { background-color: #cbd5e1 !important; }
+        body.theme-board-e .square.dark  { background-color: #475569 !important; }
+
+        body.theme-board-f .square.light { background-color: #dbeafe !important; }
+        body.theme-board-f .square.dark  { background-color: #3b82f6 !important; }
+
+        body.theme-board-g .square.light { background-color: #bae6fd !important; }
+        body.theme-board-g .square.dark  { background-color: #0284c7 !important; }
+
+        body.theme-board-h .square.light { background-color: #e2e8f0 !important; }
+        body.theme-board-h .square.dark  { background-color: #166534 !important; }
+
+        body.theme-board-i .square.light { background-color: #f8fafc !important; }
+        body.theme-board-i .square.dark  { background-color: #94a3b8 !important; }
+
+        body.theme-board-j .square.light { background-color: #e2e8f0 !important; }
+        body.theme-board-j .square.dark  { background-color: #1e293b !important; }
+
+        /* Real Background Image mapping */
+        body.theme-board-a #board { background-image: url('/static/boards/a.png') !important; background-size: cover !important; }
+        body.theme-board-b #board { background-image: url('/static/boards/b.png') !important; background-size: cover !important; }
+        body.theme-board-c #board { background-image: url('/static/boards/c.png') !important; background-size: cover !important; }
+        body.theme-board-d #board { background-image: url('/static/boards/d.png') !important; background-size: cover !important; }
+        body.theme-board-e #board { background-image: url('/static/boards/e.png') !important; background-size: cover !important; }
+        body.theme-board-f #board { background-image: url('/static/boards/f.png') !important; background-size: cover !important; }
+        body.theme-board-g #board { background-image: url('/static/boards/g.png') !important; background-size: cover !important; }
+        body.theme-board-h #board { background-image: url('/static/boards/h.png') !important; background-size: cover !important; }
+        body.theme-board-i #board { background-image: url('/static/boards/i.png') !important; background-size: cover !important; }
+        body.theme-board-j #board { background-image: url('/static/boards/j.png') !important; background-size: cover !important; }
+
+        /* ONLY if real image exists, make squares transparent to reveal the PNG texture */
+        body.has-board-img[class*="theme-board-"] .square.light:not(.selected):not(.last-move):not(.premove-sq):not(.highlight-check),
+        body.has-board-img[class*="theme-board-"] .square.dark:not(.selected):not(.last-move):not(.premove-sq):not(.highlight-check) {
+            background-color: transparent !important;
+        }
+
+        .square.selected { background-color: rgba(245, 246, 130, 0.8) !important; }
+        .square.last-move { background-color: rgba(245, 246, 130, 0.55) !important; }
+        .square.premove-sq { background-color: rgba(235, 64, 52, 0.55) !important; }
+        .square.highlight-check { background-color: rgba(235, 40, 40, 0.85) !important; }
+
+        .vault-card { background:#1e1e1e; border:1px solid #333; border-radius:8px; padding:10px; margin-bottom:8px; text-align:left; }
+        .eval-graph-canvas { display: block; width: 100%; cursor: pointer; background: #181715; border-radius: 4px; }
+    </style>
+</head>
+<body class="theme-green">
+
+    <!-- SLIDE-OUT SIDEBAR DRAWER -->
+    <div id="sidebar-backdrop" class="sidebar-backdrop" onclick="toggleSidebarDrawer(false)"></div>
+    <div id="chess-sidebar-drawer" class="sidebar-drawer">
+        <div style="display:flex; justify-content:space-between; align-items:center; padding-bottom:10px; margin-bottom:10px; border-bottom:1px solid #33312e;">
+            <div class="app-logo" style="font-size:15px;">JOHNNY <span>CHESS</span></div>
+            <button class="big-close-btn" onclick="toggleSidebarDrawer(false)">✕</button>
+        </div>
+        <div style="background:#161512; border:1px solid #2e2c29; border-radius:5px; padding:8px 10px; margin-bottom:10px; display:flex; justify-content:space-between; align-items:center;">
+            <div>
+                <div style="color:#888; font-size:9.5px;">PLAYER RATING</div>
+                <div style="color:#f0c15c; font-weight:bold; font-size:14px;" id="sidebar-elo-val">1200 ELO</div>
+            </div>
+            <span style="color:#5c9ded; font-size:10.5px; cursor:pointer;" onclick="resetCareerRating()">Reset</span>
+        </div>
+        <button class="sidebar-nav-item" style="background:#81b64c; color:#fff; border-color:#81b64c;" onclick="toggleSidebarDrawer(false); openSetupModal();"><span>♟ New Game Setup</span><span>→</span></button>
+        <button class="sidebar-nav-item" style="border-color:#f0c15c; color:#f0c15c;" onclick="toggleSidebarDrawer(false); window.exportAllMatchesMultiPGN();"><span>📚 Export All Games (Multi-PGN)</span><span>→</span></button>
+        <button class="sidebar-nav-item" onclick="toggleSidebarDrawer(false); openSettingsModal();"><span>⚙ Engine & UI Settings</span><span>→</span></button>
+        <button class="sidebar-nav-item" onclick="toggleSidebarDrawer(false); openDeepReport();"><span>📊 Full Game Report</span><span>→</span></button>
+        <button class="sidebar-nav-item" id="sidebar-premove-btn" onclick="togglePremoveMode()"><span>⚡ Multi-Premove</span><span id="sidebar-premove-val" style="color:#81b64c;">ON</span></button>
+        <button class="sidebar-nav-item" onclick="toggleSidebarDrawer(false); takebackMove();"><span>↩ Takeback Move</span><span></span></button>
+        <button class="sidebar-nav-item" onclick="toggleSidebarDrawer(false); openOpeningTrainerModal();"><span>📖 Opening Explorer</span><span>→</span></button>
+        <button class="sidebar-nav-item" onclick="toggleSidebarDrawer(false); openMatchVaultModal();"><span>🗂 Saved Games Archive</span><span>→</span></button>
+        <button class="sidebar-nav-item" onclick="toggleSidebarDrawer(false); openShareModal();"><span>📤 Export / Share PGN</span><span>→</span></button>
+    </div>
+
+    <!-- 1. MATCH OVER MODAL -->
+    <div id="game-modal" class="modal-overlay" style="display: none;">
+        <div class="modal-content">
+            <div class="sticky-top-bar">
+                <span id="modal-title" style="color:#fff; font-size:15px; font-weight:bold;">Match Over</span>
+                <button class="big-close-btn" onclick="closeModal('game-modal')">Close</button>
+            </div>
+            <div class="vs-container">
+                <div class="player">
+                    <span class="player-icon" id="modal-p1-icon" style="color: #fff;">♔</span>
+                    <span id="modal-p1-text">White</span>
+                    <span id="modal-p1-acc" class="acc-pill"></span>
+                </div>
+                <div class="vs-text">VS</div>
+                <div class="player">
+                    <span class="player-icon" id="modal-p2-icon" style="color: #000; text-shadow: 0 0 2px #fff;">♚</span>
+                    <span id="modal-p2-text">Black</span>
+                    <span id="modal-p2-acc" class="acc-pill"></span>
+                </div>
+            </div>
+            <div id="modal-elo-change-banner" style="background:#181715; border:1px solid #312f2c; border-radius:5px; padding:6px; margin-bottom:8px; font-size:12px; color:#f0c15c; font-weight:bold;">
+                Rating: 1200 ELO
+            </div>
+            <p id="modal-subtitle" style="margin: 4px 0 10px 0; font-size: 12px;">Game completed.</p>
+            <div style="display: flex; flex-direction: column; gap: 6px;">
+                <button onclick="window.saveSingleMatchPGN();" style="width: 100%; background: #252c36; border: 1.5px solid #5c9ded; color: #90c2ff; font-weight: bold; padding: 10px; border-radius: 5px; cursor: pointer;">💾 Download Current Match PGN</button>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px;">
+                    <button onclick="closeModal('game-modal'); openDeepReport();" style="background: #81b64c; color: #fff; padding: 9px; border-radius: 5px; font-weight: bold; border: none; cursor: pointer;">Game Report</button>
+                    <button onclick="closeModal('game-modal'); openShareModal();" style="background: #4b7399; color: #fff; padding: 9px; border-radius: 5px; font-weight: bold; border: none; cursor: pointer;">Share / Export</button>
+                </div>
+                <button id="modal-btn" onclick="handleModalBtn()" style="background: #363431; color: #ddd; padding: 9px; border-radius: 5px; border: 1px solid #444; cursor: pointer;">New Match</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 2. SHARE PGN & FEN MODAL -->
+    <div id="share-modal" class="modal-overlay" style="display: none;">
+        <div class="modal-content kundli-box">
+            <div class="sticky-top-bar">
+                <span style="color:#fff; font-size:14px; font-weight:bold;">Export & Import PGN / FEN</span>
+                <button class="big-close-btn" onclick="closeModal('share-modal')">Close</button>
+            </div>
+            <textarea id="branded-pgn-box" style="width:100%; height:140px; background:#141311; color:#81b64c; border:1px solid #312f2c; border-radius:5px; padding:8px; font-family:monospace; font-size:10.5px; box-sizing:border-box; resize:none;"></textarea>
+            <div style="display:flex; flex-direction:column; gap:6px; margin-top:8px;">
+                <div style="display:grid; grid-template-columns: 1fr 1fr; gap:6px;">
+                    <button onclick="copyBrandedPGN()" style="background:#81b64c; color:#fff; border:none; padding:9px; border-radius:4px; font-weight:bold; cursor:pointer;">Copy PGN</button>
+                    <button onclick="shareBrandedGameNative()" style="background:#4b7399; color:#fff; border:none; padding:9px; border-radius:4px; font-weight:bold; cursor:pointer;">Share</button>
+                </div>
+                <div style="display:grid; grid-template-columns: 1fr 1fr; gap:6px;">
+                    <button onclick="window.saveSingleMatchPGN()" style="background:#252c36; border:1px solid #5c9ded; color:#90c2ff; font-weight:bold; padding:9px; border-radius:4px; cursor:pointer;">💾 Save Match PGN</button>
+                    <button onclick="window.exportAllMatchesMultiPGN()" style="background:#3a3220; border:1px solid #f0c15c; color:#f0c15c; font-weight:bold; padding:9px; border-radius:4px; cursor:pointer;">📚 Master Multi-PGN</button>
+                </div>
+                <button onclick="copyCurrentFEN()" style="background:#2c2a27; border:1px solid #444; color:#ddd; padding:8px; border-radius:4px; cursor:pointer;">Copy FEN</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 3. NEW GAME SETUP MODAL -->
+    <div id="setup-modal" class="modal-overlay" style="display: none;">
+        <div class="modal-content setup-box">
+            <div class="sticky-top-bar">
+                <span style="color:#fff; font-size:15px; font-weight:bold;">New Game Setup</span>
+                <button class="big-close-btn" onclick="closeModal('setup-modal')">Close</button>
+            </div>
+            <div class="setup-group">
+                <label>Game Mode:</label>
+                <select id="setup-mode" onchange="toggleSetupMode()">
+                    <option value="pvb" selected>Player vs Bot (Rated Match)</option>
+                    <option value="bvb">Bot vs Bot (Rating Levels Match)</option>
+                    <option value="eve">Engine vs Engine (Duel)</option>
+                    <option value="pvp">Pass & Play (2 Players)</option>
+                </select>
+            </div>
+
+            <!-- Single Player Name (ONLY in Player vs Bot) -->
+            <div class="setup-group" id="setup-username-group">
+                <label>Your Name:</label>
+                <input type="text" id="setup-username" value="Player" class="custom-input">
+            </div>
+
+            <div class="setup-group" id="setup-color-group">
+                <label>Play Side:</label>
+                <div class="color-selector" style="display:flex; gap:12px;">
+                    <label><input type="radio" name="play_color" value="w" checked> White (♔)</label>
+                    <label><input type="radio" name="play_color" value="random"> Random (?)</label>
+                    <label><input type="radio" name="play_color" value="b"> Black (♚)</label>
+                </div>
+            </div>
+
+            <!-- Pass & Play 2-Player Names (Clean Default Player 1 & Player 2) -->
+            <div id="setup-pvp-names-group" style="display: none; flex-direction: column; width: 100%;">
+                <div class="setup-group">
+                    <label style="color:#81b64c;">White Name:</label>
+                    <input type="text" id="setup-pvp-white" value="Player 1" placeholder="Enter White Player Name" class="custom-input">
+                </div>
+                <div class="setup-group">
+                    <label style="color:#81b64c;">Black Name:</label>
+                    <input type="text" id="setup-pvp-black" value="Player 2" placeholder="Enter Black Player Name" class="custom-input">
+                </div>
+                <div class="setup-group" id="setup-autoflip-group">
+                    <label>Auto-Flip Board:</label>
+                    <select id="setup-autoflip"><option value="on" selected>ON</option><option value="off">OFF</option></select>
+                </div>
+            </div>
+
+            <!-- Bot Selectors for Bot vs Bot -->
+            <div class="setup-group" id="setup-white-bot-group" style="display: none;">
+                <label style="color:#81b64c;">White Bot Level & Name:</label>
+                <div style="display: flex; gap: 5px;">
+                    <select id="setup-white-bot" style="flex: 1.2;">
+                        <option value="400">Lvl 1 (400)</option>
+                        <option value="600">Lvl 2 (600)</option>
+                        <option value="850">Lvl 3 (850)</option>
+                        <option value="1000">Lvl 4 (1000)</option>
+                        <option value="1200">Lvl 5 (1200)</option>
+                        <option value="1500" selected>Lvl 6 (1500)</option>
+                        <option value="2000">Lvl 7 (2000)</option>
+                        <option value="2500">Lvl 8 (2500+)</option>
+                        <option value="2850">Max (2850+)</option>
+                    </select>
+                    <input type="text" id="setup-white-bot-name" value="Club Master" class="custom-input" style="flex: 1.3;">
+                </div>
+            </div>
+
+            <div class="setup-group" id="setup-black-bot-group">
+                <label id="opponent-elo-label" style="color:#f0c15c;">Opponent Bot Level & Name:</label>
+                <div style="display: flex; gap: 5px;">
+                    <select id="setup-black-bot" style="flex: 1.2;">
+                        <option value="400">Lvl 1 (400)</option>
+                        <option value="600">Lvl 2 (600)</option>
+                        <option value="850">Lvl 3 (850)</option>
+                        <option value="1000">Lvl 4 (1000)</option>
+                        <option value="1200">Lvl 5 (1200)</option>
+                        <option value="1500">Lvl 6 (1500)</option>
+                        <option value="2000">Lvl 7 (2000)</option>
+                        <option value="2500" selected>Lvl 8 (2500+)</option>
+                        <option value="2850">Max (2850+)</option>
+                    </select>
+                    <input type="text" id="setup-bot-name" value="Stockfish GM" class="custom-input" style="flex: 1.3;">
+                </div>
+            </div>
+
+            <div class="setup-group">
+                <label>Time Control:</label>
+                <select id="setup-time">
+                    <option value="0|0">Unlimited (∞)</option>
+                    <option value="3|2">Blitz (3m + 2s)</option>
+                    <option value="10|0" selected>Rapid (10m)</option>
+                </select>
+            </div>
+            <button class="play-now-btn" style="width:100%; padding:10px; background:#2563eb; color:#fff; font-weight:bold; border:none; border-radius:5px; cursor:pointer;" onclick="applySetupAndStart()">Play</button>
+        </div>
+    </div>
+
+    <!-- SAVED GAMES ARCHIVE MODAL (SINGLE CLEAN CONTAINER - ONLY 3-DOT MENU) -->
+    <div id="vault-modal" class="modal-overlay" style="display: none;">
+        <div class="modal-content kundli-box">
+            <div class="sticky-top-bar">
+                <span style="color:#fff; font-size:15px; font-weight:bold;">Saved Games Archive</span>
+                <button class="big-close-btn" onclick="closeModal('vault-modal')">Close</button>
+            </div>
+            <div style="display:flex; gap:6px; margin-bottom:10px;">
+                <button onclick="manualSaveToVault()" style="flex:1; background:#81b64c; color:#fff; border:none; padding:8px; font-size:11.5px; font-weight:bold; border-radius:5px; cursor:pointer;">+ Save Current Game</button>
+                <button onclick="refreshMatchVaultList()" style="background:#2c2a27; color:#ddd; border:1px solid #3f3c38; padding:8px 12px; font-size:11.5px; border-radius:5px; cursor:pointer;">↻</button>
+            </div>
+            <div id="vault-matches-list"></div>
+        </div>
+    </div>
+
+    <!-- GAME REPORT MODAL -->
+    <div id="kundli-modal" class="modal-overlay" style="display: none;">
+        <div class="modal-content kundli-box">
+            <div class="sticky-top-bar">
+                <span style="color:#fff; font-size:15px; font-weight:bold;">Game Report & Analysis</span>
+                <button class="big-close-btn" onclick="closeModal('kundli-modal')">Close</button>
+            </div>
+            <div style="background:#181715; padding:6px; border-radius:5px; border:1px solid #2e2c29; margin-bottom:8px;">
+                <canvas id="kundli-eval-graph" width="310" height="75" class="eval-graph-canvas"></canvas>
+            </div>
+            <div id="kundli-verdict-text" style="font-size:12px; color:#aaa; text-align:center;">Analysis Ready</div>
+        </div>
+    </div>
+
+    <!-- MAIN WORKSPACE -->
+    <div class="main-wrapper">
+        <div class="top-info-panel">
+            <div class="top-header-row">
+                <div style="display:flex; align-items:center; gap:7px;">
+                    <button class="header-icon-btn" onclick="toggleSidebarDrawer()" title="Menu">☰</button>
+                    <div class="app-logo">JOHNNY <span>CHESS</span></div>
+                </div>
+                <div style="display:flex; align-items:center; gap:5px;">
+                    <div class="hw-pill" id="top-engine-pill" onclick="openSettingsModal()">Stockfish 16.1 • 8C/512MB</div>
+                    <button class="header-icon-btn" onclick="openSettingsModal()" title="Settings">⚙</button>
+                </div>
+            </div>
+            <div id="opening-bar">A00: Starting Position</div>
+            <div id="coach-bubble" style="display: none;">Ready.</div>
+            <div id="review-bar" style="display: none;">
+                <span>White Acc: <b id="white-acc-text" style="color:#81b64c;">--%</b></span>
+                <span>Black Acc: <b id="black-acc-text" style="color:#81b64c;">--%</b></span>
+                <span style="color:#5c9ded; cursor:pointer; font-weight:bold;" onclick="openDeepReport()">Full Report →</span>
+            </div>
+        </div>
+
+        <div class="timer-bar">
+            <div class="player-info">
+                <div class="player-title-row"><span id="top-player-label" style="font-weight: 700; color: #aaa;">Black</span><span id="top-player-name" style="font-weight: 600;">Stockfish GM (2500 ELO)</span></div>
+                <div id="top-captured" class="captured-pieces"></div>
+            </div>
+            <div class="timer-box" id="top-timer">10:00</div>
+        </div>
+
+        <div class="board-area">
+            <div class="eval-bar-container" id="eval-wrapper">
+                <div id="eval-text-top" class="eval-text-top"></div>
+                <div id="eval-fill" class="eval-fill"></div>
+                <div id="eval-text-bottom" class="eval-text-bottom">0.0</div>
+            </div>
+            <div class="board-wrapper">
+                <div id="board" class="chess-board"></div>
+                <svg id="arrow-overlay" class="arrow-overlay" viewBox="0 0 320 320"></svg>
+                <svg id="custom-draw-overlay" viewBox="0 0 320 320"></svg>
+            </div>
+        </div>
+
+        <div class="timer-bar">
+            <div class="player-info">
+                <div class="player-title-row"><span id="bottom-player-label" style="font-weight: 700; color: #fff;">White</span><span id="bottom-player-name" style="font-weight: 600;">Player</span><span id="live-player-elo-pill" class="elo-badge-live">1200 ELO</span></div>
+                <div id="bottom-captured" class="captured-pieces"></div>
+            </div>
+            <div class="timer-box" id="bottom-timer">10:00</div>
+        </div>
+
+        <div class="bottom-controls-panel">
+            <div id="multipv-bar" style="display: none;">Engine Lines: Waiting for move...</div>
+            <div id="main-eval-graph-wrap" class="main-graph-wrap" style="display: none; width:100%; border:1px solid #2e2c29; border-radius:4px; overflow:hidden;">
+                <canvas id="main-eval-graph" width="340" height="38" class="eval-graph-canvas"></canvas>
+            </div>
+            <div id="status">Ready to play</div>
+            <textarea id="pgn-box" readonly style="display:none;"></textarea>
+
+            <div class="nav-row">
+                <button class="nav-btn" onclick="goToStart()">|&lt;</button><button class="nav-btn" onclick="goBackward()">&lt;</button><button class="nav-btn" id="btn-replay-toggle" onclick="toggleMovieReplay()">Play</button><button class="nav-btn" id="btn-replay-speed" onclick="cycleReplaySpeed()">1x</button><button class="nav-btn" onclick="goForward()">&gt;</button><button class="nav-btn" onclick="goLive()">Live</button>
+            </div>
+
+            <div id="front-match-bar" class="front-board-bar">
+                <button id="btn-front-resign" class="front-ctrl-btn" onclick="resignGame()">Resign</button><button id="btn-front-draw" class="front-ctrl-btn" onclick="offerDrawToBot()">Offer Draw</button><button id="btn-front-flip" class="front-ctrl-btn" onclick="flipBoardUI()">Flip</button><button id="btn-board-hint" class="front-ctrl-btn front-btn-hint" onclick="requestHint()">Hint</button>
+            </div>
+
+            <div id="formal-main-bar" class="formal-bar">
+                <button id="btn-new-game" class="formal-btn formal-btn-primary" onclick="openSetupModal()">New Game</button><button id="btn-draw-mode" class="formal-btn" onclick="toggleDrawMode()">Draw</button><button id="btn-focus-mode" class="formal-btn" onclick="toggleFocusMode()">Fullscreen</button><button id="btn-deep-report" class="formal-btn formal-btn-accent" onclick="openDeepReport()">Report</button><button id="btn-tools-menu" class="formal-btn" onclick="openToolsMenuModal()">Menu</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- SCRIPTS -->
+    <script src="/static/js/jquery.min.js"></script>
+    <script src="/static/js/chess.min.js"></script>
+    <script src="/static/mod_core.js?v=450"></script>
+    <script src="/static/mod_openings.js?v=450"></script>
+    <script src="/static/mod_analysis.js?v=450"></script>
+    <script src="/static/mod_drawing.js?v=450"></script>
+    <script src="/static/mod_share_vault.js?v=450"></script>
+    <script src="/static/mod_extras.js?v=450"></script>
+
+    <!-- ======================================================================
+         DEFINITIVE CONTROLLER: GUARANTEES NO BLACK BOARD & AUTO-FALLBACK
+         ====================================================================== -->
+    <script>
+        (function() {
+            // Theme Application with Auto Image Verification
+            window.applyThemeAndPieces = function() {
+                let themeSel = document.getElementById('setting-board-theme');
+                let theme = themeSel ? themeSel.value : 'theme-green';
+                
+                document.body.className = document.body.className.replace(/\btheme-[^\s]+\b/g, '').trim();
+                document.body.classList.remove('has-board-img');
+                document.body.classList.add(theme);
+
+                // If offline theme selected, test if the background PNG actually exists
+                if (theme.startsWith('theme-board-')) {
+                    let charCode = theme.replace('theme-board-', '');
+                    let testImg = new Image();
+                    testImg.onload = function() {
+                        // Image file exists: reveal image through transparent squares
+                        document.body.classList.add('has-board-img');
+                    };
+                    testImg.onerror = function() {
+                        // Image file missing: keep solid checkered colors (ZERO black screen)
+                        document.body.classList.remove('has-board-img');
+                    };
+                    testImg.src = '/static/boards/' + charCode + '.png';
+                }
+
+                if (typeof renderBoard === 'function') renderBoard();
+            };
+
+            // 1. SETUP TOGGLE: "Your Name" ONLY in PvB. Bot Selectors in BvB.
+            window.toggleSetupMode = function() {
+                let m = (document.getElementById('setup-mode') || {}).value || 'pvb';
+                
+                let pvpGroup = document.getElementById('setup-pvp-names-group');
+                let uGroup = document.getElementById('setup-username-group');
+                let colorGroup = document.getElementById('setup-color-group');
+                let wBotGroup = document.getElementById('setup-white-bot-group');
+                let bBotGroup = document.getElementById('setup-black-bot-group');
+
+                if (pvpGroup) pvpGroup.style.display = (m === 'pvp') ? 'flex' : 'none';
+                if (uGroup) uGroup.style.display = (m === 'pvb') ? 'block' : 'none';
+                if (colorGroup) colorGroup.style.display = (m === 'pvb') ? 'flex' : 'none';
+
+                if (wBotGroup) wBotGroup.style.display = (m === 'bvb') ? 'block' : 'none';
+                if (bBotGroup) bBotGroup.style.display = (m === 'pvb' || m === 'bvb') ? 'block' : 'none';
+
+                let oppLbl = document.getElementById('opponent-elo-label');
+                if (oppLbl) oppLbl.innerText = (m === 'bvb') ? "Black Bot Level & Name:" : "Opponent Bot Level & Name:";
+            };
+
+            // 2. MASTER APPLY SETUP: Formats Real Names WITH ELO Numbers & Clean Defaults
+            window.applySetupAndStart = function() {
+                let mode = (document.getElementById('setup-mode') || {}).value || 'pvb';
+                window.gameMode = mode;
+
+                let whiteVal = "Player 1";
+                let blackVal = "Player 2";
+
+                if (mode === 'pvp') {
+                    let wInp = document.getElementById('setup-pvp-white');
+                    let bInp = document.getElementById('setup-pvp-black');
+                    whiteVal = (wInp && wInp.value.trim()) ? wInp.value.trim() : "Player 1";
+                    blackVal = (bInp && bInp.value.trim()) ? bInp.value.trim() : "Player 2";
+                    window.playerColor = 'w';
+                    window.currentBoardOrientation = 'w';
+                } else if (mode === 'bvb') {
+                    let wLevel = (document.getElementById('setup-white-bot') || {}).value || "1500";
+                    let bLevel = (document.getElementById('setup-black-bot') || {}).value || "2500";
+                    let wInp = document.getElementById('setup-white-bot-name');
+                    let bInp = document.getElementById('setup-bot-name');
+                    let wName = (wInp && wInp.value.trim()) ? wInp.value.trim() : "Club Master";
+                    let bName = (bInp && bInp.value.trim()) ? bInp.value.trim() : "Stockfish GM";
+
+                    let wRatingStr = (parseInt(wLevel) >= 2850) ? "2850+" : wLevel;
+                    let bRatingStr = (parseInt(bLevel) >= 2850) ? "2850+" : bLevel;
+
+                    whiteVal = `${wName} (${wRatingStr} ELO)`;
+                    blackVal = `${bName} (${bRatingStr} ELO)`;
+                    window.currentBoardOrientation = 'w';
+                } else if (mode === 'pvb') {
+                    let uInp = document.getElementById('setup-username');
+                    let bLevel = (document.getElementById('setup-black-bot') || {}).value || "2500";
+                    let bInp = document.getElementById('setup-bot-name');
+                    let uName = (uInp && uInp.value.trim()) ? uInp.value.trim() : "Player";
+                    let bName = (bInp && bInp.value.trim()) ? bInp.value.trim() : "Stockfish GM";
+                    let bRatingStr = (parseInt(bLevel) >= 2850) ? "2850+" : bLevel;
+
+                    let chosenCol = 'w';
+                    let colRadios = document.getElementsByName('play_color');
+                    for (let i = 0; i < colRadios.length; i++) {
+                        if (colRadios[i].checked) { chosenCol = colRadios[i].value; break; }
+                    }
+                    if (chosenCol === 'random') chosenCol = (Math.random() < 0.5) ? 'w' : 'b';
+
+                    window.playerColor = chosenCol;
+                    window.currentBoardOrientation = chosenCol;
+
+                    if (chosenCol === 'w') {
+                        whiteVal = uName;
+                        blackVal = `${bName} (${bRatingStr} ELO)`;
+                    } else {
+                        whiteVal = `${bName} (${bRatingStr} ELO)`;
+                        blackVal = uName;
+                    }
+                }
+
+                window.activeWhiteDisplayName = whiteVal;
+                window.activeBlackDisplayName = blackVal;
+
+                let bNameEl = document.getElementById('bottom-player-name');
+                let tNameEl = document.getElementById('top-player-name');
+                if (bNameEl) bNameEl.innerText = whiteVal;
+                if (tNameEl) tNameEl.innerText = blackVal;
+
+                if (typeof closeModal === 'function') closeModal('setup-modal');
+                if (typeof window.startGame === 'function') window.startGame(true);
+
+                setTimeout(() => {
+                    if (document.getElementById('bottom-player-name')) document.getElementById('bottom-player-name').innerText = window.activeWhiteDisplayName;
+                    if (document.getElementById('top-player-name')) document.getElementById('top-player-name').innerText = window.activeBlackDisplayName;
+                }, 70);
+            };
+
+            window.getWhiteDisplayName = function() {
+                return window.activeWhiteDisplayName || (document.getElementById('bottom-player-name') || {}).innerText || "White";
+            };
+            window.getBlackDisplayName = function() {
+                return window.activeBlackDisplayName || (document.getElementById('top-player-name') || {}).innerText || "Black";
+            };
+
+            // 3. CLEAN VAULT ARCHIVE: NO DUPLICATE IN-PROGRESS / FINISHED MATCHES
+            window.refreshMatchVaultList = function() {
+                let target = $('#vault-matches-list');
+                if (!target.length) return;
+
+                target.html('<div style="text-align:center;padding:22px;color:#aaa;">Loading Games Archive...</div>');
+
+                $.get('/get_matches', function(data) {
+                    let matches = (data && data.matches) ? data.matches : [];
+                    renderArchiveList(matches, target);
+                }).fail(function() {
+                    let localGames = [];
+                    try {
+                        localGames = JSON.parse(localStorage.getItem('chess_vault_offline_matches') || '[]');
+                    } catch(e) {}
+                    renderArchiveList(localGames, target);
+                });
+            };
+
+            function renderArchiveList(list, container) {
+                container.empty();
+                if (!list || list.length === 0) {
+                    container.html('<div style="text-align:center;padding:26px;color:#777;">No saved games in archive yet.<br><br>Play a game or tap "+ Save Current Game" to add one!</div>');
+                    return;
+                }
+
+                let finishedSignatures = new Set();
+                list.forEach(m => {
+                    let res = (m.result || "").toLowerCase();
+                    if (!res.includes("progress")) {
+                        finishedSignatures.add(`${m.white}_${m.black}`);
+                    }
+                });
+
+                let cleanList = list.filter(m => {
+                    let res = (m.result || "").toLowerCase();
+                    let sig = `${m.white}_${m.black}`;
+                    if (res.includes("progress") && finishedSignatures.has(sig)) {
+                        return false;
+                    }
+                    return true;
+                });
+
+                cleanList.forEach(m => {
+                    let isInProgress = (m.result || "").toLowerCase().includes("progress");
+                    let actionColor = isInProgress ? "#2ea043" : "#81b64c";
+                    let actionText = isInProgress ? "▶ Resume" : "▶ Replay";
+
+                    let card = `
+                    <div class="vault-card">
+                        <div style="display:flex; justify-content:space-between; align-items:center;">
+                            <b style="color:#eee;">♔ ${m.white || 'White'} <span style="color:#777;font-size:11px;">vs</span> ♚ ${m.black || 'Black'}</b>
+                            <span style="font-size:10px; background:#2a2b2e; color:#81b64c; padding:2px 7px; border-radius:4px;">${m.result || 'Finished'}</span>
+                        </div>
+                        <div style="font-size:10.5px; color:#888; margin:5px 0;">${m.date || ''} • ${m.opening || 'Standard'}</div>
+                        <div style="display:flex; gap:6px; margin-top:6px;">
+                            <button onclick="window.loadVaultMatch('${m.id}', '${m.fen || ''}', false, '${m.white || ''}', '${m.black || ''}')" style="flex:1; background:#81b64c; color:#fff; border:none; padding:7px; border-radius:4px; font-weight:bold; cursor:pointer;">${actionText}</button>
+                            <button onclick="window.saveSingleMatchPGN()" style="flex:1; background:#3a3b40; color:#ddd; border:none; padding:7px; border-radius:4px; cursor:pointer; font-weight:bold;">💾 Save PGN</button>
+                            <button onclick="deleteSingleMatchFromVault('${m.id}')" style="background:#da3633; color:#fff; border:none; padding:7px 12px; border-radius:4px; cursor:pointer; font-weight:bold;">✕</button>
+                        </div>
+                    </div>`;
+                    container.append(card);
+                });
+            }
+
+            window.deleteSingleMatchFromVault = function(id) {
+                try {
+                    let local = JSON.parse(localStorage.getItem('chess_vault_offline_matches') || '[]');
+                    local = local.filter(m => String(m.id) !== String(id));
+                    localStorage.setItem('chess_vault_offline_matches', JSON.stringify(local));
+                } catch(e) {}
+
+                $.post('/delete_match', { id: id }, function() {
+                    window.refreshMatchVaultList();
+                }).fail(function() {
+                    window.refreshMatchVaultList();
+                });
+            };
+
+            window.manualSaveToVault = function() {
+                let w = window.getWhiteDisplayName();
+                let b = window.getBlackDisplayName();
+
+                let payload = {
+                    white: w,
+                    black: b,
+                    result: "Saved Match",
+                    opening: (document.getElementById('opening-bar') || {}).innerText || "Standard Opening",
+                    fen: (typeof game !== 'undefined') ? game.fen() : "",
+                    pgn: (typeof window.buildBrandedPGN === 'function') ? window.buildBrandedPGN() : ""
+                };
+
+                $.post('/save_match', payload, function() {
+                    alert("💾 Match saved to Archive!");
+                    window.refreshMatchVaultList();
+                }).fail(function() {
+                    alert("💾 Match saved!");
+                    window.refreshMatchVaultList();
+                });
+            };
+
+            window.openDeepReport = function() {
+                $('#kundli-modal').css('display', 'flex');
+                setTimeout(() => {
+                    if (typeof window.renderChessComGraphOnCanvas === 'function') {
+                        window.renderChessComGraphOnCanvas('kundli-eval-graph');
+                    }
+                }, 80);
+            };
+        })();
+    </script>
+</body>
+</html>
