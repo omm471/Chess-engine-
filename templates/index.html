@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>JoHnnY</title>
-    <link rel="stylesheet" href="/static/style.css?v=150">
+    <link rel="stylesheet" href="/static/style.css?v=160">
     <style>
         body {
             background: #161512 !important;
@@ -123,9 +123,11 @@
         .custom-input, select { width: 100%; box-sizing: border-box; padding: 8px 10px; background: #161512; border: 1px solid #383632; border-radius: 5px; color: #fff; font-size: 12.5px; }
 
         /* ====================================================================
-           SETTINGS MODAL ALIGNMENT
+           PRECISE LEFT-ALIGNED SETTINGS MODAL LAYOUT (NO CENTER STACKING)
            ==================================================================== */
-        #settings-modal .modal-content, #settings-modal .setup-box { text-align: left !important; }
+        #settings-modal .modal-content, #settings-modal .setup-box {
+            text-align: left !important;
+        }
         #settings-modal .chessis-sec-title {
             color: #5c9ded !important; font-size: 11px !important; font-weight: 700 !important;
             text-align: left !important; margin: 14px 0 6px 0 !important; text-transform: uppercase !important;
@@ -136,12 +138,18 @@
             align-items: center !important; padding: 10px 4px !important; border-bottom: 1px solid #2d2b28 !important;
             text-align: left !important; width: 100% !important; box-sizing: border-box !important;
         }
-        #settings-modal .chessis-row > div:first-child { text-align: left !important; flex: 1 !important; margin-right: 8px !important; }
-        #settings-modal .chessis-row-title { color: #e8e8e8 !important; font-size: 12.5px !important; font-weight: 600 !important; text-align: left !important; }
-        #settings-modal .chessis-row-sub { color: #8c8c8c !important; font-size: 10.5px !important; margin-top: 2px !important; text-align: left !important; }
+        #settings-modal .chessis-row > div:first-child {
+            text-align: left !important; flex: 1 !important; margin-right: 8px !important;
+        }
+        #settings-modal .chessis-row-title {
+            color: #e8e8e8 !important; font-size: 12.5px !important; font-weight: 600 !important; text-align: left !important;
+        }
+        #settings-modal .chessis-row-sub {
+            color: #8c8c8c !important; font-size: 10.5px !important; margin-top: 2px !important; text-align: left !important;
+        }
         #settings-modal .chessis-row select {
-            width: auto !important; min-width: 95px !important; max-width: 155px !important; padding: 6px 8px !important;
-            margin: 0 !important; text-align: left !important; flex-shrink: 0 !important;
+            width: auto !important; min-width: 100px !important; max-width: 160px !important;
+            padding: 6px 8px !important; margin: 0 !important; text-align: left !important; flex-shrink: 0 !important;
             background: #161512 !important; border: 1px solid #3c3934 !important; color: #fff !important;
         }
         #settings-modal .engine-radio-item {
@@ -165,10 +173,7 @@
             width: 100% !important; height: 100% !important; font-size: 32px; cursor: pointer;
         }
 
-        /* ====================================================================
-           100% CRASH-PROOF BOARD THEMES (NEVER BLACK AGAIN!)
-           ==================================================================== */
-        /* Standard Themes */
+        /* 100% SAFE BOARD THEMES (NO BLACK SQUARES) */
         body.theme-green .square.light { background-color: #eeeed2; }
         body.theme-green .square.dark  { background-color: #769656; }
 
@@ -181,7 +186,6 @@
         body.theme-dark .square.light  { background-color: #a0a0a0; }
         body.theme-dark .square.dark   { background-color: #4c4c4c; }
 
-        /* Offline Themes with rich built-in colors (A to J) */
         body.theme-board-a .square.light { background-color: #f0d9b5 !important; }
         body.theme-board-a .square.dark  { background-color: #b58863 !important; }
 
@@ -212,7 +216,6 @@
         body.theme-board-j .square.light { background-color: #e2e8f0 !important; }
         body.theme-board-j .square.dark  { background-color: #1e293b !important; }
 
-        /* Real Background Image mapping */
         body.theme-board-a #board { background-image: url('/static/boards/a.png') !important; background-size: cover !important; }
         body.theme-board-b #board { background-image: url('/static/boards/b.png') !important; background-size: cover !important; }
         body.theme-board-c #board { background-image: url('/static/boards/c.png') !important; background-size: cover !important; }
@@ -224,7 +227,6 @@
         body.theme-board-i #board { background-image: url('/static/boards/i.png') !important; background-size: cover !important; }
         body.theme-board-j #board { background-image: url('/static/boards/j.png') !important; background-size: cover !important; }
 
-        /* ONLY if real image exists, make squares transparent to reveal the PNG texture */
         body.has-board-img[class*="theme-board-"] .square.light:not(.selected):not(.last-move):not(.premove-sq):not(.highlight-check),
         body.has-board-img[class*="theme-board-"] .square.dark:not(.selected):not(.last-move):not(.premove-sq):not(.highlight-check) {
             background-color: transparent !important;
@@ -241,7 +243,7 @@
 </head>
 <body class="theme-green">
 
-    <!-- SLIDE-OUT SIDEBAR DRAWER -->
+    <!-- SIDEBAR DRAWER -->
     <div id="sidebar-backdrop" class="sidebar-backdrop" onclick="toggleSidebarDrawer(false)"></div>
     <div id="chess-sidebar-drawer" class="sidebar-drawer">
         <div style="display:flex; justify-content:space-between; align-items:center; padding-bottom:10px; margin-bottom:10px; border-bottom:1px solid #33312e;">
@@ -332,6 +334,7 @@
             </div>
             <div class="setup-group">
                 <label>Game Mode:</label>
+                <!-- Default is Player vs Bot -->
                 <select id="setup-mode" onchange="toggleSetupMode()">
                     <option value="pvb" selected>Player vs Bot (Rated Match)</option>
                     <option value="bvb">Bot vs Bot (Rating Levels Match)</option>
@@ -420,6 +423,184 @@
         </div>
     </div>
 
+    <!-- 4. GAME REPORT MODAL -->
+    <div id="kundli-modal" class="modal-overlay" style="display: none;">
+        <div class="modal-content kundli-box">
+            <div class="sticky-top-bar">
+                <span style="color:#fff; font-size:15px; font-weight:bold;">Game Report & Deep Analysis</span>
+                <button class="big-close-btn" onclick="closeModal('kundli-modal')">Close</button>
+            </div>
+
+            <div style="background:#181715; border:1px solid #312f2c; border-radius:6px; padding:8px; margin-bottom:8px; text-align:left;">
+                <div style="font-size:10.5px; color:#5c9ded; font-weight:700; margin-bottom:5px; text-transform:uppercase;">Analysis Engine & Depth Settings</div>
+                <div style="display:flex; flex-wrap:wrap; gap:5px; align-items:center; width:100%;">
+                    <select id="report-engine-select" style="width:100%; background:#121110; color:#fff; border:1px solid #3a3732; padding:6px; border-radius:4px; font-size:11px; box-sizing:border-box;"></select>
+                    <select id="report-depth-select" style="flex:1; min-width:120px; background:#121110; color:#f0c15c; border:1px solid #3a3732; padding:6px; border-radius:4px; font-size:11px; font-weight:bold; box-sizing:border-box;">
+                        <option value="10">Depth 10 (Fast)</option>
+                        <option value="14" selected>Depth 14 (Standard)</option>
+                        <option value="18">Depth 18 (Deep)</option>
+                        <option value="22">Depth 22 (Master)</option>
+                        <option value="26">Depth 26 (Maximum)</option>
+                    </select>
+                    <button onclick="runDeepKundliScan(true)" style="background:#81b64c; color:#fff; border:none; padding:6px 10px; border-radius:4px; font-size:11px; font-weight:bold; cursor:pointer;">Analyze</button>
+                </div>
+            </div>
+
+            <div id="kundli-progress-wrap" style="margin: 4px 0 8px 0;">
+                <div id="kundli-progress-text" style="font-size: 11px; color: #81b64c; margin-bottom: 3px;">Ready to analyze...</div>
+                <div class="progress-bar-bg"><div id="kundli-progress-fill" class="progress-bar-fill"></div></div>
+            </div>
+            <div style="background:#181715; padding:6px; border-radius:5px; border:1px solid #2e2c29;">
+                <canvas id="kundli-eval-graph" width="310" height="75" class="eval-graph-canvas"></canvas>
+            </div>
+            <table class="kundli-table">
+                <thead><tr><th>Metric</th><th id="kundli-w-name">White</th><th id="kundli-b-name">Black</th></tr></thead>
+                <tbody>
+                    <tr><td><b>Accuracy</b></td><td id="k-w-acc" style="color:#81b64c; font-weight:bold; font-size:13px;">--%</td><td id="k-b-acc" style="color:#81b64c; font-weight:bold; font-size:13px;">--%</td></tr>
+                    <tr><td><b>Average CPL</b></td><td id="k-w-acpl">--</td><td id="k-b-acpl">--</td></tr>
+                    <tr><td><b>Est. Rating</b></td><td id="k-w-elo" style="color:#f0c15c; font-weight:bold;">--</td><td id="k-b-elo" style="color:#f0c15c; font-weight:bold;">--</td></tr>
+                </tbody>
+            </table>
+            <div class="points-grid">
+                <div class="point-card"><b>Opening</b><br>W: <span id="k-w-open">--</span> | B: <span id="k-b-open">--</span></div>
+                <div class="point-card"><b>Middlegame</b><br>W: <span id="k-w-mid">--</span> | B: <span id="k-b-mid">--</span></div>
+                <div class="point-card"><b>Endgame</b><br>W: <span id="k-w-end">--</span> | B: <span id="k-b-end">--</span></div>
+                <div class="point-card"><b>Key Moment</b><br><span id="k-turning-point">None</span></div>
+            </div>
+            <table class="kundli-table" style="margin-top: 8px;">
+                <thead><tr><th>Move Quality</th><th>White</th><th>Black</th></tr></thead>
+                <tbody id="kundli-counts-body"></tbody>
+            </table>
+            <div style="background:#181715; border:1px solid #2e2c29; border-radius:4px; padding:7px; margin-top:8px; text-align:left;">
+                <div id="kundli-verdict-text" style="font-size:10.5px; color:#ccc; line-height:1.4;"></div>
+            </div>
+            <div style="text-align: left; margin-top: 8px;">
+                <div style="color: #e0e0e0; font-weight: bold; font-size: 11px;">Key Mistakes & Blunders (Tap to view on board):</div>
+                <div id="kundli-blunder-list" class="blunder-list"></div>
+            </div>
+            <div style="display: flex; gap: 6px; margin-top: 10px;">
+                <button onclick="runDeepKundliScan(true)" style="flex: 1; background: #81b64c; padding: 9px; border:none; border-radius:4px; color:#fff; font-weight:bold; cursor:pointer;">Re-Scan at Selected Depth</button>
+                <button onclick="closeModal('kundli-modal'); openShareModal();" style="flex: 1; background: #4b7399; padding: 9px; border:none; border-radius:4px; color:#fff; font-weight:bold; cursor:pointer;">Share PGN</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 5. SETTINGS MODAL (BULLETPROOF FAIL-SAFE + CLEAN ALIGNMENT) -->
+    <div id="settings-modal" class="modal-overlay" style="display: none;">
+        <div class="modal-content setup-box">
+            <div class="sticky-top-bar">
+                <span style="color:#fff; font-size:15px; font-weight:bold;">Engine & Board Settings</span>
+                <button class="big-close-btn" onclick="closeModal('settings-modal')">Close</button>
+            </div>
+            <div style="background:#161512; border:1px solid #312f2c; border-radius:5px; padding:8px 10px; text-align:left; font-size:11px; color:#aaa;">
+                <div>Active Engine: <b id="active-engine-realname" style="color:#81b64c;">Stockfish 16.1</b> (<span id="active-engine-proto" style="color:#5c9ded;">UCI</span>)</div>
+                <div style="margin-top:3px;">Live Hardware: <b id="live-hw-status" style="color:#f0c15c;">8 Cores • 512 MB Hash • NNUE ON</b></div>
+            </div>
+            <div class="chessis-sec-title">Select Chess Engine</div>
+            <div id="engine-radio-list" style="margin-bottom:6px;"></div>
+            <button id="btn-install-engines" onclick="installExtraEnginesOneClick()" style="width:100%; background:#252c36; border:1px solid #5c9ded; color:#fff; padding:7px; border-radius:4px; font-size:11px; cursor:pointer; margin-bottom:5px;">Download Extra Engines (Fairy, Toga2, Phalanx, Fruit)</button>
+            <div id="engine-import-hint" style="font-size:10.5px; color:#81b64c; margin-bottom:6px; text-align:left;"></div>
+
+            <div class="chessis-sec-title">Real-Time Hardware & Strength</div>
+            <div class="chessis-row">
+                <div>
+                    <div class="chessis-row-title">Use NNUE Evaluation</div>
+                    <div class="chessis-row-sub">Deep neural network positional evaluation</div>
+                </div>
+                <label class="switch-toggle"><input type="checkbox" id="setting-use-nnue" checked onchange="applyLiveEngineHardware()"><span class="switch-slider"></span></label>
+            </div>
+            <div class="chessis-row">
+                <div>
+                    <div class="chessis-row-title">Threads / CPU Cores</div>
+                    <div class="chessis-row-sub">Real-time parallel search threads (1–32)</div>
+                </div>
+                <select id="engine-threads" onchange="applyLiveEngineHardware()">
+                    <option value="1">1 Core</option><option value="2">2 Cores</option><option value="4">4 Cores</option>
+                    <option value="6">6 Cores</option><option value="8" selected>8 Cores</option><option value="12">12 Cores</option>
+                    <option value="16">16 Cores</option><option value="32">32 Cores</option>
+                </select>
+            </div>
+            <div class="chessis-row">
+                <div>
+                    <div class="chessis-row-title">Hash Memory (RAM)</div>
+                    <div class="chessis-row-sub">Safe transposition table RAM (Max 4GB)</div>
+                </div>
+                <select id="engine-hash" onchange="applyLiveEngineHardware()">
+                    <option value="16">16 MB</option><option value="32">32 MB</option><option value="64">64 MB</option>
+                    <option value="128">128 MB</option><option value="256">256 MB</option><option value="512" selected>512 MB</option>
+                    <option value="1024">1024 MB (1GB)</option><option value="2048">2048 MB (2GB)</option><option value="4096">4096 MB (4GB)</option>
+                </select>
+            </div>
+
+            <div class="chessis-sec-title">Board, Audio & Optional Helpers</div>
+            <div class="chessis-row"><div class="chessis-row-title">Board Theme</div>
+                <select id="setting-board-theme" onchange="applyThemeAndPieces()">
+                    <option value="theme-green" selected>Classic Green</option>
+                    <option value="theme-wood">Classic Wood</option>
+                    <option value="theme-blue">Icy Sea Blue</option>
+                    <option value="theme-dark">Dark Slate</option>
+                    <option value="theme-board-a">Warm Wood (ofl)</option>
+                    <option value="theme-board-b">Green &amp; Buff(ofl)</option>
+                    <option value="theme-board-c">Wood Grain(ofl)</option>
+                    <option value="theme-board-d">Ice Blue(ofl)</option>
+                    <option value="theme-board-e">Slate Stone(ofl)</option>
+                    <option value="theme-board-f">Sky Blue(ofl)</option>
+                    <option value="theme-board-g">Ocean Blue(ofl)</option>
+                    <option value="theme-board-h">Deep Green(ofl)</option>
+                    <option value="theme-board-i">Silver Sparkle(ofl)</option>
+                    <option value="theme-board-j">Granite Marble(ofl)</option>
+                </select>
+            </div>
+            <div class="chessis-row"><div class="chessis-row-title">Piece Style</div>
+                <select id="setting-piece-style" onchange="applyThemeAndPieces()"><option value="wikipedia" selected>Classic</option><option value="cburnett">Lichess Neo</option><option value="merida">Merida</option></select>
+            </div>
+            <div class="chessis-row"><div class="chessis-row-title">Move & Game Sounds</div>
+                <select id="setting-sound"><option value="on" selected>ON</option><option value="off">OFF</option></select>
+            </div>
+            <div class="chessis-row"><div class="chessis-row-title">Live Move Badges (★ / ??)</div>
+                <select id="setting-live-feedback"><option value="off" selected>OFF</option><option value="on">ON</option></select>
+            </div>
+            <div class="chessis-row"><div class="chessis-row-title">Show Eval Graph on Board</div>
+                <select id="setting-show-graph"><option value="off" selected>OFF</option><option value="on">ON</option></select>
+            </div>
+            <div class="chessis-row"><div class="chessis-row-title">Show Engine Lines (MultiPV)</div>
+                <select id="setting-show-lines"><option value="off" selected>OFF</option><option value="on">ON</option></select>
+            </div>
+            <div class="chessis-row"><div class="chessis-row-title">Show Engine Speed / Depth Bar</div>
+                <select id="setting-show-telemetry"><option value="off" selected>OFF</option><option value="on">ON</option></select>
+            </div>
+            <button onclick="saveSettings()" style="width: 100%; padding: 10px; background: #81b64c; border:none; border-radius:5px; color:#fff; font-weight:bold; margin-top: 10px; cursor:pointer;">Save & Apply</button>
+        </div>
+    </div>
+
+    <!-- 6. ENDGAME DRILLS & OPENING TRAINER -->
+    <div id="endgame-modal" class="modal-overlay" style="display: none;">
+        <div class="modal-content setup-box">
+            <div class="sticky-top-bar"><span style="color:#fff; font-size:15px; font-weight:bold;">Endgame Drills</span><button class="big-close-btn" onclick="closeModal('endgame-modal')">Close</button></div>
+            <div class="setup-group"><select id="endgame-select" size="8" style="height:190px; font-size:11.5px;"></select></div>
+            <button class="play-now-btn" style="width:100%; padding:10px; background:#81b64c; color:#fff; font-weight:bold; border:none; border-radius:5px; cursor:pointer;" onclick="startEndgameDrill()">Start Drill</button>
+        </div>
+    </div>
+    <div id="trainer-modal" class="modal-overlay" style="display: none;">
+        <div class="modal-content setup-box">
+            <div class="sticky-top-bar"><span style="color:#fff; font-size:15px; font-weight:bold;">World Chess Openings</span><button class="big-close-btn" onclick="closeModal('trainer-modal')">Close</button></div>
+            <div class="setup-group"><input type="text" id="trainer-search-input" class="custom-input" placeholder="Search 3,600+ openings (e.g. Sicilian, Ruy Lopez, London)..." oninput="filterOpeningTrainerList()"></div>
+            <div class="setup-group"><select id="trainer-opening-select" size="8" style="height:175px; font-size:11px;" onchange="updateOpeningPreviewText()"></select></div>
+            <div id="trainer-opening-preview" style="background:#161512; border:1px solid #312f2c; border-radius:5px; padding:7px 9px; font-size:11px; text-align:left; margin-bottom:8px; line-height:1.4;"></div>
+            <div class="setup-group" style="margin-bottom:8px;">
+                <label>Practice Side:</label>
+                <select id="trainer-side-select">
+                    <option value="w" selected>Play as White (Coach plays Black)</option>
+                    <option value="b">Play as Black (Coach plays White)</option>
+                </select>
+            </div>
+            <div style="display:flex; gap:6px;">
+                <button class="play-now-btn" style="flex:1; background:#4b7399; padding:10px 6px; font-size:12px; color:#fff; font-weight:bold; border:none; border-radius:4px; cursor:pointer;" onclick="watchOpeningVideoDemo(true)">▶ Watch Video</button>
+                <button class="play-now-btn" style="flex:1.2; background:#81b64c; padding:10px 6px; font-size:12px; color:#fff; font-weight:bold; border:none; border-radius:4px; cursor:pointer;" onclick="startOpeningDrill()">🎯 Coach Practice</button>
+            </div>
+        </div>
+    </div>
+
     <!-- SAVED GAMES ARCHIVE MODAL (SINGLE CLEAN CONTAINER - ONLY 3-DOT MENU) -->
     <div id="vault-modal" class="modal-overlay" style="display: none;">
         <div class="modal-content kundli-box">
@@ -432,20 +613,6 @@
                 <button onclick="refreshMatchVaultList()" style="background:#2c2a27; color:#ddd; border:1px solid #3f3c38; padding:8px 12px; font-size:11.5px; border-radius:5px; cursor:pointer;">↻</button>
             </div>
             <div id="vault-matches-list"></div>
-        </div>
-    </div>
-
-    <!-- GAME REPORT MODAL -->
-    <div id="kundli-modal" class="modal-overlay" style="display: none;">
-        <div class="modal-content kundli-box">
-            <div class="sticky-top-bar">
-                <span style="color:#fff; font-size:15px; font-weight:bold;">Game Report & Analysis</span>
-                <button class="big-close-btn" onclick="closeModal('kundli-modal')">Close</button>
-            </div>
-            <div style="background:#181715; padding:6px; border-radius:5px; border:1px solid #2e2c29; margin-bottom:8px;">
-                <canvas id="kundli-eval-graph" width="310" height="75" class="eval-graph-canvas"></canvas>
-            </div>
-            <div id="kundli-verdict-text" style="font-size:12px; color:#aaa; text-align:center;">Analysis Ready</div>
         </div>
     </div>
 
@@ -525,37 +692,91 @@
     <!-- SCRIPTS -->
     <script src="/static/js/jquery.min.js"></script>
     <script src="/static/js/chess.min.js"></script>
-    <script src="/static/mod_core.js?v=450"></script>
-    <script src="/static/mod_openings.js?v=450"></script>
-    <script src="/static/mod_analysis.js?v=450"></script>
-    <script src="/static/mod_drawing.js?v=450"></script>
-    <script src="/static/mod_share_vault.js?v=450"></script>
-    <script src="/static/mod_extras.js?v=450"></script>
+    <script src="/static/mod_core.js?v=460"></script>
+    <script src="/static/mod_openings.js?v=460"></script>
+    <script src="/static/mod_analysis.js?v=460"></script>
+    <script src="/static/mod_drawing.js?v=460"></script>
+    <script src="/static/mod_share_vault.js?v=460"></script>
+    <script src="/static/mod_extras.js?v=460"></script>
 
     <!-- ======================================================================
-         DEFINITIVE CONTROLLER: GUARANTEES NO BLACK BOARD & AUTO-FALLBACK
+         DEFINITIVE MASTER CONTROLLER: GUARANTEES SETTINGS MODAL & THEMES
          ====================================================================== -->
     <script>
         (function() {
+            // 1. FAIL-SAFE SETTINGS MODAL OPEN & CLOSE
+            window.openSettingsModal = function() {
+                let m = document.getElementById('settings-modal');
+                if (m) m.style.display = 'flex';
+
+                // Sync currently active theme & pieces to select boxes
+                try {
+                    let savedTheme = localStorage.getItem('saved_chess_theme') || 'theme-green';
+                    let themeSel = document.getElementById('setting-board-theme');
+                    if (themeSel) themeSel.value = savedTheme;
+
+                    let savedPieces = localStorage.getItem('saved_chess_piece_style') || 'wikipedia';
+                    let pSel = document.getElementById('setting-piece-style');
+                    if (pSel) pSel.value = savedPieces;
+                } catch(e) {}
+
+                // Safely load engines in background without blocking opening
+                try {
+                    if (typeof window.refreshEngineListInSettings === 'function') {
+                        window.refreshEngineListInSettings();
+                    }
+                } catch(e) {}
+            };
+
+            window.closeModal = function(id) {
+                let m = document.getElementById(id);
+                if (m) m.style.display = 'none';
+            };
+
+            window.saveSettings = function() {
+                let themeSel = document.getElementById('setting-board-theme');
+                if (themeSel) {
+                    let theme = themeSel.value;
+                    localStorage.setItem('saved_chess_theme', theme);
+                    if (typeof window.applyThemeAndPieces === 'function') {
+                        window.applyThemeAndPieces();
+                    }
+                }
+
+                let pSel = document.getElementById('setting-piece-style');
+                if (pSel) {
+                    localStorage.setItem('saved_chess_piece_style', pSel.value);
+                    if (typeof renderBoard === 'function') renderBoard();
+                }
+
+                try {
+                    if (typeof window.applyLiveEngineHardware === 'function') {
+                        window.applyLiveEngineHardware();
+                    }
+                } catch(e) {}
+
+                closeModal('settings-modal');
+                if (typeof showAndroidToast === 'function') {
+                    showAndroidToast("⚙ Settings Saved & Applied");
+                }
+            };
+
             // Theme Application with Auto Image Verification
             window.applyThemeAndPieces = function() {
                 let themeSel = document.getElementById('setting-board-theme');
-                let theme = themeSel ? themeSel.value : 'theme-green';
+                let theme = themeSel ? themeSel.value : (localStorage.getItem('saved_chess_theme') || 'theme-green');
                 
                 document.body.className = document.body.className.replace(/\btheme-[^\s]+\b/g, '').trim();
                 document.body.classList.remove('has-board-img');
                 document.body.classList.add(theme);
 
-                // If offline theme selected, test if the background PNG actually exists
                 if (theme.startsWith('theme-board-')) {
                     let charCode = theme.replace('theme-board-', '');
                     let testImg = new Image();
                     testImg.onload = function() {
-                        // Image file exists: reveal image through transparent squares
                         document.body.classList.add('has-board-img');
                     };
                     testImg.onerror = function() {
-                        // Image file missing: keep solid checkered colors (ZERO black screen)
                         document.body.classList.remove('has-board-img');
                     };
                     testImg.src = '/static/boards/' + charCode + '.png';
@@ -564,10 +785,9 @@
                 if (typeof renderBoard === 'function') renderBoard();
             };
 
-            // 1. SETUP TOGGLE: "Your Name" ONLY in PvB. Bot Selectors in BvB.
+            // 2. SETUP TOGGLE
             window.toggleSetupMode = function() {
                 let m = (document.getElementById('setup-mode') || {}).value || 'pvb';
-                
                 let pvpGroup = document.getElementById('setup-pvp-names-group');
                 let uGroup = document.getElementById('setup-username-group');
                 let colorGroup = document.getElementById('setup-color-group');
@@ -585,7 +805,7 @@
                 if (oppLbl) oppLbl.innerText = (m === 'bvb') ? "Black Bot Level & Name:" : "Opponent Bot Level & Name:";
             };
 
-            // 2. MASTER APPLY SETUP: Formats Real Names WITH ELO Numbers & Clean Defaults
+            // 3. MASTER APPLY SETUP
             window.applySetupAndStart = function() {
                 let mode = (document.getElementById('setup-mode') || {}).value || 'pvb';
                 window.gameMode = mode;
@@ -649,7 +869,7 @@
                 if (bNameEl) bNameEl.innerText = whiteVal;
                 if (tNameEl) tNameEl.innerText = blackVal;
 
-                if (typeof closeModal === 'function') closeModal('setup-modal');
+                closeModal('setup-modal');
                 if (typeof window.startGame === 'function') window.startGame(true);
 
                 setTimeout(() => {
@@ -665,7 +885,7 @@
                 return window.activeBlackDisplayName || (document.getElementById('top-player-name') || {}).innerText || "Black";
             };
 
-            // 3. CLEAN VAULT ARCHIVE: NO DUPLICATE IN-PROGRESS / FINISHED MATCHES
+            // 4. CLEAN VAULT ARCHIVE
             window.refreshMatchVaultList = function() {
                 let target = $('#vault-matches-list');
                 if (!target.length) return;
