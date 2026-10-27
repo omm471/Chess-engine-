@@ -1124,7 +1124,7 @@ function finishMatchWithAnimation(winnerColor, reasonType, title, subtitle, alre
     gameOverModalTimerId = setTimeout(() => {
         playSnd('notify');
         triggerGameOverSequence(title, subtitle);
-    }, 1250);
+    }, 2200);
 }
 
 function startTimer() {
