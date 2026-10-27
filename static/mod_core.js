@@ -1,11 +1,12 @@
 /* ============================================================================
-   static/mod_core.js (v122 - Full Action Integration & 2-Player Pass-Play Engine)
+   static/mod_core.js (v125 - Fixed Timer Sync & Dynamic Sliders Integration)
+   - Real-time Time Control: Bullet (1m), Blitz (3m/5m), Rapid synced directly
+   - Live Think Time & Depth: Sliders values passed dynamically to AI engine
    - Glitch Fix: AI strictly prevented from playing human's turn in PvB
    - Single Match ID Session: Eliminates multiple duplicate match rows
    - 2-Player Pass & Play: Independent White & Black custom name handling
    - Front Controls: Resign, Offer Draw, Hint, Flip, and Menu actions wired
    - 1.45x Enlarged Floating Tactile Touch Controls (Zero-Drift)
-   - Real-time Depth, NPS (kN/s), Hardware and Engine Telemetry restored
    ============================================================================ */
 
 var game = new Chess();
@@ -182,7 +183,6 @@ function safeHtml(ids, html) { (Array.isArray(ids) ? ids : [ids]).forEach(id => 
 function safeDisplay(ids, disp) { (Array.isArray(ids) ? ids : [ids]).forEach(id => { let el = safeEl(id); if (el) el.style.display = disp; }); }
 function getTextSafe(id, fallback = "") { let el = safeEl(id); return (el && el.innerText) ? el.innerText.trim() : fallback; }
 
-// Robust substring check: Works with "White", "White:", "Player 1 (White):"
 function getWhiteDisplayName() {
     let topLbl = getTextSafe('top-player-label', '').toLowerCase();
     if (topLbl.includes('white')) {
@@ -334,9 +334,20 @@ window.applySetupAndStart = function() {
         safeText('bottom-player-label', 'White');
         safeText('top-player-name', bName.trim());
         safeText('top-player-label', 'Black');
+    } else if (mode === 'eve') {
+        let wEngineSel = safeEl('setup-white-engine');
+        let bEngineSel = safeEl('setup-black-engine');
+        let wName = wEngineSel ? wEngineSel.value : "Stockfish 19";
+        let bName = bEngineSel ? bEngineSel.value : "Stockfish 18";
+
+        currentBoardOrientation = 'w';
+        safeText('bottom-player-name', wName);
+        safeText('bottom-player-label', 'White');
+        safeText('top-player-name', bName);
+        safeText('top-player-label', 'Black');
     }
 
-    // Time Control Settings
+    // Time Control Settings (DIRECT RESOLUTION)
     let tVal = (safeEl('setup-time') || {}).value || "10|0";
     if (tVal === '0|0') {
         isInfiniteTime = true;
@@ -364,9 +375,15 @@ window.applySetupAndStart = function() {
 
     // Bot Think & Depth Settings
     let thinkEl = safeEl('setup-think-time');
-    if (thinkEl) engineThinkTime = parseFloat(thinkEl.value) || 0.8;
+    if (thinkEl) {
+        engineThinkTime = parseFloat(thinkEl.value) || 0.8;
+        window.engineThinkTime = engineThinkTime;
+    }
     let depthEl = safeEl('setup-depth-slider');
-    if (depthEl) engineMaxDepth = parseInt(depthEl.value) || 20;
+    if (depthEl) {
+        engineMaxDepth = parseInt(depthEl.value) || 20;
+        window.engineMaxDepth = engineMaxDepth;
+    }
 
     closeModal('setup-modal');
     window.startGame(true);
@@ -587,7 +604,7 @@ function showPromotionModal(color, toSq, onSelect) {
 }
 
 // ============================================================================
-// ZERO-DRIFT TOUCH ENGINE (DOM COORDINATES + DIRECT SQUARE EXTRACTION)
+// ZERO-DRIFT TOUCH ENGINE
 // ============================================================================
 
 var dragPieceState = { active: false, fromSq: null, currentSq: null, startX: 0, startY: 0, isDragging: false };
@@ -611,7 +628,6 @@ function getSquareAtPoint(clientX, clientY) {
     return files[boardCol] + (8 - boardRow);
 }
 
-// 1.45x Floating Tactile Piece Zoom
 function showGhostPiece(imgUrl, clientX, clientY) {
     let ghost = document.getElementById('drag-ghost-piece');
     if (!ghost) {
@@ -922,7 +938,6 @@ function executeHumanMove(fromSq, toSq, promoPiece = null) {
         setTimeout(() => flipBoardUI(), 150);
     }
 
-    // Only trigger AI if it's NOT human turn!
     if (!isAnalysisBranchMode && !isMatchOver() && (isAutoBotMode() || (gameMode === 'pvb' && game.turn() !== playerColor))) {
         if (aiMoveTimerId) clearTimeout(aiMoveTimerId);
         aiMoveTimerId = setTimeout(makeAiMove, 120);
@@ -932,7 +947,6 @@ function executeHumanMove(fromSq, toSq, promoPiece = null) {
 function makeAiMove() {
     if (isAnalysisBranchMode || isMatchOver()) return;
 
-    // CRITICAL GLITCH FIX: Player vs Bot mode me AI kabhi bhi human ka turn nahi chalega!
     if (gameMode === 'pvb' && game.turn() === playerColor) {
         return;
     }
@@ -942,9 +956,13 @@ function makeAiMove() {
     let sideName = (turnSide === 'w') ? getWhiteDisplayName() : getBlackDisplayName();
     $('#status').text(`${sideName} thinking...`);
 
+    // Dynamically query sliders to ensure real-time engine responsiveness
+    let liveThink = window.engineThinkTime || (safeEl('setup-think-time') ? parseFloat(safeEl('setup-think-time').value) : engineThinkTime);
+    let liveDepth = window.engineMaxDepth || (safeEl('setup-depth-slider') ? parseInt(safeEl('setup-depth-slider').value) : engineMaxDepth);
+
     let postData = {
-        fen: game.fen(), level: botElo, think_time: engineThinkTime,
-        depth: engineMaxDepth, _t: Date.now()
+        fen: game.fen(), level: botElo, think_time: liveThink,
+        depth: liveDepth, _t: Date.now()
     };
 
     if (gameMode === 'eve') {
@@ -1204,14 +1222,15 @@ window.startGame = function(fromSetup = false) {
     selectedSquare = null; currentLegalMoves = []; premoveQueue = []; clearArrows();
     hideGhostPiece();
 
-    // Reset to Player vs Bot if started directly from New Game
     if (!fromSetup) {
         gameMode = 'pvb';
         playerColor = 'w';
         currentBoardOrientation = 'w';
+        whiteTime = 600;
+        blackTime = 600;
+        isInfiniteTime = false;
     }
 
-    // Naye match ka unique session ID lock
     window.currentMatchSessionId = "match_" + Date.now();
     localStorage.setItem('chess_current_session_id', window.currentMatchSessionId);
     localStorage.removeItem('chess_active_match');
@@ -1313,7 +1332,7 @@ function showAnalysisStatus() {
 }
 
 // ============================================================================
-// FRONT CONTROLS: RESIGN, OFFER DRAW, HINT, MENU & FULLSCREEN
+// FRONT CONTROLS
 // ============================================================================
 
 window.resignGame = function() {
@@ -1338,7 +1357,6 @@ window.offerDrawToBot = function() {
         }
         return;
     }
-    // In PvB mode: bot evaluates position
     let currCp = 0;
     let lastRec = gameHistory[gameHistory.length - 1];
     if (lastRec && lastRec.cp !== undefined) currCp = lastRec.cp;
@@ -1449,7 +1467,7 @@ window.resetCareerRating = function() {
 };
 
 // ============================================================================
-// SINGLE-MATCH IN-PLACE STATE SAVE (NO CLOUD DUPLICATE SPAM)
+// SINGLE-MATCH IN-PLACE STATE SAVE
 // ============================================================================
 
 function autoSaveCurrentState() {
@@ -1473,7 +1491,6 @@ function autoSaveCurrentState() {
     localStorage.setItem('chess_current_session_id', state.sessionId);
     localStorage.setItem('chess_active_match', JSON.stringify(state));
 
-    // Debounce save: fast moves hone par multiple cloud calls nahi hongi, sirf 1 clean call jayegi
     if (gameHistory.length >= 2 && window.saveCurrentMatchToVault) {
         if (saveDebounceTimer) clearTimeout(saveDebounceTimer);
         saveDebounceTimer = setTimeout(() => {
@@ -1514,7 +1531,6 @@ function autoResumePreviousMatch() {
         }
         $('#status').text("Game resumed from active session.");
 
-        // AI move ONLY if it's bot's turn!
         if (!isMatchOver() && !isAnalysisBranchMode) {
             if (isAutoBotMode()) {
                 aiMoveTimerId = setTimeout(makeAiMove, 600);
