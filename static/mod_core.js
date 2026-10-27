@@ -1,5 +1,7 @@
 /* ============================================================================
-   static/mod_core.js (v125 - Fixed Timer Sync & Dynamic Sliders Integration)
+   static/mod_core.js (v130 - Real FIDE/Chess.com Elo Engine & Full Integration)
+   - Real-time Elo Rating Engine: Standard FIDE formula based on dynamic opponent strength
+   - Interactive Rating Reset: Hooks into custom rating setup & picker modals
    - Real-time Time Control: Bullet (1m), Blitz (3m/5m), Rapid synced directly
    - Live Think Time & Depth: Sliders values passed dynamically to AI engine
    - Glitch Fix: AI strictly prevented from playing human's turn in PvB
@@ -202,12 +204,19 @@ function getBlackDisplayName() {
 window.syncEloBadgeVisibility = function() {
     let pill = safeEl('live-player-elo-pill');
     let modalBanner = safeEl('modal-elo-change-banner');
-    if (gameMode === 'pvb') {
-        if (pill) pill.style.display = (currentBoardOrientation === playerColor) ? 'inline-block' : 'none';
-        if (modalBanner) modalBanner.style.display = 'block';
-    } else {
-        if (pill) pill.style.display = 'none';
-        if (modalBanner) modalBanner.style.display = 'none';
+    let savedElo = localStorage.getItem('chess_player_elo') || "1200";
+
+    safeText('sidebar-elo-val', `${savedElo} ELO`);
+    if (pill) {
+        pill.innerText = `${savedElo} ELO`;
+        if (gameMode === 'pvb') {
+            pill.style.display = (currentBoardOrientation === playerColor) ? 'inline-block' : 'none';
+        } else {
+            pill.style.display = 'none';
+        }
+    }
+    if (modalBanner) {
+        modalBanner.style.display = (gameMode === 'pvb') ? 'block' : 'none';
     }
 };
 
@@ -292,7 +301,7 @@ window.applySetupAndStart = function() {
         safeText('top-player-name', p2Name.trim() || "Player 2");
         safeText('top-player-label', 'Black');
     } else if (mode === 'pvb') {
-        let uName = (safeEl('setup-username') || {}).value || "You";
+        let uName = (safeEl('setup-username') || {}).value || "Player";
         let botElo = (safeEl('setup-black-bot') || {}).value || "2500";
         let botName = (safeEl('setup-bot-name') || {}).value || getSavedBotName(botElo);
         currentBlackElo = botElo;
@@ -310,14 +319,14 @@ window.applySetupAndStart = function() {
         currentBoardOrientation = chosenCol;
 
         if (chosenCol === 'w') {
-            safeText('bottom-player-name', uName.trim() || "You");
+            safeText('bottom-player-name', uName.trim() || "Player");
             safeText('bottom-player-label', 'White');
-            safeText('top-player-name', botName.trim() || "Stockfish GM");
+            safeText('top-player-name', `${botName.trim()} (${botElo} ELO)`);
             safeText('top-player-label', 'Black');
         } else {
-            safeText('bottom-player-name', uName.trim() || "You");
+            safeText('bottom-player-name', uName.trim() || "Player");
             safeText('bottom-player-label', 'Black');
-            safeText('top-player-name', botName.trim() || "Stockfish GM");
+            safeText('top-player-name', `${botName.trim()} (${botElo} ELO)`);
             safeText('top-player-label', 'White');
         }
     } else if (mode === 'bvb') {
@@ -330,9 +339,9 @@ window.applySetupAndStart = function() {
         currentBlackElo = bElo;
         currentBoardOrientation = 'w';
 
-        safeText('bottom-player-name', wName.trim());
+        safeText('bottom-player-name', `${wName.trim()} (${wElo} ELO)`);
         safeText('bottom-player-label', 'White');
-        safeText('top-player-name', bName.trim());
+        safeText('top-player-name', `${bName.trim()} (${bElo} ELO)`);
         safeText('top-player-label', 'Black');
     } else if (mode === 'eve') {
         let wEngineSel = safeEl('setup-white-engine');
@@ -347,7 +356,7 @@ window.applySetupAndStart = function() {
         safeText('top-player-label', 'Black');
     }
 
-    // Time Control Settings (DIRECT RESOLUTION)
+    // Time Control Settings
     let tVal = (safeEl('setup-time') || {}).value || "10|0";
     if (tVal === '0|0') {
         isInfiniteTime = true;
@@ -956,7 +965,6 @@ function makeAiMove() {
     let sideName = (turnSide === 'w') ? getWhiteDisplayName() : getBlackDisplayName();
     $('#status').text(`${sideName} thinking...`);
 
-    // Dynamically query sliders to ensure real-time engine responsiveness
     let liveThink = window.engineThinkTime || (safeEl('setup-think-time') ? parseFloat(safeEl('setup-think-time').value) : engineThinkTime);
     let liveDepth = window.engineMaxDepth || (safeEl('setup-depth-slider') ? parseInt(safeEl('setup-depth-slider').value) : engineMaxDepth);
 
@@ -1110,6 +1118,51 @@ function updateMaterial(fen) {
     else { safeHtml('top-captured', capByWhite); safeHtml('bottom-captured', capByBlack); }
 }
 
+// ============================================================================
+// REAL FIDE / CHESS.COM ELO RATING CALCULATOR (ACCURATE MATH ENGINE)
+// ============================================================================
+window.calculateEloChange = function(playerElo, opponentElo, score, kFactor = 32) {
+    let pElo = parseFloat(playerElo) || 1200;
+    let oElo = parseFloat(opponentElo) || 1500;
+    let expected = 1.0 / (1.0 + Math.pow(10, (oElo - pElo) / 400.0));
+    let diff = Math.round(kFactor * (score - expected));
+    if (score === 1 && diff < 1) diff = 1;
+    if (score === 0 && diff > -1) diff = -1;
+    return diff;
+};
+
+window.updateCareerRatingOnGameEnd = function(winnerColor) {
+    if (gameMode !== 'pvb') return; // Only rated in Player vs Bot
+    
+    let currentElo = parseInt(localStorage.getItem('chess_player_elo') || "1200");
+    let botElo = parseInt(window.currentBlackElo || (safeEl('setup-black-bot') ? safeEl('setup-black-bot').value : "2500")) || 2500;
+    
+    let score = 0.5; // Draw
+    if (winnerColor === 'draw') {
+        score = 0.5;
+    } else if (winnerColor === playerColor) {
+        score = 1.0; // Player Won
+    } else {
+        score = 0.0; // Player Lost
+    }
+    
+    let eloChange = window.calculateEloChange(currentElo, botElo, score, 32);
+    let newElo = Math.max(100, Math.min(3000, currentElo + eloChange));
+    
+    localStorage.setItem('chess_player_elo', newElo.toString());
+    
+    let sign = eloChange >= 0 ? "+" : "";
+    let changeText = `${newElo} ELO (${sign}${eloChange})`;
+    
+    safeText('sidebar-elo-val', `${newElo} ELO`);
+    safeText('live-player-elo-pill', `${newElo} ELO`);
+    safeText('modal-elo-change-banner', `Rating: ${changeText}`);
+    
+    if (typeof showAndroidToast === 'function') {
+        showAndroidToast(`Rating: ${sign}${eloChange} → ${newElo} ELO`);
+    }
+};
+
 function finishMatchWithAnimation(winnerColor, reasonType, title, subtitle, alreadyPlayedGameEndSound = false) {
     if (matchEnded) return;
     matchEnded = true;
@@ -1118,7 +1171,7 @@ function finishMatchWithAnimation(winnerColor, reasonType, title, subtitle, alre
     if (!alreadyPlayedGameEndSound) playSnd('gameover');
     syncOptionalPanelsVisibility();
     renderBoard();
-    if (window.updateCareerRatingOnGameEnd) window.updateCareerRatingOnGameEnd(winnerColor);
+    window.updateCareerRatingOnGameEnd(winnerColor);
     localStorage.removeItem('chess_active_match');
     if (gameOverModalTimerId) clearTimeout(gameOverModalTimerId);
     gameOverModalTimerId = setTimeout(() => {
@@ -1315,7 +1368,7 @@ window.goLive = function() {
     let rec = gameHistory[historyIndex];
     playSoundForHistoryRec(rec);
     renderBoard();
-    updateEvalBar(historyIndex); updateMaterial(game.fen());
+    updateEvalBar(historyIndex); updateMaterial(gameHistory[historyIndex].fen);
     if (window.drawAllEvalGraphs) window.drawAllEvalGraphs(); updateStatus();
 };
 
@@ -1460,10 +1513,20 @@ window.togglePremoveMode = function() {
 };
 
 window.resetCareerRating = function() {
-    localStorage.setItem('chess_player_elo', "1200");
-    safeText('sidebar-elo-val', "1200 ELO");
-    safeText('live-player-elo-pill', "1200 ELO");
-    if (typeof showAndroidToast === 'function') showAndroidToast("Rating reset to 1200 ELO");
+    if (typeof window.openRatingPickerModal === 'function') {
+        window.openRatingPickerModal();
+    } else {
+        let chosen = prompt("Enter starting Elo Rating (e.g. 400, 800, 1200, 1600):", "1200");
+        if (chosen) {
+            let num = parseInt(chosen);
+            if (!isNaN(num) && num >= 100 && num <= 3000) {
+                localStorage.setItem('chess_player_elo', num.toString());
+                safeText('sidebar-elo-val', `${num} ELO`);
+                safeText('live-player-elo-pill', `${num} ELO`);
+                if (typeof showAndroidToast === 'function') showAndroidToast(`Rating set to ${num} ELO`);
+            }
+        }
+    }
 };
 
 // ============================================================================
@@ -1582,6 +1645,11 @@ $(document).ready(function() {
         let pSel = safeEl('setting-piece-style');
         if (pSel) pSel.value = savedPieces;
     }
+
+    // SYNC STORED ELO RATING ON APP STARTUP
+    let curElo = localStorage.getItem('chess_player_elo') || "1200";
+    safeText('sidebar-elo-val', `${curElo} ELO`);
+    safeText('live-player-elo-pill', `${curElo} ELO`);
 
     let resumed = autoResumePreviousMatch();
     if (!resumed) {
