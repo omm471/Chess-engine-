@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>JoHnnY</title>
-    <link rel="stylesheet" href="/static/style.css?v=135">
+    <link rel="stylesheet" href="/static/style.css?v=210">
     <style>
         body {
             background: #161512 !important;
@@ -61,6 +61,33 @@
         .dragging-source-piece { opacity: 0 !important; visibility: hidden !important; }
         .drag-target-hover { box-shadow: inset 0 0 0 3px rgba(255, 255, 255, 0.82) !important; }
 
+        /* KING GAME-END ANIMATIONS */
+        .king-loser-sq {
+            background: radial-gradient(circle, #e63946 0%, #8b0000 100%) !important;
+            box-shadow: inset 0 0 14px rgba(0, 0, 0, 0.8) !important;
+            z-index: 5 !important;
+        }
+        .king-fallen-piece {
+            transform: rotate(-26deg) translateY(4px) scale(0.90) !important;
+            transition: transform 0.45s cubic-bezier(0.175, 0.885, 0.32, 1.275) !important;
+            filter: drop-shadow(0 8px 10px rgba(0, 0, 0, 0.85)) !important;
+        }
+        .king-winner-sq {
+            background: radial-gradient(circle, #81b64c 0%, #22541d 100%) !important;
+            box-shadow: inset 0 0 14px rgba(255, 235, 130, 0.75) !important;
+            z-index: 5 !important;
+        }
+        .king-winner-piece {
+            transform: scale(1.14) translateY(-2px) !important;
+            filter: drop-shadow(0 0 10px rgba(255, 215, 0, 0.9)) !important;
+            transition: transform 0.35s ease !important;
+        }
+        .king-draw-sq {
+            background: radial-gradient(circle, #38bdf8 0%, #1e3a8a 100%) !important;
+            box-shadow: inset 0 0 12px rgba(0, 0, 0, 0.65) !important;
+            z-index: 5 !important;
+        }
+
         .sidebar-backdrop { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.65); z-index: 1100; display: none; }
         .sidebar-drawer {
             position: fixed; top: 0; left: 0; width: 270px; max-width: 82vw; height: 100vh;
@@ -100,7 +127,6 @@
         #arrow-overlay { position: absolute; top: 0; left: 0; width: 320px; height: 320px; pointer-events: none !important; z-index: 8; }
         #custom-draw-overlay { position: absolute; top: 0; left: 0; width: 320px; height: 320px; pointer-events: none; z-index: 12; }
         #custom-draw-overlay.drawing-active { pointer-events: auto !important; touch-action: none !important; cursor: crosshair !important; }
-        .heat-overlay { position: absolute; inset: 0; pointer-events: none !important; z-index: 1; }
 
         .bottom-controls-panel { width: 344px; display: flex; flex-direction: column; gap: 4px; }
         #multipv-bar { width: 100%; background: #1c1b18; border: 1px solid #2e2c29; color: #b0b0b0; font-size: 10.5px; padding: 4px 8px; border-radius: 4px; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; box-sizing: border-box; }
@@ -111,26 +137,8 @@
         .front-board-bar { display: flex; gap: 4px; width: 100%; }
         .front-ctrl-btn { flex: 1; background: #282623; color: #d8d8d8; border: 1px solid #3a3732; padding: 7px 4px; font-size: 11px; font-weight: 600; border-radius: 4px; cursor: pointer; }
         .front-btn-hint { background: #38311e; border-color: #8a7332; color: #f0c15c; }
-        .formal-bar { display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px; width: 100%; }
-        .formal-btn { background: #282623; color: #e0e0e0; border: 1px solid #3a3732; padding: 8px 2px; font-size: 11px; font-weight: 700; border-radius: 4px; cursor: pointer; }
-        .formal-btn-primary { background: #81b64c; border-color: #81b64c; color: #fff; }
-        .formal-btn-accent { background: #2f3e26; border-color: #628c3a; color: #e8f5e9; }
 
-        .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.85); display: flex; justify-content: center; align-items: flex-start !important; overflow-y: auto !important; padding: 14px 8px !important; box-sizing: border-box !important; z-index: 1000; }
-        .modal-content, .kundli-box, .setup-box { width: 100% !important; max-width: 344px !important; max-height: 88vh !important; overflow-y: auto !important; overflow-x: hidden !important; margin: auto !important; background: #21201d; padding: 12px !important; border-radius: 8px; border: 1px solid #383632; box-sizing: border-box !important; }
-        .sticky-top-bar { position: sticky !important; top: -14px !important; background: #21201d !important; z-index: 99 !important; padding: 8px 2px !important; margin: -10px -4px 10px -4px !important; border-bottom: 1px solid #363431 !important; display: flex !important; justify-content: space-between !important; align-items: center !important; }
-        .big-close-btn { background: #363431 !important; color: #ddd !important; border: 1px solid #4a4844 !important; padding: 4px 10px !important; border-radius: 4px !important; font-size: 11.5px !important; font-weight: bold !important; cursor: pointer !important; }
-
-        .setup-group { margin-bottom: 9px; text-align: left; }
-        .setup-group label { display: block; font-size: 12px; font-weight: bold; margin-bottom: 4px; color: #81b64c; }
-        .custom-input, select { width: 100%; box-sizing: border-box; padding: 8px 10px; background: #161512; border: 1px solid #383632; border-radius: 5px; color: #fff; font-size: 12.5px; }
-
-        .vault-card { background:#1e1e1e; border:1px solid #333; border-radius:8px; padding:10px; margin-bottom:8px; text-align:left; }
-        .eval-graph-canvas { display: block; width: 100%; cursor: pointer; background: #181715; border-radius: 4px; }
-
-        /* ====================================================================
-           1. DRAW PALETTE BAR (NEVER SHOWN ON OPEN - NO OVERLAPPING)
-           ==================================================================== */
+        /* DRAW PALETTE: NEVER SHOWN ON LOAD & NEVER OVERLAPS */
         #draw-palette-bar, .draw-palette {
             position: static !important;
             display: none !important;
@@ -144,16 +152,31 @@
             justify-content: space-between !important;
             margin: 2px 0 !important;
         }
-        #draw-palette-bar.active-palette {
-            display: flex !important;
-        }
-        .color-dot { width: 18px !important; height: 18px !important; border-radius: 50% !important; border: 2px solid transparent !important; cursor: pointer !important; display: inline-block !important; flex-shrink: 0 !important; }
+        #draw-palette-bar.active-palette { display: flex !important; }
+        .color-dot { width: 20px !important; height: 20px !important; border-radius: 50% !important; border: 2px solid transparent !important; cursor: pointer !important; display: inline-block !important; flex-shrink: 0 !important; }
         .color-dot.active-dot { border-color: #fff !important; transform: scale(1.15) !important; }
         .draw-action-btn { background: #282623 !important; color: #ddd !important; border: 1px solid #444 !important; padding: 4px 8px !important; font-size: 10.5px !important; border-radius: 4px !important; cursor: pointer !important; }
 
-        /* ====================================================================
-           2. SETTINGS MODAL LEFT-ALIGNMENT FIX
-           ==================================================================== */
+        .formal-bar { display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px; width: 100%; }
+        .formal-btn { background: #282623; color: #e0e0e0; border: 1px solid #3a3732; padding: 8px 2px; font-size: 11px; font-weight: 700; border-radius: 4px; cursor: pointer; }
+        .formal-btn-primary { background: #81b64c; border-color: #81b64c; color: #fff; }
+
+        .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.85); display: flex; justify-content: center; align-items: flex-start !important; overflow-y: auto !important; padding: 14px 8px !important; box-sizing: border-box !important; z-index: 1000; }
+        .modal-content, .kundli-box, .setup-box { width: 100% !important; max-width: 344px !important; max-height: 88vh !important; overflow-y: auto !important; overflow-x: hidden !important; margin: auto !important; background: #21201d; padding: 12px !important; border-radius: 8px; border: 1px solid #383632; box-sizing: border-box !important; }
+        .sticky-top-bar { position: sticky !important; top: -14px !important; background: #21201d !important; z-index: 99 !important; padding: 8px 2px !important; margin: -10px -4px 10px -4px !important; border-bottom: 1px solid #363431 !important; display: flex !important; justify-content: space-between !important; align-items: center !important; }
+        .big-close-btn { background: #363431 !important; color: #ddd !important; border: 1px solid #4a4844 !important; padding: 4px 10px !important; border-radius: 4px !important; font-size: 11.5px !important; font-weight: bold !important; cursor: pointer !important; }
+
+        .setup-group { margin-bottom: 9px; text-align: left; }
+        .setup-group label { display: block; font-size: 12px; font-weight: bold; margin-bottom: 4px; color: #81b64c; }
+        .custom-input, select { width: 100%; box-sizing: border-box; padding: 8px 10px; background: #161512; border: 1px solid #383632; border-radius: 5px; color: #fff; font-size: 12.5px; }
+
+        .color-selector { display: flex; gap: 8px; margin-top: 4px; }
+        .color-selector label { flex: 1; cursor: pointer; margin: 0; }
+        .color-selector input[type="radio"] { display: none; }
+        .color-icon { display: flex; align-items: center; justify-content: center; height: 38px; border-radius: 5px; border: 1px solid #383632; background: #181715; font-size: 12px; font-weight: bold; color: #ddd; transition: 0.2s; }
+        .color-selector input[type="radio"]:checked + .color-icon { border-color: #81b64c; background: #232c1c; color: #81b64c; box-shadow: 0 0 6px rgba(129, 182, 76, 0.4); }
+
+        /* SETTINGS MODAL CLEAN LEFT-ALIGNMENT */
         #settings-modal .modal-content, #settings-modal .setup-box { text-align: left !important; }
         #settings-modal .chessis-sec-title {
             color: #5c9ded !important; font-size: 11px !important; font-weight: 700 !important;
@@ -189,9 +212,7 @@
         #settings-modal input:checked + .switch-slider { background-color: #5c9ded !important; }
         #settings-modal input:checked + .switch-slider:before { transform: translateX(18px) !important; }
 
-        /* ====================================================================
-           3. GAME REPORT MODAL TABLE & GRID FIX
-           ==================================================================== */
+        /* GAME REPORT TABLE & POINTS GRID FIX */
         #kundli-modal .modal-content, #kundli-modal .kundli-box { text-align: left !important; }
         .kundli-table { width: 100% !important; table-layout: fixed !important; border-collapse: collapse !important; font-size: 10.5px !important; margin-top: 6px !important; background: #181715 !important; }
         .kundli-table th, .kundli-table td { border: 1px solid #2e2c29 !important; padding: 5px 6px !important; text-align: center !important; }
@@ -203,11 +224,71 @@
         .blunder-item { background: #181715 !important; border: 1px solid #2e2c29 !important; border-left: 3px solid #ca3431 !important; padding: 6px 8px !important; border-radius: 4px !important; font-size: 11px !important; display: flex !important; justify-content: space-between !important; align-items: center !important; cursor: pointer !important; text-align: left !important; }
         .progress-bar-bg { width: 100% !important; height: 6px !important; background: #141311 !important; border-radius: 3px !important; overflow: hidden !important; }
         .progress-bar-fill { width: 0% !important; height: 100% !important; background: #81b64c !important; transition: width 0.2s !important; }
+
+        .square {
+            position: relative; display: flex; justify-content: center; align-items: center;
+            width: 100% !important; height: 100% !important; font-size: 32px; cursor: pointer;
+        }
+
+        /* 100% SAFE BOARD THEMES */
+        body.theme-green .square.light { background-color: #eeeed2; }
+        body.theme-green .square.dark  { background-color: #769656; }
+        body.theme-wood .square.light  { background-color: #f0d9b5; }
+        body.theme-wood .square.dark   { background-color: #b58863; }
+        body.theme-blue .square.light  { background-color: #dee3e6; }
+        body.theme-blue .square.dark   { background-color: #8ca2ad; }
+        body.theme-dark .square.light  { background-color: #a0a0a0; }
+        body.theme-dark .square.dark   { background-color: #4c4c4c; }
+
+        body.theme-board-a .square.light { background-color: #f0d9b5 !important; }
+        body.theme-board-a .square.dark  { background-color: #b58863 !important; }
+        body.theme-board-b .square.light { background-color: #ffffdd !important; }
+        body.theme-board-b .square.dark  { background-color: #86a666 !important; }
+        body.theme-board-c .square.light { background-color: #e3c099 !important; }
+        body.theme-board-c .square.dark  { background-color: #8c5a2b !important; }
+        body.theme-board-d .square.light { background-color: #e0f2fe !important; }
+        body.theme-board-d .square.dark  { background-color: #38bdf8 !important; }
+        body.theme-board-e .square.light { background-color: #cbd5e1 !important; }
+        body.theme-board-e .square.dark  { background-color: #475569 !important; }
+        body.theme-board-f .square.light { background-color: #dbeafe !important; }
+        body.theme-board-f .square.dark  { background-color: #3b82f6 !important; }
+        body.theme-board-g .square.light { background-color: #bae6fd !important; }
+        body.theme-board-g .square.dark  { background-color: #0284c7 !important; }
+        body.theme-board-h .square.light { background-color: #e2e8f0 !important; }
+        body.theme-board-h .square.dark  { background-color: #166534 !important; }
+        body.theme-board-i .square.light { background-color: #f8fafc !important; }
+        body.theme-board-i .square.dark  { background-color: #94a3b8 !important; }
+        body.theme-board-j .square.light { background-color: #e2e8f0 !important; }
+        body.theme-board-j .square.dark  { background-color: #1e293b !important; }
+
+        body.theme-board-a #board { background-image: url('/static/boards/a.png') !important; background-size: cover !important; }
+        body.theme-board-b #board { background-image: url('/static/boards/b.png') !important; background-size: cover !important; }
+        body.theme-board-c #board { background-image: url('/static/boards/c.png') !important; background-size: cover !important; }
+        body.theme-board-d #board { background-image: url('/static/boards/d.png') !important; background-size: cover !important; }
+        body.theme-board-e #board { background-image: url('/static/boards/e.png') !important; background-size: cover !important; }
+        body.theme-board-f #board { background-image: url('/static/boards/f.png') !important; background-size: cover !important; }
+        body.theme-board-g #board { background-image: url('/static/boards/g.png') !important; background-size: cover !important; }
+        body.theme-board-h #board { background-image: url('/static/boards/h.png') !important; background-size: cover !important; }
+        body.theme-board-i #board { background-image: url('/static/boards/i.png') !important; background-size: cover !important; }
+        body.theme-board-j #board { background-image: url('/static/boards/j.png') !important; background-size: cover !important; }
+
+        body.has-board-img[class*="theme-board-"] .square.light:not(.selected):not(.last-move):not(.premove-sq):not(.highlight-check):not(.king-loser-sq):not(.king-winner-sq):not(.king-draw-sq),
+        body.has-board-img[class*="theme-board-"] .square.dark:not(.selected):not(.last-move):not(.premove-sq):not(.highlight-check):not(.king-loser-sq):not(.king-winner-sq):not(.king-draw-sq) {
+            background-color: transparent !important;
+        }
+
+        .square.selected { background-color: rgba(245, 246, 130, 0.8) !important; }
+        .square.last-move { background-color: rgba(245, 246, 130, 0.55) !important; }
+        .square.premove-sq { background-color: rgba(235, 64, 52, 0.55) !important; }
+        .square.highlight-check { background-color: rgba(235, 40, 40, 0.85) !important; }
+
+        .vault-card { background:#1e1e1e; border:1px solid #333; border-radius:8px; padding:10px; margin-bottom:8px; text-align:left; }
+        .eval-graph-canvas { display: block; width: 100%; cursor: pointer; background: #181715; border-radius: 4px; }
     </style>
 </head>
 <body class="theme-green">
 
-    <!-- STARTUP LOADING SPLASH SCREEN (REPLACES BLACK SCREEN) -->
+    <!-- STARTUP LOADING SPLASH SCREEN -->
     <div id="app-splash-screen" style="position:fixed; inset:0; background:#161512; z-index:999999; display:flex; flex-direction:column; align-items:center; justify-content:center; font-family:sans-serif; transition: opacity 0.35s ease;">
         <div style="font-size:46px; margin-bottom:12px; animation: pulseKnight 1.4s infinite ease-in-out; color:#81b64c;">♔</div>
         <div style="font-size:16px; font-weight:bold; color:#fff; letter-spacing:0.8px; margin-bottom:4px;">CHESS AI PRO</div>
@@ -347,22 +428,23 @@
                 </select>
             </div>
 
-            <!-- Single Player Name (ONLY in Player vs Bot) -->
+            <!-- Single Player Name -->
             <div class="setup-group" id="setup-username-group">
                 <label>Your Name:</label>
-                <input type="text" id="setup-username" value="Player" class="custom-input" oninput="saveUsername()">
+                <input type="text" id="setup-username" value="Player" class="custom-input">
             </div>
 
+            <!-- Play Side with Stylized Tiles -->
             <div class="setup-group" id="setup-color-group">
                 <label>Play Side:</label>
                 <div class="color-selector">
-                    <label><input type="radio" name="play_color" value="w" checked><div class="color-icon white-icon">♔</div></label>
-                    <label><input type="radio" name="play_color" value="random"><div class="color-icon random-icon">?</div></label>
-                    <label><input type="radio" name="play_color" value="b"><div class="color-icon black-icon">♚</div></label>
+                    <label><input type="radio" name="play_color" value="w" checked><div class="color-icon white-icon">♔ White</div></label>
+                    <label><input type="radio" name="play_color" value="random"><div class="color-icon random-icon">? Random</div></label>
+                    <label><input type="radio" name="play_color" value="b"><div class="color-icon black-icon">♚ Black</div></label>
                 </div>
             </div>
 
-            <!-- Pass & Play 2-Player Names (Clean Default Player 1 & Player 2) -->
+            <!-- Pass & Play 2-Player Names -->
             <div id="setup-pvp-names-group" style="display: none; flex-direction: column; width: 100%;">
                 <div class="setup-group">
                     <label style="color:#81b64c;">White Name:</label>
@@ -378,23 +460,37 @@
                 </div>
             </div>
 
-            <!-- ENGINE VS ENGINE SELECTOR GROUP -->
+            <!-- Engine vs Engine Selectors -->
             <div class="setup-group" id="setup-eve-group" style="display: none; flex-direction: column; gap: 8px;">
                 <div>
                     <label style="color:#81b64c; font-size:11.5px;">White Engine:</label>
-                    <select id="setup-white-engine" style="width:100%; margin-top:3px;"></select>
+                    <select id="setup-white-engine" style="width:100%; margin-top:3px;">
+                        <option value="Stockfish 19" selected>Stockfish 19 (Next-Gen NNUE)</option>
+                        <option value="Stockfish 18">Stockfish 18 (Ultra Tactical)</option>
+                        <option value="Stockfish 17.1">Stockfish 17.1 (NNUE)</option>
+                        <option value="Stockfish 16">Stockfish 16 (Pro)</option>
+                        <option value="Stockfish 15">Stockfish 15 (Classical)</option>
+                        <option value="Stockfish 14">Stockfish 14 (Sharp)</option>
+                    </select>
                 </div>
                 <div>
                     <label style="color:#f0c15c; font-size:11.5px;">Black Engine:</label>
-                    <select id="setup-black-engine" style="width:100%; margin-top:3px;"></select>
+                    <select id="setup-black-engine" style="width:100%; margin-top:3px;">
+                        <option value="Stockfish 18" selected>Stockfish 18 (Ultra Tactical)</option>
+                        <option value="Stockfish 19">Stockfish 19 (Next-Gen NNUE)</option>
+                        <option value="Stockfish 17.1">Stockfish 17.1 (NNUE)</option>
+                        <option value="Stockfish 16">Stockfish 16 (Pro Universal)</option>
+                        <option value="Stockfish 15">Stockfish 15 (Classical)</option>
+                        <option value="Stockfish 14">Stockfish 14 (Sharp)</option>
+                    </select>
                 </div>
             </div>
 
             <!-- Bot Selectors -->
             <div class="setup-group" id="setup-white-bot-group" style="display: none;">
                 <label style="color:#81b64c;">White Bot Level & Name:</label>
-                <div style="display: flex; gap: 5px; width: 100%;">
-                    <select id="setup-white-bot" onchange="loadBotNameForElo('white')" style="flex: 1.2;">
+                <div style="display: flex; gap: 5px;">
+                    <select id="setup-white-bot" style="flex: 1.2;">
                         <option value="400">Lvl 1 (400)</option>
                         <option value="600">Lvl 2 (600)</option>
                         <option value="850">Lvl 3 (850)</option>
@@ -405,13 +501,14 @@
                         <option value="2500">Lvl 8 (2500+)</option>
                         <option value="2850">Max (2850+)</option>
                     </select>
-                    <input type="text" id="setup-white-bot-name" value="Club Master" class="custom-input" style="flex: 1.3; margin-top: 0;" oninput="saveBotNameForElo('white')">
+                    <input type="text" id="setup-white-bot-name" value="Club Master" class="custom-input" style="flex: 1.3;">
                 </div>
             </div>
+
             <div class="setup-group" id="setup-black-bot-group">
                 <label id="opponent-elo-label" style="color:#f0c15c;">Opponent Bot Level & Name:</label>
-                <div style="display: flex; gap: 5px; width: 100%;">
-                    <select id="setup-black-bot" onchange="loadBotNameForElo('black')" style="flex: 1.2;">
+                <div style="display: flex; gap: 5px;">
+                    <select id="setup-black-bot" style="flex: 1.2;">
                         <option value="400">Lvl 1 (400)</option>
                         <option value="600">Lvl 2 (600)</option>
                         <option value="850">Lvl 3 (850)</option>
@@ -422,9 +519,11 @@
                         <option value="2500" selected>Lvl 8 (2500+)</option>
                         <option value="2850">Max (2850+)</option>
                     </select>
-                    <input type="text" id="setup-bot-name" value="Stockfish GM" class="custom-input" style="flex: 1.3; margin-top: 0;" oninput="saveBotNameForElo('black')">
+                    <input type="text" id="setup-bot-name" value="Stockfish GM" class="custom-input" style="flex: 1.3;">
                 </div>
             </div>
+
+            <!-- Bot Playing Style -->
             <div class="setup-group" id="setup-personality-group">
                 <label>Bot Playing Style:</label>
                 <select id="setup-personality">
@@ -435,14 +534,19 @@
                     <option value="carlsen">Endgame Precision (Carlsen)</option>
                 </select>
             </div>
+
+            <!-- Bot Think Time Slider -->
             <div class="setup-group" id="setup-think-group">
                 <label>Bot Think Time per Move: <span id="setup-think-label" style="color:#5c9ded; font-weight:bold;">0.8s / move</span></label>
                 <input type="range" id="setup-think-time" min="0.1" max="5.0" step="0.1" value="0.8" style="width:100%;" oninput="document.getElementById('setup-think-label').innerText=this.value+'s / move'">
             </div>
+
+            <!-- Engine Calculation Depth Slider -->
             <div class="setup-group" id="setup-depth-group">
                 <label>Engine Calculation Depth: <span id="setup-depth-label" style="color:#81b64c; font-weight:bold;">Depth 20</span></label>
                 <input type="range" id="setup-depth-slider" min="4" max="28" step="1" value="20" style="width:100%;" oninput="document.getElementById('setup-depth-label').innerText='Depth '+this.value">
             </div>
+
             <div class="setup-group">
                 <label>Time Control:</label>
                 <select id="setup-time" onchange="toggleCustomTime()">
@@ -491,7 +595,7 @@
                 <div id="kundli-progress-text" style="font-size: 11px; color: #81b64c; margin-bottom: 3px;">Ready to analyze...</div>
                 <div class="progress-bar-bg"><div id="kundli-progress-fill" class="progress-bar-fill"></div></div>
             </div>
-            <div style="background:#181715; padding:6px; border-radius:5px; border:1px solid #2e2c29; margin-bottom:8px;">
+            <div style="background:#181715; padding:6px; border-radius:5px; border:1px solid #2e2c29;">
                 <canvas id="kundli-eval-graph" width="310" height="75" class="eval-graph-canvas"></canvas>
             </div>
             <table class="kundli-table">
@@ -526,7 +630,7 @@
         </div>
     </div>
 
-    <!-- 5. SETTINGS MODAL -->
+    <!-- 5. SETTINGS MODAL (LEFT-ALIGNED) -->
     <div id="settings-modal" class="modal-overlay" style="display: none;">
         <div class="modal-content setup-box">
             <div class="sticky-top-bar">
@@ -534,7 +638,7 @@
                 <button class="big-close-btn" onclick="closeModal('settings-modal')">Close</button>
             </div>
             <div style="background:#161512; border:1px solid #312f2c; border-radius:5px; padding:8px 10px; text-align:left; font-size:11px; color:#aaa;">
-                <div>Active Engine: <b id="active-engine-realname" style="color:#81b64c;">Stockfish 16.1</b> (<span id="active-engine-proto" style="color:#5c9ded;">UCI</span>)</div>
+                <div>Active Engine: <b id="active-engine-realname" style="color:#81b64c;">Stockfish 19</b> (<span id="active-engine-proto" style="color:#5c9ded;">UCI</span>)</div>
                 <div style="margin-top:3px;">Live Hardware: <b id="live-hw-status" style="color:#f0c15c;">8 Cores • 512 MB Hash • NNUE ON</b></div>
             </div>
             <div class="chessis-sec-title">Select Chess Engine</div>
@@ -555,12 +659,10 @@
                     <div class="chessis-row-title">Threads / CPU Cores</div>
                     <div class="chessis-row-sub">Real-time parallel search threads (1–32)</div>
                 </div>
-                <select id="engine-threads" style="width:115px; background:#161512; color:#fff; border:1px solid #3c3934; padding:5px; border-radius:4px;" onchange="applyLiveEngineHardware()">
-                    <script>
-                        for(let i=1; i<=32; i++) {
-                            document.write(`<option value="${i}" ${i===8?'selected':''}>${i} Cores</option>`);
-                        }
-                    </script>
+                <select id="engine-threads" onchange="applyLiveEngineHardware()">
+                    <option value="1">1 Core</option><option value="2">2 Cores</option><option value="4">4 Cores</option>
+                    <option value="6">6 Cores</option><option value="8" selected>8 Cores</option><option value="12">12 Cores</option>
+                    <option value="16">16 Cores</option><option value="32">32 Cores</option>
                 </select>
             </div>
             <div class="chessis-row">
@@ -568,22 +670,16 @@
                     <div class="chessis-row-title">Hash Memory (RAM)</div>
                     <div class="chessis-row-sub">Safe transposition table RAM (Max 4GB)</div>
                 </div>
-                <select id="engine-hash" style="width:125px; background:#161512; color:#fff; border:1px solid #3c3934; padding:5px; border-radius:4px;" onchange="applyLiveEngineHardware()">
-                    <option value="16">16 MB</option>
-                    <option value="32">32 MB</option>
-                    <option value="64">64 MB</option>
-                    <option value="128">128 MB</option>
-                    <option value="256">256 MB</option>
-                    <option value="512" selected>512 MB</option>
-                    <option value="1024">1024 MB (1GB)</option>
-                    <option value="2048">2048 MB (2GB)</option>
-                    <option value="4096">4096 MB (4GB)</option>
+                <select id="engine-hash" onchange="applyLiveEngineHardware()">
+                    <option value="16">16 MB</option><option value="32">32 MB</option><option value="64">64 MB</option>
+                    <option value="128">128 MB</option><option value="256">256 MB</option><option value="512" selected>512 MB</option>
+                    <option value="1024">1024 MB (1GB)</option><option value="2048">2048 MB (2GB)</option><option value="4096">4096 MB (4GB)</option>
                 </select>
             </div>
 
             <div class="chessis-sec-title">Board, Audio & Optional Helpers</div>
             <div class="chessis-row"><div class="chessis-row-title">Board Theme</div>
-                <select id="setting-board-theme" style="width:150px;" onchange="applyThemeAndPieces()">
+                <select id="setting-board-theme" onchange="applyThemeAndPieces()">
                     <option value="theme-green" selected>Classic Green</option>
                     <option value="theme-wood">Classic Wood</option>
                     <option value="theme-blue">Icy Sea Blue</option>
@@ -601,22 +697,19 @@
                 </select>
             </div>
             <div class="chessis-row"><div class="chessis-row-title">Piece Style</div>
-                <select id="setting-piece-style" style="width:130px;" onchange="applyThemeAndPieces()"><option value="wikipedia" selected>Classic</option><option value="cburnett">Lichess Neo</option><option value="merida">Merida</option></select>
+                <select id="setting-piece-style" onchange="applyThemeAndPieces()"><option value="wikipedia" selected>Classic</option><option value="cburnett">Lichess Neo</option><option value="merida">Merida</option></select>
             </div>
             <div class="chessis-row"><div class="chessis-row-title">Move & Game Sounds</div>
-                <select id="setting-sound" style="width:90px;"><option value="on" selected>ON</option><option value="off">OFF</option></select>
+                <select id="setting-sound"><option value="on" selected>ON</option><option value="off">OFF</option></select>
             </div>
             <div class="chessis-row"><div class="chessis-row-title">Live Move Badges (★ / ??)</div>
-                <select id="setting-live-feedback" style="width:90px;"><option value="off" selected>OFF</option><option value="on">ON</option></select>
+                <select id="setting-live-feedback"><option value="off" selected>OFF</option><option value="on">ON</option></select>
             </div>
             <div class="chessis-row"><div class="chessis-row-title">Show Eval Graph on Board</div>
-                <select id="setting-show-graph" style="width:90px;"><option value="off" selected>OFF</option><option value="on">ON</option></select>
+                <select id="setting-show-graph"><option value="off" selected>OFF</option><option value="on">ON</option></select>
             </div>
             <div class="chessis-row"><div class="chessis-row-title">Show Engine Lines (MultiPV)</div>
-                <select id="setting-show-lines" style="width:90px;"><option value="off" selected>OFF</option><option value="on">ON</option></select>
-            </div>
-            <div class="chessis-row"><div class="chessis-row-title">Show Engine Speed / Depth Bar</div>
-                <select id="setting-show-telemetry" style="width:90px;"><option value="off" selected>OFF</option><option value="on">ON</option></select>
+                <select id="setting-show-lines"><option value="off" selected>OFF</option><option value="on">ON</option></select>
             </div>
             <button onclick="saveSettings()" style="width: 100%; padding: 10px; background: #81b64c; border:none; border-radius:5px; color:#fff; font-weight:bold; margin-top: 10px; cursor:pointer;">Save & Apply</button>
         </div>
@@ -650,7 +743,7 @@
         </div>
     </div>
 
-    <!-- SAVED GAMES ARCHIVE MODAL (SINGLE CLEAN CONTAINER - ONLY 3-DOT MENU) -->
+    <!-- SAVED GAMES ARCHIVE MODAL -->
     <div id="vault-modal" class="modal-overlay" style="display: none;">
         <div class="modal-content kundli-box">
             <div class="sticky-top-bar">
@@ -661,7 +754,6 @@
                 <button onclick="manualSaveToVault()" style="flex:1; background:#81b64c; color:#fff; border:none; padding:8px; font-size:11.5px; font-weight:bold; border-radius:5px; cursor:pointer;">+ Save Current Game</button>
                 <button onclick="refreshMatchVaultList()" style="background:#2c2a27; color:#ddd; border:1px solid #3f3c38; padding:8px 12px; font-size:11.5px; border-radius:5px; cursor:pointer;">↻</button>
             </div>
-            <!-- Single container: Eliminates duplicate sections -->
             <div id="vault-matches-list"></div>
         </div>
     </div>
@@ -675,7 +767,7 @@
                     <div class="app-logo">JOHNNY <span>CHESS</span></div>
                 </div>
                 <div style="display:flex; align-items:center; gap:5px;">
-                    <div class="hw-pill" id="top-engine-pill" onclick="openSettingsModal()">Stockfish 16.1 • 8C/512MB</div>
+                    <div class="hw-pill" id="top-engine-pill" onclick="openSettingsModal()">Stockfish 19 • 8C/512MB</div>
                     <button class="header-icon-btn" onclick="openSettingsModal()" title="Settings">⚙</button>
                 </div>
             </div>
@@ -733,11 +825,19 @@
                 <button id="btn-front-resign" class="front-ctrl-btn" onclick="resignGame()">Resign</button><button id="btn-front-draw" class="front-ctrl-btn" onclick="offerDrawToBot()">Offer Draw</button><button id="btn-front-flip" class="front-ctrl-btn" onclick="flipBoardUI()">Flip</button><button id="btn-board-hint" class="front-ctrl-btn front-btn-hint" onclick="requestHint()">Hint</button>
             </div>
 
+            <!-- DRAW PALETTE BAR (NEVER SHOWN ON LOAD) -->
             <div id="draw-palette-bar" class="draw-palette">
                 <div style="display:flex; gap:6px; align-items:center;">
-                    <span class="color-dot active-dot" style="background:#ffaa00;" onclick="setDrawColor('rgba(255, 170, 0, 0.75)', this)"></span><span class="color-dot" style="background:#e63946;" onclick="setDrawColor('rgba(230, 57, 70, 0.75)', this)"></span><span class="color-dot" style="background:#739552;" onclick="setDrawColor('rgba(115, 149, 82, 0.78)', this)"></span><span class="color-dot" style="background:#4a8ff0;" onclick="setDrawColor('rgba(74, 143, 240, 0.75)', this)"></span>
+                    <span class="color-dot active-dot" style="background:#ffaa00;" onclick="setDrawColor('rgba(255, 170, 0, 0.75)', this)"></span>
+                    <span class="color-dot" style="background:#e63946;" onclick="setDrawColor('rgba(230, 57, 70, 0.75)', this)"></span>
+                    <span class="color-dot" style="background:#739552;" onclick="setDrawColor('rgba(115, 149, 82, 0.78)', this)"></span>
+                    <span class="color-dot" style="background:#4a8ff0;" onclick="setDrawColor('rgba(74, 143, 240, 0.75)', this)"></span>
                 </div>
-                <div style="display:flex; gap:4px;"><button class="draw-action-btn" onclick="undoDrawAnnotation()">Undo</button><button class="draw-action-btn" onclick="redoDrawAnnotation()">Redo</button><button class="draw-action-btn" onclick="clearCustomAnnotations()">Clear</button></div>
+                <div style="display:flex; gap:4px;">
+                    <button class="draw-action-btn" onclick="undoDrawAnnotation()">Undo</button>
+                    <button class="draw-action-btn" onclick="redoDrawAnnotation()">Redo</button>
+                    <button class="draw-action-btn" onclick="clearCustomAnnotations()">Clear</button>
+                </div>
             </div>
 
             <div id="formal-main-bar" class="formal-bar">
@@ -749,61 +849,236 @@
     <!-- SCRIPTS -->
     <script src="/static/js/jquery.min.js"></script>
     <script src="/static/js/chess.min.js"></script>
-    <script src="/static/mod_core.js?v=440"></script>
-    <script src="/static/mod_openings.js?v=440"></script>
-    <script src="/static/mod_analysis.js?v=440"></script>
-    <script src="/static/mod_drawing.js?v=440"></script>
-    <script src="/static/mod_share_vault.js?v=440"></script>
-    <script src="/static/mod_extras.js?v=440"></script>
+    <script src="/static/mod_core.js?v=490"></script>
+    <script src="/static/mod_openings.js?v=490"></script>
+    <script src="/static/mod_analysis.js?v=490"></script>
+    <script src="/static/mod_drawing.js?v=490"></script>
+    <script src="/static/mod_share_vault.js?v=490"></script>
+    <script src="/static/mod_extras.js?v=490"></script>
 
-    <!-- ======================================================================
-         DEFINITIVE CONTROLLER: GUARANTEES NO DUPLICATES & CLEAN DEFAULTS
-         ====================================================================== -->
+    <!-- MASTER CONTROLLER SCRIPT (100% FIXED) -->
     <script>
         (function() {
-            window.applyThemeAndPieces = function() {
-                let themeSel = document.getElementById('setting-board-theme');
-                let theme = themeSel ? themeSel.value : 'theme-green';
-                document.body.className = document.body.className.replace(/\btheme-[^\s]+\b/g, '').trim();
-                document.body.classList.add(theme);
-                if (typeof renderBoard === 'function') renderBoard();
+            // ================================================================
+            // 1. AJAX PREFILTER: GUARANTEES THINK TIME & DEPTH REACH PYTHON ENGINE
+            // ================================================================
+            $.ajaxPrefilter(function(options, originalOptions, jqXHR) {
+                if (options.url && options.url.includes('/ai_move')) {
+                    let curThink = window.engineThinkTime || (document.getElementById('setup-think-time') || {}).value || 0.8;
+                    let curDepth = window.engineMaxDepth || (document.getElementById('setup-depth-slider') || {}).value || 20;
+
+                    if (typeof options.data === 'string') {
+                        if (!options.data.includes('think_time=')) options.data += `&think_time=${curThink}`;
+                        else options.data = options.data.replace(/think_time=[^&]*/, `think_time=${curThink}`);
+
+                        if (!options.data.includes('depth=')) options.data += `&depth=${curDepth}`;
+                        else options.data = options.data.replace(/depth=[^&]*/, `depth=${curDepth}`);
+                    } else if (typeof options.data === 'object' && options.data !== null) {
+                        options.data.think_time = curThink;
+                        options.data.depth = curDepth;
+                    }
+                }
+            });
+
+            // ================================================================
+            // 2. DYNAMIC KING END EFFECTS
+            // ================================================================
+            window.activeGameEndStatus = null;
+            window.clearKingEndEffects = function() {
+                $('.square').removeClass('king-loser-sq king-winner-sq king-draw-sq');
+                $('.square img, .square .piece, .square > div').removeClass('king-fallen-piece king-winner-piece');
             };
 
-            // 1. SETUP TOGGLE: "Your Name" ONLY in PvB. Bot Selectors in BvB.
+            window.applyKingEndEffects = function() {
+                if (typeof game === 'undefined') return;
+                window.clearKingEndEffects();
+
+                let isMate = (typeof game.in_checkmate === 'function' && game.in_checkmate());
+                let isDraw = (typeof game.in_draw === 'function' && game.in_draw()) || 
+                             (typeof game.in_stalemate === 'function' && game.in_stalemate()) ||
+                             (typeof game.in_threefold_repetition === 'function' && game.in_threefold_repetition()) ||
+                             (typeof game.insufficient_material === 'function' && game.insufficient_material());
+
+                let status = window.activeGameEndStatus;
+                if (!status) {
+                    if (isMate) {
+                        let loserSide = game.turn();
+                        let winnerSide = (loserSide === 'w') ? 'b' : 'w';
+                        status = { type: 'mate', loser: loserSide, winner: winnerSide };
+                    } else if (isDraw) {
+                        status = { type: 'draw' };
+                    }
+                }
+                if (!status) return;
+
+                let whiteKingSq = null, blackKingSq = null;
+                try {
+                    let b = game.board();
+                    for (let r = 0; r < 8; r++) {
+                        for (let c = 0; c < 8; c++) {
+                            let p = b[r][c];
+                            if (p && p.type === 'k') {
+                                let sq = String.fromCharCode(97 + c) + (8 - r);
+                                if (p.color === 'w') whiteKingSq = sq;
+                                else blackKingSq = sq;
+                            }
+                        }
+                    }
+                } catch(e) {}
+
+                if (status.type === 'draw') {
+                    if (whiteKingSq) $(`[data-square="${whiteKingSq}"], .square-${whiteKingSq}`).addClass('king-draw-sq');
+                    if (blackKingSq) $(`[data-square="${blackKingSq}"], .square-${blackKingSq}`).addClass('king-draw-sq');
+                } else {
+                    let loserSq = (status.loser === 'w') ? whiteKingSq : blackKingSq;
+                    let winnerSq = (status.winner === 'w') ? whiteKingSq : blackKingSq;
+
+                    if (loserSq) {
+                        let $loserCell = $(`[data-square="${loserSq}"], .square-${loserSq}`);
+                        $loserCell.addClass('king-loser-sq');
+                        $loserCell.find('img, .piece, div[class*="piece"]').addClass('king-fallen-piece');
+                    }
+                    if (winnerSq) {
+                        let $winnerCell = $(`[data-square="${winnerSq}"], .square-${winnerSq}`);
+                        $winnerCell.addClass('king-winner-sq');
+                        $winnerCell.find('img, .piece, div[class*="piece"]').addClass('king-winner-piece');
+                    }
+                }
+            };
+
+            let _origRenderBoard = window.renderBoard;
+            window.renderBoard = function() {
+                if (typeof _origRenderBoard === 'function') _origRenderBoard.apply(this, arguments);
+                setTimeout(window.applyKingEndEffects, 25);
+            };
+
+            window.resignGame = function() {
+                let loserColor = window.playerColor || 'w';
+                if (window.gameMode === 'bvb') loserColor = 'w';
+                let winnerColor = (loserColor === 'w') ? 'b' : 'w';
+                window.activeGameEndStatus = { type: 'resign', loser: loserColor, winner: winnerColor };
+
+                if (typeof window.showModal === 'function') window.showModal('game-modal');
+                else $('#game-modal').show();
+                setTimeout(window.applyKingEndEffects, 50);
+            };
+
+            window.offerDrawToBot = function() {
+                window.activeGameEndStatus = { type: 'draw' };
+                if (typeof window.showModal === 'function') window.showModal('game-modal');
+                else $('#game-modal').show();
+                setTimeout(window.applyKingEndEffects, 50);
+            };
+
+            // ================================================================
+            // 3. DRAW PALETTE TOGGLE (NEVER OVERLAPS ON OTHER BUTTONS)
+            // ================================================================
+            window.toggleDrawMode = function() {
+                let palette = $('#draw-palette-bar');
+                let overlay = $('#custom-draw-overlay');
+                if (palette.hasClass('active-palette') || palette.is(':visible')) {
+                    palette.removeClass('active-palette').hide();
+                    overlay.removeClass('drawing-active');
+                } else {
+                    palette.addClass('active-palette').css('display', 'flex');
+                    overlay.addClass('drawing-active');
+                }
+            };
+
+            window.toggleCustomTime = function() {
+                let t = (document.getElementById('setup-time') || {}).value;
+                let grp = document.getElementById('custom-time-group');
+                if (grp) grp.style.display = (t === 'custom') ? 'flex' : 'none';
+            };
+
+            // ================================================================
+            // 4. SETUP MODAL TOGGLE (SHOWS/HIDES RELEVANT SECTIONS)
+            // ================================================================
             window.toggleSetupMode = function() {
                 let m = (document.getElementById('setup-mode') || {}).value || 'pvb';
                 
                 let pvpGroup = document.getElementById('setup-pvp-names-group');
                 let uGroup = document.getElementById('setup-username-group');
                 let colorGroup = document.getElementById('setup-color-group');
+                let eveGroup = document.getElementById('setup-eve-group');
                 let wBotGroup = document.getElementById('setup-white-bot-group');
                 let bBotGroup = document.getElementById('setup-black-bot-group');
-                let eveGroup = document.getElementById('setup-eve-group');
+                let personalityGroup = document.getElementById('setup-personality-group');
                 let thinkGroup = document.getElementById('setup-think-group');
                 let depthGroup = document.getElementById('setup-depth-group');
-                let personalityGroup = document.getElementById('setup-personality-group');
 
                 if (pvpGroup) pvpGroup.style.display = (m === 'pvp') ? 'flex' : 'none';
                 if (uGroup) uGroup.style.display = (m === 'pvb') ? 'block' : 'none';
-                if (colorGroup) colorGroup.style.display = (m === 'pvb') ? 'flex' : 'none';
+                if (colorGroup) colorGroup.style.display = (m === 'pvb') ? 'block' : 'none';
 
+                if (eveGroup) eveGroup.style.display = (m === 'eve') ? 'flex' : 'none';
                 if (wBotGroup) wBotGroup.style.display = (m === 'bvb') ? 'block' : 'none';
                 if (bBotGroup) bBotGroup.style.display = (m === 'pvb' || m === 'bvb') ? 'block' : 'none';
 
-                if (eveGroup) eveGroup.style.display = (m === 'eve') ? 'flex' : 'none';
-                if (thinkGroup) thinkGroup.style.display = (m === 'pvp') ? 'none' : 'flex';
-                if (depthGroup) depthGroup.style.display = (m === 'pvp') ? 'none' : 'flex';
+                let showSliders = (m === 'pvb' || m === 'bvb' || m === 'eve');
                 if (personalityGroup) personalityGroup.style.display = (m === 'pvb' || m === 'bvb') ? 'block' : 'none';
+                if (thinkGroup) thinkGroup.style.display = showSliders ? 'block' : 'none';
+                if (depthGroup) depthGroup.style.display = showSliders ? 'block' : 'none';
 
                 let oppLbl = document.getElementById('opponent-elo-label');
                 if (oppLbl) oppLbl.innerText = (m === 'bvb') ? "Black Bot Level & Name:" : "Opponent Bot Level & Name:";
             };
 
-            // 2. MASTER APPLY SETUP: Formats Real Names WITH ELO Numbers & Clean Defaults
+            // ================================================================
+            // 5. MASTER APPLY SETUP (TYPO FIXED + PROPER TIMER & BOT CONFIG)
+            // ================================================================
             window.applySetupAndStart = function() {
                 let mode = (document.getElementById('setup-mode') || {}).value || 'pvb';
                 window.gameMode = mode;
+                window.activeGameEndStatus = null;
+                window.clearKingEndEffects();
 
+                // 1. EXTRACT THINK TIME & CALCULATION DEPTH & STORE IN GLOBAL ENGINE VARS
+                let thinkVal = parseFloat((document.getElementById('setup-think-time') || {}).value) || 0.8;
+                let depthVal = parseInt((document.getElementById('setup-depth-slider') || {}).value) || 20;
+                let personality = (document.getElementById('setup-personality') || {}).value || "default";
+
+                window.engineThinkTime = thinkVal;
+                window.engineMaxDepth = depthVal;
+                window.aiThinkTime = thinkVal;
+                window.aiDepth = depthVal;
+                window.botPersonality = personality;
+
+                // 2. PARSE SELECTED TIME CONTROL
+                let timeVal = (document.getElementById('setup-time') || {}).value || "10|0";
+                let totalSecs = 600;
+                let incSecs = 0;
+                let isInf = false;
+
+                if (timeVal === '0|0') {
+                    isInf = true;
+                    totalSecs = 0; // Unlimited
+                } else if (timeVal === 'custom') {
+                    let cM = parseInt((document.getElementById('custom-minutes') || {}).value) || 10;
+                    let cS = parseInt((document.getElementById('custom-seconds') || {}).value) || 0;
+                    incSecs = parseInt((document.getElementById('custom-increment') || {}).value) || 0;
+                    totalSecs = cM * 60 + cS;
+                } else {
+                    let pts = timeVal.split('|');
+                    totalSecs = (parseInt(pts[0]) || 10) * 60;
+                    incSecs = parseInt(pts[1]) || 0;
+                }
+
+                // Push to mod_core clock variables
+                window.isInfiniteTime = isInf;
+                window.whiteTime = totalSecs;
+                window.blackTime = totalSecs;
+                window.whiteIncrement = incSecs;
+                window.blackIncrement = incSecs;
+
+                let mStr = Math.floor(totalSecs / 60);
+                let sStr = totalSecs % 60;
+                let formattedTime = isInf ? "∞" : ((mStr < 10 ? "0" + mStr : mStr) + ":" + (sStr < 10 ? "0" + sStr : sStr));
+
+                if (document.getElementById('top-timer')) document.getElementById('top-timer').innerText = formattedTime;
+                if (document.getElementById('bottom-timer')) document.getElementById('bottom-timer').innerText = formattedTime;
+
+                // 3. APPLY NAMES & SIDES (TYPO FIXED: colRadios[i].value)
                 let whiteVal = "Player 1";
                 let blackVal = "Player 2";
 
@@ -824,9 +1099,11 @@
 
                     let wRatingStr = (parseInt(wLevel) >= 2850) ? "2850+" : wLevel;
                     let bRatingStr = (parseInt(bLevel) >= 2850) ? "2850+" : bLevel;
-
                     whiteVal = `${wName} (${wRatingStr} ELO)`;
                     blackVal = `${bName} (${bRatingStr} ELO)`;
+
+                    window.currentWhiteElo = wLevel;
+                    window.currentBlackElo = bLevel;
                     window.currentBoardOrientation = 'w';
                 } else if (mode === 'pvb') {
                     let uInp = document.getElementById('setup-username');
@@ -836,10 +1113,13 @@
                     let bName = (bInp && bInp.value.trim()) ? bInp.value.trim() : "Stockfish GM";
                     let bRatingStr = (parseInt(bLevel) >= 2850) ? "2850+" : bLevel;
 
+                    window.currentBlackElo = bLevel;
+
+                    // STRICT FIX: colRadios[i].value
                     let chosenCol = 'w';
                     let colRadios = document.getElementsByName('play_color');
                     for (let i = 0; i < colRadios.length; i++) {
-                        if (colRadios[i].checked) { chosenCol = colRadive.value; break; }
+                        if (colRadios[i].checked) { chosenCol = colRadios[i].value; break; }
                     }
                     if (chosenCol === 'random') chosenCol = (Math.random() < 0.5) ? 'w' : 'b';
 
@@ -853,6 +1133,12 @@
                         whiteVal = `${bName} (${bRatingStr} ELO)`;
                         blackVal = uName;
                     }
+                } else if (mode === 'eve') {
+                    let wEng = (document.getElementById('setup-white-engine') || {}).value || "Stockfish 19";
+                    let bEng = (document.getElementById('setup-black-engine') || {}).value || "Stockfish 18";
+                    whiteVal = wEng;
+                    blackVal = bEng;
+                    window.currentBoardOrientation = 'w';
                 }
 
                 window.activeWhiteDisplayName = whiteVal;
@@ -863,12 +1149,19 @@
                 if (bNameEl) bNameEl.innerText = whiteVal;
                 if (tNameEl) tNameEl.innerText = blackVal;
 
-                if (typeof closeModal === 'function') closeModal('setup-modal');
+                closeModal('setup-modal');
                 if (typeof window.startGame === 'function') window.startGame(true);
 
                 setTimeout(() => {
                     if (document.getElementById('bottom-player-name')) document.getElementById('bottom-player-name').innerText = window.activeWhiteDisplayName;
                     if (document.getElementById('top-player-name')) document.getElementById('top-player-name').innerText = window.activeBlackDisplayName;
+                    if (document.getElementById('top-timer')) document.getElementById('top-timer').innerText = formattedTime;
+                    if (document.getElementById('bottom-timer')) document.getElementById('bottom-timer').innerText = formattedTime;
+
+                    if (mode === 'pvb' && window.playerColor === 'b') {
+                        if (typeof makeAiMove === 'function') makeAiMove();
+                        else if (typeof window.makeAiMove === 'function') window.makeAiMove();
+                    }
                 }, 70);
             };
 
@@ -879,21 +1172,84 @@
                 return window.activeBlackDisplayName || (document.getElementById('top-player-name') || {}).innerText || "Black";
             };
 
-            // 3. CLEAN VAULT ARCHIVE: NO DUPLICATE IN-PROGRESS / FINISHED MATCHES
+            // ================================================================
+            // 6. SETTINGS MODAL & THEMES
+            // ================================================================
+            window.openSettingsModal = function() {
+                let m = document.getElementById('settings-modal');
+                if (m) m.style.display = 'flex';
+                try {
+                    let savedTheme = localStorage.getItem('saved_chess_theme') || 'theme-green';
+                    let themeSel = document.getElementById('setting-board-theme');
+                    if (themeSel) themeSel.value = savedTheme;
+
+                    let savedPieces = localStorage.getItem('saved_chess_piece_style') || 'wikipedia';
+                    let pSel = document.getElementById('setting-piece-style');
+                    if (pSel) pSel.value = savedPieces;
+                } catch(e) {}
+                try {
+                    if (typeof window.refreshEngineListInSettings === 'function') {
+                        window.refreshEngineListInSettings();
+                    }
+                } catch(e) {}
+            };
+
+            window.closeModal = function(id) {
+                let m = document.getElementById(id);
+                if (m) m.style.display = 'none';
+            };
+
+            window.saveSettings = function() {
+                let themeSel = document.getElementById('setting-board-theme');
+                if (themeSel) {
+                    let theme = themeSel.value;
+                    localStorage.setItem('saved_chess_theme', theme);
+                    if (typeof window.applyThemeAndPieces === 'function') {
+                        window.applyThemeAndPieces();
+                    }
+                }
+                let pSel = document.getElementById('setting-piece-style');
+                if (pSel) {
+                    localStorage.setItem('saved_chess_piece_style', pSel.value);
+                    if (typeof renderBoard === 'function') renderBoard();
+                }
+                closeModal('settings-modal');
+            };
+
+            window.applyThemeAndPieces = function() {
+                let themeSel = document.getElementById('setting-board-theme');
+                let theme = themeSel ? themeSel.value : (localStorage.getItem('saved_chess_theme') || 'theme-green');
+                document.body.className = document.body.className.replace(/\btheme-[^\s]+\b/g, '').trim();
+                document.body.classList.remove('has-board-img');
+                document.body.classList.add(theme);
+
+                if (theme.startsWith('theme-board-')) {
+                    let charCode = theme.replace('theme-board-', '');
+                    let testImg = new Image();
+                    testImg.onload = function() {
+                        document.body.classList.add('has-board-img');
+                    };
+                    testImg.onerror = function() {
+                        document.body.classList.remove('has-board-img');
+                    };
+                    testImg.src = '/static/boards/' + charCode + '.png';
+                }
+                if (typeof renderBoard === 'function') renderBoard();
+            };
+
+            // ================================================================
+            // 7. ARCHIVE DEDUPLICATION
+            // ================================================================
             window.refreshMatchVaultList = function() {
                 let target = $('#vault-matches-list');
                 if (!target.length) return;
-
                 target.html('<div style="text-align:center;padding:22px;color:#aaa;">Loading Games Archive...</div>');
-
                 $.get('/get_matches', function(data) {
                     let matches = (data && data.matches) ? data.matches : [];
                     renderArchiveList(matches, target);
                 }).fail(function() {
                     let localGames = [];
-                    try {
-                        localGames = JSON.parse(localStorage.getItem('chess_vault_offline_matches') || '[]');
-                    } catch(e) {}
+                    try { localGames = JSON.parse(localStorage.getItem('chess_vault_offline_matches') || '[]'); } catch(e) {}
                     renderArchiveList(localGames, target);
                 });
             };
@@ -901,32 +1257,24 @@
             function renderArchiveList(list, container) {
                 container.empty();
                 if (!list || list.length === 0) {
-                    container.html('<div style="text-align:center;padding:26px;color:#777;">No saved games in archive yet.<br><br>Play a game or tap "+ Save Current Game" to add one!</div>');
+                    container.html('<div style="text-align:center;padding:26px;color:#777;">No saved games in archive yet.</div>');
                     return;
                 }
-
                 let finishedSignatures = new Set();
                 list.forEach(m => {
                     let res = (m.result || "").toLowerCase();
-                    if (!res.includes("progress")) {
-                        finishedSignatures.add(`${m.white}_${m.black}`);
-                    }
+                    if (!res.includes("progress")) finishedSignatures.add(`${m.white}_${m.black}`);
                 });
 
                 let cleanList = list.filter(m => {
                     let res = (m.result || "").toLowerCase();
                     let sig = `${m.white}_${m.black}`;
-                    if (res.includes("progress") && finishedSignatures.has(sig)) {
-                        return false;
-                    }
-                    return true;
+                    return !(res.includes("progress") && finishedSignatures.has(sig));
                 });
 
                 cleanList.forEach(m => {
                     let isInProgress = (m.result || "").toLowerCase().includes("progress");
-                    let actionColor = isInProgress ? "#2ea043" : "#81b64c";
                     let actionText = isInProgress ? "▶ Resume" : "▶ Replay";
-
                     let card = `
                     <div class="vault-card">
                         <div style="display:flex; justify-content:space-between; align-items:center;">
@@ -950,32 +1298,20 @@
                     local = local.filter(m => String(m.id) !== String(id));
                     localStorage.setItem('chess_vault_offline_matches', JSON.stringify(local));
                 } catch(e) {}
-
-                $.post('/delete_match', { id: id }, function() {
-                    window.refreshMatchVaultList();
-                }).fail(function() {
-                    window.refreshMatchVaultList();
-                });
+                $.post('/delete_match', { id: id }, function() { window.refreshMatchVaultList(); });
             };
 
             window.manualSaveToVault = function() {
-                let w = window.getWhiteDisplayName();
-                let b = window.getBlackDisplayName();
-
                 let payload = {
-                    white: w,
-                    black: b,
+                    white: window.getWhiteDisplayName(),
+                    black: window.getBlackDisplayName(),
                     result: "Saved Match",
                     opening: (document.getElementById('opening-bar') || {}).innerText || "Standard Opening",
                     fen: (typeof game !== 'undefined') ? game.fen() : "",
                     pgn: (typeof window.buildBrandedPGN === 'function') ? window.buildBrandedPGN() : ""
                 };
-
                 $.post('/save_match', payload, function() {
                     alert("💾 Match saved to Archive!");
-                    window.refreshMatchVaultList();
-                }).fail(function() {
-                    alert("💾 Match saved!");
                     window.refreshMatchVaultList();
                 });
             };
@@ -988,6 +1324,12 @@
                     }
                 }, 80);
             };
+
+            // INITIALIZATION ON LOAD
+            $(document).ready(function() {
+                $('#draw-palette-bar').removeClass('active-palette').hide();
+                window.toggleSetupMode();
+            });
         })();
     </script>
 </body>
