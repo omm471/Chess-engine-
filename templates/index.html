@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>JoHnnY</title>
-    <link rel="stylesheet" href="/static/style.css?v=140">
+    <link rel="stylesheet" href="/static/style.css?v=150">
     <style>
         body {
             background: #161512 !important;
@@ -60,24 +60,6 @@
         }
         .dragging-source-piece { opacity: 0 !important; visibility: hidden !important; }
         .drag-target-hover { box-shadow: inset 0 0 0 3px rgba(255, 255, 255, 0.82) !important; }
-
-        .king-loser-sq {
-            background: radial-gradient(circle, rgba(220, 53, 49, 0.88) 0%, rgba(145, 20, 20, 0.95) 100%) !important;
-            box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.55) !important;
-        }
-        .king-fallen-piece { transform: rotate(22deg) scale(0.92) !important; transition: transform 0.35s ease !important; }
-        .king-winner-sq {
-            background: radial-gradient(circle, rgba(142, 202, 78, 0.92) 0%, rgba(88, 145, 42, 0.96) 100%) !important;
-            box-shadow: inset 0 0 12px rgba(255, 235, 130, 0.8) !important;
-        }
-        .king-winner-piece {
-            transform: scale(1.12) translateY(-2px) !important;
-            filter: drop-shadow(0 0 6px rgba(255, 215, 0, 0.75)) !important;
-            transition: transform 0.35s ease !important;
-        }
-        .king-draw-sq {
-            background: radial-gradient(circle, rgba(92, 157, 237, 0.75) 0%, rgba(48, 92, 150, 0.88) 100%) !important;
-        }
 
         .sidebar-backdrop { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.65); z-index: 1100; display: none; }
         .sidebar-drawer {
@@ -141,132 +123,117 @@
         .custom-input, select { width: 100%; box-sizing: border-box; padding: 8px 10px; background: #161512; border: 1px solid #383632; border-radius: 5px; color: #fff; font-size: 12.5px; }
 
         /* ====================================================================
-           STRICT SETTINGS MODAL ALIGNMENT FIX (PREVENTS CENTERED STACKING)
+           SETTINGS MODAL ALIGNMENT
            ==================================================================== */
-        #settings-modal .modal-content,
-        #settings-modal .setup-box {
-            text-align: left !important;
-        }
+        #settings-modal .modal-content, #settings-modal .setup-box { text-align: left !important; }
         #settings-modal .chessis-sec-title {
-            color: #5c9ded !important;
-            font-size: 11px !important;
-            font-weight: 700 !important;
-            text-align: left !important;
-            margin: 14px 0 6px 0 !important;
-            text-transform: uppercase !important;
-            letter-spacing: 0.5px !important;
-            display: block !important;
+            color: #5c9ded !important; font-size: 11px !important; font-weight: 700 !important;
+            text-align: left !important; margin: 14px 0 6px 0 !important; text-transform: uppercase !important;
+            letter-spacing: 0.5px !important; display: block !important;
         }
         #settings-modal .chessis-row {
-            display: flex !important;
-            flex-direction: row !important;
-            justify-content: space-between !important;
-            align-items: center !important;
-            padding: 10px 4px !important;
-            border-bottom: 1px solid #2d2b28 !important;
-            text-align: left !important;
-            width: 100% !important;
-            box-sizing: border-box !important;
+            display: flex !important; flex-direction: row !important; justify-content: space-between !important;
+            align-items: center !important; padding: 10px 4px !important; border-bottom: 1px solid #2d2b28 !important;
+            text-align: left !important; width: 100% !important; box-sizing: border-box !important;
         }
-        #settings-modal .chessis-row > div:first-child {
-            text-align: left !important;
-            flex: 1 !important;
-            margin-right: 8px !important;
-        }
-        #settings-modal .chessis-row-title {
-            color: #e8e8e8 !important;
-            font-size: 12.5px !important;
-            font-weight: 600 !important;
-            text-align: left !important;
-        }
-        #settings-modal .chessis-row-sub {
-            color: #8c8c8c !important;
-            font-size: 10.5px !important;
-            margin-top: 2px !important;
-            text-align: left !important;
-        }
+        #settings-modal .chessis-row > div:first-child { text-align: left !important; flex: 1 !important; margin-right: 8px !important; }
+        #settings-modal .chessis-row-title { color: #e8e8e8 !important; font-size: 12.5px !important; font-weight: 600 !important; text-align: left !important; }
+        #settings-modal .chessis-row-sub { color: #8c8c8c !important; font-size: 10.5px !important; margin-top: 2px !important; text-align: left !important; }
         #settings-modal .chessis-row select {
-            width: auto !important;
-            min-width: 95px !important;
-            max-width: 155px !important;
-            padding: 6px 8px !important;
-            margin: 0 !important;
-            text-align: left !important;
-            flex-shrink: 0 !important;
-            background: #161512 !important;
-            border: 1px solid #3c3934 !important;
-            color: #fff !important;
+            width: auto !important; min-width: 95px !important; max-width: 155px !important; padding: 6px 8px !important;
+            margin: 0 !important; text-align: left !important; flex-shrink: 0 !important;
+            background: #161512 !important; border: 1px solid #3c3934 !important; color: #fff !important;
         }
         #settings-modal .engine-radio-item {
-            display: flex !important;
-            flex-direction: row !important;
-            justify-content: space-between !important;
-            align-items: center !important;
-            padding: 9px 10px !important;
-            background: #181715 !important;
-            border: 1px solid #2e2c29 !important;
-            border-radius: 5px !important;
-            margin-bottom: 6px !important;
-            cursor: pointer !important;
-            text-align: left !important;
-            width: 100% !important;
-            box-sizing: border-box !important;
+            display: flex !important; flex-direction: row !important; justify-content: space-between !important;
+            align-items: center !important; padding: 9px 10px !important; background: #181715 !important;
+            border: 1px solid #2e2c29 !important; border-radius: 5px !important; margin-bottom: 6px !important;
+            cursor: pointer !important; text-align: left !important; width: 100% !important; box-sizing: border-box !important;
         }
-        #settings-modal .engine-radio-item > div:first-child {
-            text-align: left !important;
-            flex: 1 !important;
+        #settings-modal .engine-radio-item > div:first-child { text-align: left !important; flex: 1 !important; }
+        #settings-modal .engine-radio-item > div:last-child { text-align: right !important; margin-left: 8px !important; flex-shrink: 0 !important; }
+        #settings-modal .engine-radio-item.active-eng { border-color: #81b64c !important; background: #1e261a !important; }
+        #settings-modal .switch-toggle { position: relative !important; display: inline-block !important; width: 40px !important; height: 22px !important; flex-shrink: 0 !important; }
+        #settings-modal .switch-toggle input { opacity: 0 !important; width: 0 !important; height: 0 !important; margin: 0 !important; position: absolute !important; }
+        #settings-modal .switch-slider { position: absolute !important; cursor: pointer !important; inset: 0 !important; background-color: #3a3834 !important; transition: .2s !important; border-radius: 22px !important; }
+        #settings-modal .switch-slider:before { position: absolute !important; content: "" !important; height: 16px !important; width: 16px !important; left: 3px !important; bottom: 3px !important; background-color: #fff !important; transition: .2s !important; border-radius: 50% !important; }
+        #settings-modal input:checked + .switch-slider { background-color: #5c9ded !important; }
+        #settings-modal input:checked + .switch-slider:before { transform: translateX(18px) !important; }
+
+        .square {
+            position: relative; display: flex; justify-content: center; align-items: center;
+            width: 100% !important; height: 100% !important; font-size: 32px; cursor: pointer;
         }
-        #settings-modal .engine-radio-item > div:last-child {
-            text-align: right !important;
-            margin-left: 8px !important;
-            flex-shrink: 0 !important;
+
+        /* ====================================================================
+           100% CRASH-PROOF BOARD THEMES (NEVER BLACK AGAIN!)
+           ==================================================================== */
+        /* Standard Themes */
+        body.theme-green .square.light { background-color: #eeeed2; }
+        body.theme-green .square.dark  { background-color: #769656; }
+
+        body.theme-wood .square.light  { background-color: #f0d9b5; }
+        body.theme-wood .square.dark   { background-color: #b58863; }
+
+        body.theme-blue .square.light  { background-color: #dee3e6; }
+        body.theme-blue .square.dark   { background-color: #8ca2ad; }
+
+        body.theme-dark .square.light  { background-color: #a0a0a0; }
+        body.theme-dark .square.dark   { background-color: #4c4c4c; }
+
+        /* Offline Themes with rich built-in colors (A to J) */
+        body.theme-board-a .square.light { background-color: #f0d9b5 !important; }
+        body.theme-board-a .square.dark  { background-color: #b58863 !important; }
+
+        body.theme-board-b .square.light { background-color: #ffffdd !important; }
+        body.theme-board-b .square.dark  { background-color: #86a666 !important; }
+
+        body.theme-board-c .square.light { background-color: #e3c099 !important; }
+        body.theme-board-c .square.dark  { background-color: #8c5a2b !important; }
+
+        body.theme-board-d .square.light { background-color: #e0f2fe !important; }
+        body.theme-board-d .square.dark  { background-color: #38bdf8 !important; }
+
+        body.theme-board-e .square.light { background-color: #cbd5e1 !important; }
+        body.theme-board-e .square.dark  { background-color: #475569 !important; }
+
+        body.theme-board-f .square.light { background-color: #dbeafe !important; }
+        body.theme-board-f .square.dark  { background-color: #3b82f6 !important; }
+
+        body.theme-board-g .square.light { background-color: #bae6fd !important; }
+        body.theme-board-g .square.dark  { background-color: #0284c7 !important; }
+
+        body.theme-board-h .square.light { background-color: #e2e8f0 !important; }
+        body.theme-board-h .square.dark  { background-color: #166534 !important; }
+
+        body.theme-board-i .square.light { background-color: #f8fafc !important; }
+        body.theme-board-i .square.dark  { background-color: #94a3b8 !important; }
+
+        body.theme-board-j .square.light { background-color: #e2e8f0 !important; }
+        body.theme-board-j .square.dark  { background-color: #1e293b !important; }
+
+        /* Real Background Image mapping */
+        body.theme-board-a #board { background-image: url('/static/boards/a.png') !important; background-size: cover !important; }
+        body.theme-board-b #board { background-image: url('/static/boards/b.png') !important; background-size: cover !important; }
+        body.theme-board-c #board { background-image: url('/static/boards/c.png') !important; background-size: cover !important; }
+        body.theme-board-d #board { background-image: url('/static/boards/d.png') !important; background-size: cover !important; }
+        body.theme-board-e #board { background-image: url('/static/boards/e.png') !important; background-size: cover !important; }
+        body.theme-board-f #board { background-image: url('/static/boards/f.png') !important; background-size: cover !important; }
+        body.theme-board-g #board { background-image: url('/static/boards/g.png') !important; background-size: cover !important; }
+        body.theme-board-h #board { background-image: url('/static/boards/h.png') !important; background-size: cover !important; }
+        body.theme-board-i #board { background-image: url('/static/boards/i.png') !important; background-size: cover !important; }
+        body.theme-board-j #board { background-image: url('/static/boards/j.png') !important; background-size: cover !important; }
+
+        /* ONLY if real image exists, make squares transparent to reveal the PNG texture */
+        body.has-board-img[class*="theme-board-"] .square.light:not(.selected):not(.last-move):not(.premove-sq):not(.highlight-check),
+        body.has-board-img[class*="theme-board-"] .square.dark:not(.selected):not(.last-move):not(.premove-sq):not(.highlight-check) {
+            background-color: transparent !important;
         }
-        #settings-modal .engine-radio-item.active-eng {
-            border-color: #81b64c !important;
-            background: #1e261a !important;
-        }
-        #settings-modal #engine-import-hint {
-            text-align: left !important;
-        }
-        #settings-modal .switch-toggle {
-            position: relative !important;
-            display: inline-block !important;
-            width: 40px !important;
-            height: 22px !important;
-            flex-shrink: 0 !important;
-        }
-        #settings-modal .switch-toggle input {
-            opacity: 0 !important;
-            width: 0 !important;
-            height: 0 !important;
-            margin: 0 !important;
-            position: absolute !important;
-        }
-        #settings-modal .switch-slider {
-            position: absolute !important;
-            cursor: pointer !important;
-            inset: 0 !important;
-            background-color: #3a3834 !important;
-            transition: .2s !important;
-            border-radius: 22px !important;
-        }
-        #settings-modal .switch-slider:before {
-            position: absolute !important;
-            content: "" !important;
-            height: 16px !important;
-            width: 16px !important;
-            left: 3px !important;
-            bottom: 3px !important;
-            background-color: #fff !important;
-            transition: .2s !important;
-            border-radius: 50% !important;
-        }
-        #settings-modal input:checked + .switch-slider {
-            background-color: #5c9ded !important;
-        }
-        #settings-modal input:checked + .switch-slider:before {
-            transform: translateX(18px) !important;
-        }
+
+        .square.selected { background-color: rgba(245, 246, 130, 0.8) !important; }
+        .square.last-move { background-color: rgba(245, 246, 130, 0.55) !important; }
+        .square.premove-sq { background-color: rgba(235, 64, 52, 0.55) !important; }
+        .square.highlight-check { background-color: rgba(235, 40, 40, 0.85) !important; }
 
         .vault-card { background:#1e1e1e; border:1px solid #333; border-radius:8px; padding:10px; margin-bottom:8px; text-align:left; }
         .eval-graph-canvas { display: block; width: 100%; cursor: pointer; background: #181715; border-radius: 4px; }
@@ -365,7 +332,6 @@
             </div>
             <div class="setup-group">
                 <label>Game Mode:</label>
-                <!-- Default is Player vs Bot -->
                 <select id="setup-mode" onchange="toggleSetupMode()">
                     <option value="pvb" selected>Player vs Bot (Rated Match)</option>
                     <option value="bvb">Bot vs Bot (Rating Levels Match)</option>
@@ -377,7 +343,7 @@
             <!-- Single Player Name (ONLY in Player vs Bot) -->
             <div class="setup-group" id="setup-username-group">
                 <label>Your Name:</label>
-                <input type="text" id="setup-username" value="Player" class="custom-input" oninput="saveUsername()">
+                <input type="text" id="setup-username" value="Player" class="custom-input">
             </div>
 
             <div class="setup-group" id="setup-color-group">
@@ -405,23 +371,11 @@
                 </div>
             </div>
 
-            <!-- ENGINE VS ENGINE SELECTOR GROUP -->
-            <div class="setup-group" id="setup-eve-group" style="display: none; flex-direction: column; gap: 8px;">
-                <div>
-                    <label style="color:#81b64c; font-size:11.5px;">White Engine:</label>
-                    <select id="setup-white-engine" style="width:100%; margin-top:3px;"></select>
-                </div>
-                <div>
-                    <label style="color:#f0c15c; font-size:11.5px;">Black Engine:</label>
-                    <select id="setup-black-engine" style="width:100%; margin-top:3px;"></select>
-                </div>
-            </div>
-
-            <!-- Bot Selectors -->
+            <!-- Bot Selectors for Bot vs Bot -->
             <div class="setup-group" id="setup-white-bot-group" style="display: none;">
                 <label style="color:#81b64c;">White Bot Level & Name:</label>
-                <div style="display: flex; gap: 5px; width: 100%;">
-                    <select id="setup-white-bot" onchange="loadBotNameForElo('white')" style="flex: 1.2;">
+                <div style="display: flex; gap: 5px;">
+                    <select id="setup-white-bot" style="flex: 1.2;">
                         <option value="400">Lvl 1 (400)</option>
                         <option value="600">Lvl 2 (600)</option>
                         <option value="850">Lvl 3 (850)</option>
@@ -432,13 +386,14 @@
                         <option value="2500">Lvl 8 (2500+)</option>
                         <option value="2850">Max (2850+)</option>
                     </select>
-                    <input type="text" id="setup-white-bot-name" value="Club Master" class="custom-input" style="flex: 1.3; margin-top: 0;" oninput="saveBotNameForElo('white')">
+                    <input type="text" id="setup-white-bot-name" value="Club Master" class="custom-input" style="flex: 1.3;">
                 </div>
             </div>
+
             <div class="setup-group" id="setup-black-bot-group">
                 <label id="opponent-elo-label" style="color:#f0c15c;">Opponent Bot Level & Name:</label>
-                <div style="display: flex; gap: 5px; width: 100%;">
-                    <select id="setup-black-bot" onchange="loadBotNameForElo('black')" style="flex: 1.2;">
+                <div style="display: flex; gap: 5px;">
+                    <select id="setup-black-bot" style="flex: 1.2;">
                         <option value="400">Lvl 1 (400)</option>
                         <option value="600">Lvl 2 (600)</option>
                         <option value="850">Lvl 3 (850)</option>
@@ -449,231 +404,19 @@
                         <option value="2500" selected>Lvl 8 (2500+)</option>
                         <option value="2850">Max (2850+)</option>
                     </select>
-                    <input type="text" id="setup-bot-name" value="Stockfish GM" class="custom-input" style="flex: 1.3; margin-top: 0;" oninput="saveBotNameForElo('black')">
+                    <input type="text" id="setup-bot-name" value="Stockfish GM" class="custom-input" style="flex: 1.3;">
                 </div>
             </div>
-            <div class="setup-group" id="setup-personality-group">
-                <label>Bot Playing Style:</label>
-                <select id="setup-personality">
-                    <option value="default" selected>Standard Universal</option>
-                    <option value="human_club">Human Club Style</option>
-                    <option value="tal">Aggressive Tactical (Tal)</option>
-                    <option value="karpov">Solid Positional (Karpov)</option>
-                    <option value="carlsen">Endgame Precision (Carlsen)</option>
-                </select>
-            </div>
-            <div class="setup-group" id="setup-think-group">
-                <label>Bot Think Time per Move: <span id="setup-think-label" style="color:#5c9ded; font-weight:bold;">0.8s / move</span></label>
-                <input type="range" id="setup-think-time" min="0.1" max="5.0" step="0.1" value="0.8" style="width:100%;" oninput="document.getElementById('setup-think-label').innerText=this.value+'s / move'">
-            </div>
-            <div class="setup-group" id="setup-depth-group">
-                <label>Engine Calculation Depth: <span id="setup-depth-label" style="color:#81b64c; font-weight:bold;">Depth 20</span></label>
-                <input type="range" id="setup-depth-slider" min="4" max="28" step="1" value="20" style="width:100%;" oninput="document.getElementById('setup-depth-label').innerText='Depth '+this.value">
-            </div>
+
             <div class="setup-group">
                 <label>Time Control:</label>
-                <select id="setup-time" onchange="toggleCustomTime()">
+                <select id="setup-time">
                     <option value="0|0">Unlimited (∞)</option>
-                    <option value="1|0">Bullet (1m)</option>
                     <option value="3|2">Blitz (3m + 2s)</option>
-                    <option value="5|3">Blitz (5m + 3s)</option>
                     <option value="10|0" selected>Rapid (10m)</option>
-                    <option value="15|10">Rapid (15m + 10s)</option>
-                    <option value="custom">Custom Time...</option>
                 </select>
-            </div>
-            <div class="setup-group" id="custom-time-group" style="display: none; gap: 5px; flex-direction: row;">
-                <input type="number" id="custom-minutes" placeholder="Min" value="10" class="custom-input" style="flex:1;">
-                <input type="number" id="custom-seconds" placeholder="Sec" value="0" class="custom-input" style="flex:1;">
-                <input type="number" id="custom-increment" placeholder="Inc(s)" value="2" class="custom-input" style="flex:1;">
             </div>
             <button class="play-now-btn" style="width:100%; padding:10px; background:#2563eb; color:#fff; font-weight:bold; border:none; border-radius:5px; cursor:pointer;" onclick="applySetupAndStart()">Play</button>
-        </div>
-    </div>
-
-    <!-- 4. GAME REPORT MODAL -->
-    <div id="kundli-modal" class="modal-overlay" style="display: none;">
-        <div class="modal-content kundli-box">
-            <div class="sticky-top-bar">
-                <span style="color:#fff; font-size:15px; font-weight:bold;">Game Report & Deep Analysis</span>
-                <button class="big-close-btn" onclick="closeModal('kundli-modal')">Close</button>
-            </div>
-
-            <div style="background:#181715; border:1px solid #312f2c; border-radius:6px; padding:8px; margin-bottom:8px; text-align:left;">
-                <div style="font-size:10.5px; color:#5c9ded; font-weight:700; margin-bottom:5px; text-transform:uppercase;">Analysis Engine & Depth Settings</div>
-                <div style="display:flex; flex-wrap:wrap; gap:5px; align-items:center; width:100%;">
-                    <select id="report-engine-select" style="width:100%; background:#121110; color:#fff; border:1px solid #3a3732; padding:6px; border-radius:4px; font-size:11px; box-sizing:border-box;"></select>
-                    <select id="report-depth-select" style="flex:1; min-width:120px; background:#121110; color:#f0c15c; border:1px solid #3a3732; padding:6px; border-radius:4px; font-size:11px; font-weight:bold; box-sizing:border-box;">
-                        <option value="10">Depth 10 (Fast)</option>
-                        <option value="14" selected>Depth 14 (Standard)</option>
-                        <option value="18">Depth 18 (Deep)</option>
-                        <option value="22">Depth 22 (Master)</option>
-                        <option value="26">Depth 26 (Maximum)</option>
-                    </select>
-                    <button onclick="runDeepKundliScan(true)" style="background:#81b64c; color:#fff; border:none; padding:6px 10px; border-radius:4px; font-size:11px; font-weight:bold; cursor:pointer;">Analyze</button>
-                </div>
-            </div>
-
-            <div id="kundli-progress-wrap" style="margin: 4px 0 8px 0;">
-                <div id="kundli-progress-text" style="font-size: 11px; color: #81b64c; margin-bottom: 3px;">Ready to analyze...</div>
-                <div class="progress-bar-bg"><div id="kundli-progress-fill" class="progress-bar-fill"></div></div>
-            </div>
-            <div style="background:#181715; padding:6px; border-radius:5px; border:1px solid #2e2c29;">
-                <canvas id="kundli-eval-graph" width="310" height="75" class="eval-graph-canvas"></canvas>
-            </div>
-            <table class="kundli-table">
-                <thead><tr><th>Metric</th><th id="kundli-w-name">White</th><th id="kundli-b-name">Black</th></tr></thead>
-                <tbody>
-                    <tr><td><b>Accuracy</b></td><td id="k-w-acc" style="color:#81b64c; font-weight:bold; font-size:13px;">--%</td><td id="k-b-acc" style="color:#81b64c; font-weight:bold; font-size:13px;">--%</td></tr>
-                    <tr><td><b>Average CPL</b></td><td id="k-w-acpl">--</td><td id="k-b-acpl">--</td></tr>
-                    <tr><td><b>Est. Rating</b></td><td id="k-w-elo" style="color:#f0c15c; font-weight:bold;">--</td><td id="k-b-elo" style="color:#f0c15c; font-weight:bold;">--</td></tr>
-                </tbody>
-            </table>
-            <div class="points-grid">
-                <div class="point-card"><b>Opening</b><br>W: <span id="k-w-open">--</span> | B: <span id="k-b-open">--</span></div>
-                <div class="point-card"><b>Middlegame</b><br>W: <span id="k-w-mid">--</span> | B: <span id="k-b-mid">--</span></div>
-                <div class="point-card"><b>Endgame</b><br>W: <span id="k-w-end">--</span> | B: <span id="k-b-end">--</span></div>
-                <div class="point-card"><b>Key Moment</b><br><span id="k-turning-point">None</span></div>
-            </div>
-            <table class="kundli-table" style="margin-top: 8px;">
-                <thead><tr><th>Move Quality</th><th>White</th><th>Black</th></tr></thead>
-                <tbody id="kundli-counts-body"></tbody>
-            </table>
-            <div style="background:#181715; border:1px solid #2e2c29; border-radius:4px; padding:7px; margin-top:8px; text-align:left;">
-                <div id="kundli-verdict-text" style="font-size:10.5px; color:#ccc; line-height:1.4;"></div>
-            </div>
-            <div style="text-align: left; margin-top: 8px;">
-                <div style="color: #e0e0e0; font-weight: bold; font-size: 11px;">Key Mistakes & Blunders (Tap to view on board):</div>
-                <div id="kundli-blunder-list" class="blunder-list"></div>
-            </div>
-            <div style="display: flex; gap: 6px; margin-top: 10px;">
-                <button onclick="runDeepKundliScan(true)" style="flex: 1; background: #81b64c; padding: 9px; border:none; border-radius:4px; color:#fff; font-weight:bold; cursor:pointer;">Re-Scan at Selected Depth</button>
-                <button onclick="closeModal('kundli-modal'); openShareModal();" style="flex: 1; background: #4b7399; padding: 9px; border:none; border-radius:4px; color:#fff; font-weight:bold; cursor:pointer;">Share PGN</button>
-            </div>
-        </div>
-    </div>
-
-    <!-- 5. SETTINGS MODAL -->
-    <div id="settings-modal" class="modal-overlay" style="display: none;">
-        <div class="modal-content setup-box">
-            <div class="sticky-top-bar">
-                <span style="color:#fff; font-size:15px; font-weight:bold;">Engine & Board Settings</span>
-                <button class="big-close-btn" onclick="closeModal('settings-modal')">Close</button>
-            </div>
-            <div style="background:#161512; border:1px solid #312f2c; border-radius:5px; padding:8px 10px; text-align:left; font-size:11px; color:#aaa;">
-                <div>Active Engine: <b id="active-engine-realname" style="color:#81b64c;">Stockfish 16.1</b> (<span id="active-engine-proto" style="color:#5c9ded;">UCI</span>)</div>
-                <div style="margin-top:3px;">Live Hardware: <b id="live-hw-status" style="color:#f0c15c;">8 Cores • 512 MB Hash • NNUE ON</b></div>
-            </div>
-            <div class="chessis-sec-title">Select Chess Engine</div>
-            <div id="engine-radio-list" style="margin-bottom:6px;"></div>
-            <button id="btn-install-engines" onclick="installExtraEnginesOneClick()" style="width:100%; background:#252c36; border:1px solid #5c9ded; color:#fff; padding:7px; border-radius:4px; font-size:11px; cursor:pointer; margin-bottom:5px;">Download Extra Engines (Fairy, Toga2, Phalanx, Fruit)</button>
-            <div id="engine-import-hint" style="font-size:10.5px; color:#81b64c; margin-bottom:6px; text-align:left;"></div>
-
-            <div class="chessis-sec-title">Real-Time Hardware & Strength</div>
-            <div class="chessis-row">
-                <div>
-                    <div class="chessis-row-title">Use NNUE Evaluation</div>
-                    <div class="chessis-row-sub">Deep neural network positional evaluation</div>
-                </div>
-                <label class="switch-toggle"><input type="checkbox" id="setting-use-nnue" checked onchange="applyLiveEngineHardware()"><span class="switch-slider"></span></label>
-            </div>
-            <div class="chessis-row">
-                <div>
-                    <div class="chessis-row-title">Threads / CPU Cores</div>
-                    <div class="chessis-row-sub">Real-time parallel search threads (1–32)</div>
-                </div>
-                <select id="engine-threads" style="width:115px;" onchange="applyLiveEngineHardware()">
-                    <script>
-                        for(let i=1; i<=32; i++) {
-                            document.write(`<option value="${i}" ${i===8?'selected':''}>${i} Cores</option>`);
-                        }
-                    </script>
-                </select>
-            </div>
-            <div class="chessis-row">
-                <div>
-                    <div class="chessis-row-title">Hash Memory (RAM)</div>
-                    <div class="chessis-row-sub">Safe transposition table RAM (Max 4GB)</div>
-                </div>
-                <select id="engine-hash" style="width:125px;" onchange="applyLiveEngineHardware()">
-                    <option value="16">16 MB</option>
-                    <option value="32">32 MB</option>
-                    <option value="64">64 MB</option>
-                    <option value="128">128 MB</option>
-                    <option value="256">256 MB</option>
-                    <option value="512" selected>512 MB</option>
-                    <option value="1024">1024 MB (1GB)</option>
-                    <option value="2048">2048 MB (2GB)</option>
-                    <option value="4096">4096 MB (4GB)</option>
-                </select>
-            </div>
-
-            <div class="chessis-sec-title">Board, Audio & Optional Helpers</div>
-            <div class="chessis-row"><div class="chessis-row-title">Board Theme</div>
-                <select id="setting-board-theme" style="width:150px;" onchange="applyThemeAndPieces()">
-                    <option value="theme-green" selected>Classic Green</option>
-                    <option value="theme-wood">Classic Wood</option>
-                    <option value="theme-blue">Icy Sea Blue</option>
-                    <option value="theme-dark">Dark Slate</option>
-                    <option value="theme-board-a">Warm Wood (ofl)</option>
-                    <option value="theme-board-b">Green &amp; Buff(ofl)</option>
-                    <option value="theme-board-c">Wood Grain(ofl)</option>
-                    <option value="theme-board-d">Ice Blue(ofl)</option>
-                    <option value="theme-board-e">Slate Stone(ofl)</option>
-                    <option value="theme-board-f">Sky Blue(ofl)</option>
-                    <option value="theme-board-g">Ocean Blue(ofl)</option>
-                    <option value="theme-board-h">Deep Green(ofl)</option>
-                    <option value="theme-board-i">Silver Sparkle(ofl)</option>
-                    <option value="theme-board-j">Granite Marble(ofl)</option>
-                </select>
-            </div>
-            <div class="chessis-row"><div class="chessis-row-title">Piece Style</div>
-                <select id="setting-piece-style" style="width:130px;" onchange="applyThemeAndPieces()"><option value="wikipedia" selected>Classic</option><option value="cburnett">Lichess Neo</option><option value="merida">Merida</option></select>
-            </div>
-            <div class="chessis-row"><div class="chessis-row-title">Move & Game Sounds</div>
-                <select id="setting-sound" style="width:90px;"><option value="on" selected>ON</option><option value="off">OFF</option></select>
-            </div>
-            <div class="chessis-row"><div class="chessis-row-title">Live Move Badges (★ / ??)</div>
-                <select id="setting-live-feedback" style="width:90px;"><option value="off" selected>OFF</option><option value="on">ON</option></select>
-            </div>
-            <div class="chessis-row"><div class="chessis-row-title">Show Eval Graph on Board</div>
-                <select id="setting-show-graph" style="width:90px;"><option value="off" selected>OFF</option><option value="on">ON</option></select>
-            </div>
-            <div class="chessis-row"><div class="chessis-row-title">Show Engine Lines (MultiPV)</div>
-                <select id="setting-show-lines" style="width:90px;"><option value="off" selected>OFF</option><option value="on">ON</option></select>
-            </div>
-            <div class="chessis-row"><div class="chessis-row-title">Show Engine Speed / Depth Bar</div>
-                <select id="setting-show-telemetry" style="width:90px;"><option value="off" selected>OFF</option><option value="on">ON</option></select>
-            </div>
-            <button onclick="saveSettings()" style="width: 100%; padding: 10px; background: #81b64c; border:none; border-radius:5px; color:#fff; font-weight:bold; margin-top: 10px; cursor:pointer;">Save & Apply</button>
-        </div>
-    </div>
-
-    <!-- 6. ENDGAME DRILLS & OPENING TRAINER -->
-    <div id="endgame-modal" class="modal-overlay" style="display: none;">
-        <div class="modal-content setup-box">
-            <div class="sticky-top-bar"><span style="color:#fff; font-size:15px; font-weight:bold;">Endgame Drills</span><button class="big-close-btn" onclick="closeModal('endgame-modal')">Close</button></div>
-            <div class="setup-group"><select id="endgame-select" size="8" style="height:190px; font-size:11.5px;"></select></div>
-            <button class="play-now-btn" style="width:100%; padding:10px; background:#81b64c; color:#fff; font-weight:bold; border:none; border-radius:5px; cursor:pointer;" onclick="startEndgameDrill()">Start Drill</button>
-        </div>
-    </div>
-    <div id="trainer-modal" class="modal-overlay" style="display: none;">
-        <div class="modal-content setup-box">
-            <div class="sticky-top-bar"><span style="color:#fff; font-size:15px; font-weight:bold;">World Chess Openings</span><button class="big-close-btn" onclick="closeModal('trainer-modal')">Close</button></div>
-            <div class="setup-group"><input type="text" id="trainer-search-input" class="custom-input" placeholder="Search 3,600+ openings (e.g. Sicilian, Ruy Lopez, London)..." oninput="filterOpeningTrainerList()"></div>
-            <div class="setup-group"><select id="trainer-opening-select" size="8" style="height:175px; font-size:11px;" onchange="updateOpeningPreviewText()"></select></div>
-            <div id="trainer-opening-preview" style="background:#161512; border:1px solid #312f2c; border-radius:5px; padding:7px 9px; font-size:11px; text-align:left; margin-bottom:8px; line-height:1.4;"></div>
-            <div class="setup-group" style="margin-bottom:8px;">
-                <label>Practice Side:</label>
-                <select id="trainer-side-select">
-                    <option value="w" selected>Play as White (Coach plays Black)</option>
-                    <option value="b">Play as Black (Coach plays White)</option>
-                </select>
-            </div>
-            <div style="display:flex; gap:6px;">
-                <button class="play-now-btn" style="flex:1; background:#4b7399; padding:10px 6px; font-size:12px; color:#fff; font-weight:bold; border:none; border-radius:4px; cursor:pointer;" onclick="watchOpeningVideoDemo(true)">▶ Watch Video</button>
-                <button class="play-now-btn" style="flex:1.2; background:#81b64c; padding:10px 6px; font-size:12px; color:#fff; font-weight:bold; border:none; border-radius:4px; cursor:pointer;" onclick="startOpeningDrill()">🎯 Coach Practice</button>
-            </div>
         </div>
     </div>
 
@@ -689,6 +432,20 @@
                 <button onclick="refreshMatchVaultList()" style="background:#2c2a27; color:#ddd; border:1px solid #3f3c38; padding:8px 12px; font-size:11.5px; border-radius:5px; cursor:pointer;">↻</button>
             </div>
             <div id="vault-matches-list"></div>
+        </div>
+    </div>
+
+    <!-- GAME REPORT MODAL -->
+    <div id="kundli-modal" class="modal-overlay" style="display: none;">
+        <div class="modal-content kundli-box">
+            <div class="sticky-top-bar">
+                <span style="color:#fff; font-size:15px; font-weight:bold;">Game Report & Analysis</span>
+                <button class="big-close-btn" onclick="closeModal('kundli-modal')">Close</button>
+            </div>
+            <div style="background:#181715; padding:6px; border-radius:5px; border:1px solid #2e2c29; margin-bottom:8px;">
+                <canvas id="kundli-eval-graph" width="310" height="75" class="eval-graph-canvas"></canvas>
+            </div>
+            <div id="kundli-verdict-text" style="font-size:12px; color:#aaa; text-align:center;">Analysis Ready</div>
         </div>
     </div>
 
@@ -768,23 +525,42 @@
     <!-- SCRIPTS -->
     <script src="/static/js/jquery.min.js"></script>
     <script src="/static/js/chess.min.js"></script>
-    <script src="/static/mod_core.js?v=440"></script>
-    <script src="/static/mod_openings.js?v=440"></script>
-    <script src="/static/mod_analysis.js?v=440"></script>
-    <script src="/static/mod_drawing.js?v=440"></script>
-    <script src="/static/mod_share_vault.js?v=440"></script>
-    <script src="/static/mod_extras.js?v=440"></script>
+    <script src="/static/mod_core.js?v=450"></script>
+    <script src="/static/mod_openings.js?v=450"></script>
+    <script src="/static/mod_analysis.js?v=450"></script>
+    <script src="/static/mod_drawing.js?v=450"></script>
+    <script src="/static/mod_share_vault.js?v=450"></script>
+    <script src="/static/mod_extras.js?v=450"></script>
 
     <!-- ======================================================================
-         DEFINITIVE CONTROLLER: GUARANTEES NO DUPLICATES & CLEAN DEFAULTS
+         DEFINITIVE CONTROLLER: GUARANTEES NO BLACK BOARD & AUTO-FALLBACK
          ====================================================================== -->
     <script>
         (function() {
+            // Theme Application with Auto Image Verification
             window.applyThemeAndPieces = function() {
                 let themeSel = document.getElementById('setting-board-theme');
                 let theme = themeSel ? themeSel.value : 'theme-green';
+                
                 document.body.className = document.body.className.replace(/\btheme-[^\s]+\b/g, '').trim();
+                document.body.classList.remove('has-board-img');
                 document.body.classList.add(theme);
+
+                // If offline theme selected, test if the background PNG actually exists
+                if (theme.startsWith('theme-board-')) {
+                    let charCode = theme.replace('theme-board-', '');
+                    let testImg = new Image();
+                    testImg.onload = function() {
+                        // Image file exists: reveal image through transparent squares
+                        document.body.classList.add('has-board-img');
+                    };
+                    testImg.onerror = function() {
+                        // Image file missing: keep solid checkered colors (ZERO black screen)
+                        document.body.classList.remove('has-board-img');
+                    };
+                    testImg.src = '/static/boards/' + charCode + '.png';
+                }
+
                 if (typeof renderBoard === 'function') renderBoard();
             };
 
@@ -797,10 +573,6 @@
                 let colorGroup = document.getElementById('setup-color-group');
                 let wBotGroup = document.getElementById('setup-white-bot-group');
                 let bBotGroup = document.getElementById('setup-black-bot-group');
-                let eveGroup = document.getElementById('setup-eve-group');
-                let thinkGroup = document.getElementById('setup-think-group');
-                let depthGroup = document.getElementById('setup-depth-group');
-                let personalityGroup = document.getElementById('setup-personality-group');
 
                 if (pvpGroup) pvpGroup.style.display = (m === 'pvp') ? 'flex' : 'none';
                 if (uGroup) uGroup.style.display = (m === 'pvb') ? 'block' : 'none';
@@ -808,11 +580,6 @@
 
                 if (wBotGroup) wBotGroup.style.display = (m === 'bvb') ? 'block' : 'none';
                 if (bBotGroup) bBotGroup.style.display = (m === 'pvb' || m === 'bvb') ? 'block' : 'none';
-
-                if (eveGroup) eveGroup.style.display = (m === 'eve') ? 'flex' : 'none';
-                if (thinkGroup) thinkGroup.style.display = (m === 'pvp') ? 'none' : 'flex';
-                if (depthGroup) depthGroup.style.display = (m === 'pvp') ? 'none' : 'flex';
-                if (personalityGroup) personalityGroup.style.display = (m === 'pvb' || m === 'bvb') ? 'block' : 'none';
 
                 let oppLbl = document.getElementById('opponent-elo-label');
                 if (oppLbl) oppLbl.innerText = (m === 'bvb') ? "Black Bot Level & Name:" : "Opponent Bot Level & Name:";
@@ -954,7 +721,7 @@
                         </div>
                         <div style="font-size:10.5px; color:#888; margin:5px 0;">${m.date || ''} • ${m.opening || 'Standard'}</div>
                         <div style="display:flex; gap:6px; margin-top:6px;">
-                            <button onclick="window.loadVaultMatch('${m.id}', '${m.fen || ''}', false, '${m.white || ''}', '${m.black || ''}')" style="flex:1; background:#81b64c; color:#fff; border:none; padding:7px; border-radius:4px; font-weight:bold; cursor:pointer;">▶ Replay</button>
+                            <button onclick="window.loadVaultMatch('${m.id}', '${m.fen || ''}', false, '${m.white || ''}', '${m.black || ''}')" style="flex:1; background:#81b64c; color:#fff; border:none; padding:7px; border-radius:4px; font-weight:bold; cursor:pointer;">${actionText}</button>
                             <button onclick="window.saveSingleMatchPGN()" style="flex:1; background:#3a3b40; color:#ddd; border:none; padding:7px; border-radius:4px; cursor:pointer; font-weight:bold;">💾 Save PGN</button>
                             <button onclick="deleteSingleMatchFromVault('${m.id}')" style="background:#da3633; color:#fff; border:none; padding:7px 12px; border-radius:4px; cursor:pointer; font-weight:bold;">✕</button>
                         </div>
