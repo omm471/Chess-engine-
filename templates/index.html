@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>JoHnnY</title>
-    <link rel="stylesheet" href="/static/style.css?v=220">
+    <link rel="stylesheet" href="/static/style.css?v=230">
     <style>
         body {
             background: #161512 !important;
@@ -62,31 +62,11 @@
         .drag-target-hover { box-shadow: inset 0 0 0 3px rgba(255, 255, 255, 0.82) !important; }
 
         /* KING GAME-END ANIMATIONS */
-        .king-loser-sq {
-            background: radial-gradient(circle, #e63946 0%, #8b0000 100%) !important;
-            box-shadow: inset 0 0 14px rgba(0, 0, 0, 0.8) !important;
-            z-index: 5 !important;
-        }
-        .king-fallen-piece {
-            transform: rotate(-26deg) translateY(4px) scale(0.90) !important;
-            transition: transform 0.45s cubic-bezier(0.175, 0.885, 0.32, 1.275) !important;
-            filter: drop-shadow(0 8px 10px rgba(0, 0, 0, 0.85)) !important;
-        }
-        .king-winner-sq {
-            background: radial-gradient(circle, #81b64c 0%, #22541d 100%) !important;
-            box-shadow: inset 0 0 14px rgba(255, 235, 130, 0.75) !important;
-            z-index: 5 !important;
-        }
-        .king-winner-piece {
-            transform: scale(1.14) translateY(-2px) !important;
-            filter: drop-shadow(0 0 10px rgba(255, 215, 0, 0.9)) !important;
-            transition: transform 0.35s ease !important;
-        }
-        .king-draw-sq {
-            background: radial-gradient(circle, #38bdf8 0%, #1e3a8a 100%) !important;
-            box-shadow: inset 0 0 12px rgba(0, 0, 0, 0.65) !important;
-            z-index: 5 !important;
-        }
+        .king-loser-sq { background: radial-gradient(circle, #e63946 0%, #8b0000 100%) !important; box-shadow: inset 0 0 14px rgba(0, 0, 0, 0.8) !important; z-index: 5 !important; }
+        .king-fallen-piece { transform: rotate(-26deg) translateY(4px) scale(0.90) !important; transition: transform 0.45s cubic-bezier(0.175, 0.885, 0.32, 1.275) !important; filter: drop-shadow(0 8px 10px rgba(0, 0, 0, 0.85)) !important; }
+        .king-winner-sq { background: radial-gradient(circle, #81b64c 0%, #22541d 100%) !important; box-shadow: inset 0 0 14px rgba(255, 235, 130, 0.75) !important; z-index: 5 !important; }
+        .king-winner-piece { transform: scale(1.14) translateY(-2px) !important; filter: drop-shadow(0 0 10px rgba(255, 215, 0, 0.9)) !important; transition: transform 0.35s ease !important; }
+        .king-draw-sq { background: radial-gradient(circle, #38bdf8 0%, #1e3a8a 100%) !important; box-shadow: inset 0 0 12px rgba(0, 0, 0, 0.65) !important; z-index: 5 !important; }
 
         .sidebar-backdrop { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.65); z-index: 1100; display: none; }
         .sidebar-drawer {
@@ -126,7 +106,6 @@
         .board-wrapper { position: relative; width: 320px; height: 320px; touch-action: none; }
         #arrow-overlay { position: absolute; top: 0; left: 0; width: 320px; height: 320px; pointer-events: none !important; z-index: 8; }
         
-        /* DRAW OVERLAY (PROPERLY WIRED FOR LINE DRAWING) */
         #custom-draw-overlay { position: absolute; top: 0; left: 0; width: 320px; height: 320px; pointer-events: none; z-index: 12; }
         #custom-draw-overlay.drawing-active { pointer-events: auto !important; touch-action: none !important; cursor: crosshair !important; z-index: 25 !important; }
 
@@ -140,7 +119,7 @@
         .front-ctrl-btn { flex: 1; background: #282623; color: #d8d8d8; border: 1px solid #3a3732; padding: 7px 4px; font-size: 11px; font-weight: 600; border-radius: 4px; cursor: pointer; }
         .front-btn-hint { background: #38311e; border-color: #8a7332; color: #f0c15c; }
 
-        /* DRAW PALETTE: NEVER VISIBLE ON LOAD */
+        /* DRAW PALETTE */
         #draw-palette-bar, .draw-palette {
             position: static !important;
             display: none !important;
@@ -173,13 +152,13 @@
         .custom-input, select { width: 100%; box-sizing: border-box; padding: 8px 10px; background: #161512; border: 1px solid #383632; border-radius: 5px; color: #fff; font-size: 12.5px; }
 
         /* ====================================================================
-           PERFECT PLAY SIDE TILES (IMAGE 33 EXACT REPLICA)
+           PERFECT SQUARE PLAY SIDE TILES (IMAGE 33 EXACT REPLICA)
            ==================================================================== */
         .color-selector {
             display: flex !important;
-            gap: 10px !important;
+            gap: 12px !important;
             justify-content: center !important;
-            margin: 6px 0 !important;
+            margin: 8px 0 !important;
             width: 100% !important;
             box-sizing: border-box !important;
         }
@@ -187,17 +166,21 @@
             flex: 1 !important;
             cursor: pointer !important;
             margin: 0 !important;
+            display: flex !important;
+            max-width: 95px !important;
         }
         .color-selector input[type="radio"] {
             display: none !important;
         }
         .color-icon {
-            height: 54px !important;
+            width: 100% !important;
+            aspect-ratio: 1 / 1 !important;
+            height: auto !important;
             border-radius: 8px !important;
             display: flex !important;
             align-items: center !important;
             justify-content: center !important;
-            font-size: 30px !important;
+            font-size: 32px !important;
             border: 2px solid #383632 !important;
             transition: all 0.2s ease !important;
             box-sizing: border-box !important;
@@ -221,42 +204,12 @@
         .color-selector input[type="radio"]:checked + .color-icon {
             border-color: #81b64c !important;
             box-shadow: 0 0 12px rgba(129, 182, 76, 0.9) !important;
-            transform: scale(1.05) !important;
+            transform: scale(1.06) !important;
         }
 
-        /* SETTINGS & REPORT MODAL ALIGNMENT */
-        #settings-modal .modal-content, #settings-modal .setup-box { text-align: left !important; }
-        #settings-modal .chessis-sec-title { color: #5c9ded !important; font-size: 11px !important; font-weight: 700 !important; text-align: left !important; margin: 12px 0 6px 0 !important; text-transform: uppercase !important; letter-spacing: 0.5px !important; display: block !important; }
-        #settings-modal .chessis-row { display: flex !important; flex-direction: row !important; justify-content: space-between !important; align-items: center !important; padding: 9px 4px !important; border-bottom: 1px solid #2d2b28 !important; text-align: left !important; width: 100% !important; box-sizing: border-box !important; }
-        #settings-modal .chessis-row > div:first-child { text-align: left !important; flex: 1 !important; margin-right: 8px !important; }
-        #settings-modal .chessis-row-title { color: #e8e8e8 !important; font-size: 12.5px !important; font-weight: 600 !important; text-align: left !important; }
-        #settings-modal .chessis-row-sub { color: #8c8c8c !important; font-size: 10.5px !important; margin-top: 2px !important; text-align: left !important; }
-        #settings-modal .chessis-row select { width: auto !important; min-width: 95px !important; max-width: 155px !important; padding: 6px 8px !important; margin: 0 !important; text-align: left !important; flex-shrink: 0 !important; background: #161512 !important; border: 1px solid #3c3934 !important; color: #fff !important; }
-        #settings-modal .engine-radio-item { display: flex !important; flex-direction: row !important; justify-content: space-between !important; align-items: center !important; padding: 9px 10px !important; background: #181715 !important; border: 1px solid #2e2c29 !important; border-radius: 5px !important; margin-bottom: 6px !important; cursor: pointer !important; text-align: left !important; width: 100% !important; box-sizing: border-box !important; }
-        #settings-modal .engine-radio-item > div:first-child { text-align: left !important; flex: 1 !important; }
-        #settings-modal .engine-radio-item > div:last-child { text-align: right !important; margin-left: 8px !important; flex-shrink: 0 !important; }
-        #settings-modal .engine-radio-item.active-eng { border-color: #81b64c !important; background: #1e261a !important; }
-        #settings-modal .switch-toggle { position: relative !important; display: inline-block !important; width: 40px !important; height: 22px !important; flex-shrink: 0 !important; }
-        #settings-modal .switch-toggle input { opacity: 0 !important; width: 0 !important; height: 0 !important; margin: 0 !important; position: absolute !important; }
-        #settings-modal .switch-slider { position: absolute !important; cursor: pointer !important; inset: 0 !important; background-color: #3a3834 !important; transition: .2s !important; border-radius: 22px !important; }
-        #settings-modal .switch-slider:before { position: absolute !important; content: "" !important; height: 16px !important; width: 16px !important; left: 3px !important; bottom: 3px !important; background-color: #fff !important; transition: .2s !important; border-radius: 50% !important; }
-        #settings-modal input:checked + .switch-slider { background-color: #5c9ded !important; }
-        #settings-modal input:checked + .switch-slider:before { transform: translateX(18px) !important; }
-
-        #kundli-modal .modal-content, #kundli-modal .kundli-box { text-align: left !important; }
-        .kundli-table { width: 100% !important; table-layout: fixed !important; border-collapse: collapse !important; font-size: 10.5px !important; margin-top: 6px !important; background: #181715 !important; }
-        .kundli-table th, .kundli-table td { border: 1px solid #2e2c29 !important; padding: 5px 6px !important; text-align: center !important; }
-        .kundli-table th { background: #262421 !important; color: #81b64c !important; font-weight: bold !important; }
-        .kundli-table td:first-child { text-align: left !important; }
-        .points-grid { display: grid !important; grid-template-columns: 1fr 1fr !important; gap: 6px !important; margin-top: 6px !important; text-align: left !important; }
-        .point-card { background: #181715 !important; border: 1px solid #312f2c !important; border-left: 3px solid #81b64c !important; padding: 6px !important; border-radius: 4px !important; font-size: 10.5px !important; line-height: 1.3 !important; text-align: left !important; }
-        .blunder-list { max-height: 150px !important; overflow-y: auto !important; display: flex !important; flex-direction: column !important; gap: 5px !important; margin-top: 5px !important; }
-        .blunder-item { background: #181715 !important; border: 1px solid #2e2c29 !important; border-left: 3px solid #ca3431 !important; padding: 6px 8px !important; border-radius: 4px !important; font-size: 11px !important; display: flex !important; justify-content: space-between !important; align-items: center !important; cursor: pointer !important; text-align: left !important; }
-        .progress-bar-bg { width: 100% !important; height: 6px !important; background: #141311 !important; border-radius: 3px !important; overflow: hidden !important; }
-        .progress-bar-fill { width: 0% !important; height: 100% !important; background: #81b64c !important; transition: width 0.2s !important; }
-
-        .square { position: relative; display: flex; justify-content: center; align-items: center; width: 100% !important; height: 100% !important; font-size: 32px; cursor: pointer; }
-
+        /* ====================================================================
+           100% CRASH-PROOF BOARD THEMES (NO BLACK SQUARES FOR OFFLINE THEMES)
+           ==================================================================== */
         body.theme-green .square.light { background-color: #eeeed2; }
         body.theme-green .square.dark  { background-color: #769656; }
         body.theme-wood .square.light  { background-color: #f0d9b5; }
@@ -265,6 +218,50 @@
         body.theme-blue .square.dark   { background-color: #8ca2ad; }
         body.theme-dark .square.light  { background-color: #a0a0a0; }
         body.theme-dark .square.dark   { background-color: #4c4c4c; }
+
+        /* Offline Themes Checkered Fallback Colors (A to J) */
+        body.theme-board-a .square.light { background-color: #f0d9b5 !important; }
+        body.theme-board-a .square.dark  { background-color: #b58863 !important; }
+        body.theme-board-b .square.light { background-color: #ffffdd !important; }
+        body.theme-board-b .square.dark  { background-color: #86a666 !important; }
+        body.theme-board-c .square.light { background-color: #e3c099 !important; }
+        body.theme-board-c .square.dark  { background-color: #8c5a2b !important; }
+        body.theme-board-d .square.light { background-color: #e0f2fe !important; }
+        body.theme-board-d .square.dark  { background-color: #38bdf8 !important; }
+        body.theme-board-e .square.light { background-color: #cbd5e1 !important; }
+        body.theme-board-e .square.dark  { background-color: #475569 !important; }
+        body.theme-board-f .square.light { background-color: #dbeafe !important; }
+        body.theme-board-f .square.dark  { background-color: #3b82f6 !important; }
+        body.theme-board-g .square.light { background-color: #bae6fd !important; }
+        body.theme-board-g .square.dark  { background-color: #0284c7 !important; }
+        body.theme-board-h .square.light { background-color: #e2e8f0 !important; }
+        body.theme-board-h .square.dark  { background-color: #166534 !important; }
+        body.theme-board-i .square.light { background-color: #f8fafc !important; }
+        body.theme-board-i .square.dark  { background-color: #94a3b8 !important; }
+        body.theme-board-j .square.light { background-color: #e2e8f0 !important; }
+        body.theme-board-j .square.dark  { background-color: #1e293b !important; }
+
+        /* Offline Board Background Textures */
+        body.theme-board-a #board { background-image: url('/static/boards/a.png') !important; background-size: cover !important; }
+        body.theme-board-b #board { background-image: url('/static/boards/b.png') !important; background-size: cover !important; }
+        body.theme-board-c #board { background-image: url('/static/boards/c.png') !important; background-size: cover !important; }
+        body.theme-board-d #board { background-image: url('/static/boards/d.png') !important; background-size: cover !important; }
+        body.theme-board-e #board { background-image: url('/static/boards/e.png') !important; background-size: cover !important; }
+        body.theme-board-f #board { background-image: url('/static/boards/f.png') !important; background-size: cover !important; }
+        body.theme-board-g #board { background-image: url('/static/boards/g.png') !important; background-size: cover !important; }
+        body.theme-board-h #board { background-image: url('/static/boards/h.png') !important; background-size: cover !important; }
+        body.theme-board-i #board { background-image: url('/static/boards/i.png') !important; background-size: cover !important; }
+        body.theme-board-j #board { background-image: url('/static/boards/j.png') !important; background-size: cover !important; }
+
+        body.has-board-img[class*="theme-board-"] .square.light:not(.selected):not(.last-move):not(.premove-sq):not(.highlight-check):not(.king-loser-sq):not(.king-winner-sq):not(.king-draw-sq),
+        body.has-board-img[class*="theme-board-"] .square.dark:not(.selected):not(.last-move):not(.premove-sq):not(.highlight-check):not(.king-loser-sq):not(.king-winner-sq):not(.king-draw-sq) {
+            background-color: transparent !important;
+        }
+
+        .square.selected { background-color: rgba(245, 246, 130, 0.8) !important; }
+        .square.last-move { background-color: rgba(245, 246, 130, 0.55) !important; }
+        .square.premove-sq { background-color: rgba(235, 64, 52, 0.55) !important; }
+        .square.highlight-check { background-color: rgba(235, 40, 40, 0.85) !important; }
 
         .vault-card { background:#1e1e1e; border:1px solid #333; border-radius:8px; padding:10px; margin-bottom:8px; text-align:left; }
         .eval-graph-canvas { display: block; width: 100%; cursor: pointer; background: #181715; border-radius: 4px; }
@@ -395,7 +392,7 @@
         </div>
     </div>
 
-    <!-- 3. NEW GAME SETUP MODAL (EXACT IMAGE 33 TILES RESTORED) -->
+    <!-- 3. NEW GAME SETUP MODAL -->
     <div id="setup-modal" class="modal-overlay" style="display: none;">
         <div class="modal-content setup-box">
             <div class="sticky-top-bar">
@@ -418,7 +415,7 @@
                 <input type="text" id="setup-username" value="Player" class="custom-input">
             </div>
 
-            <!-- Play Side with Image 33 Exact Tiles (White, Random, Black) -->
+            <!-- Play Side with Perfect Square Tiles -->
             <div class="setup-group" id="setup-color-group">
                 <label>Play Side:</label>
                 <div class="color-selector">
@@ -822,7 +819,7 @@
             <div id="draw-palette-bar" class="draw-palette">
                 <div style="display:flex; gap:6px; align-items:center;">
                     <span class="color-dot active-dot" style="background:#ffaa00;" onclick="setDrawColor('rgba(255, 170, 0, 0.75)', this)"></span>
-                    <span class="color-dot" style="background:#e63946;" onclick="setDrawColor('rgba(230, 57, 70, 0.75)', this)"></span>
+                    <span class="color-dot" style="background-color: #e63946;" onclick="setDrawColor('rgba(230, 57, 70, 0.75)', this)"></span>
                     <span class="color-dot" style="background:#739552;" onclick="setDrawColor('rgba(115, 149, 82, 0.78)', this)"></span>
                     <span class="color-dot" style="background:#4a8ff0;" onclick="setDrawColor('rgba(74, 143, 240, 0.75)', this)"></span>
                 </div>
@@ -842,18 +839,45 @@
     <!-- SCRIPTS -->
     <script src="/static/js/jquery.min.js"></script>
     <script src="/static/js/chess.min.js"></script>
-    <script src="/static/mod_core.js?v=500"></script>
-    <script src="/static/mod_openings.js?v=500"></script>
-    <script src="/static/mod_analysis.js?v=500"></script>
-    <script src="/static/mod_drawing.js?v=500"></script>
-    <script src="/static/mod_share_vault.js?v=500"></script>
-    <script src="/static/mod_extras.js?v=500"></script>
+    <script src="/static/mod_core.js?v=510"></script>
+    <script src="/static/mod_openings.js?v=510"></script>
+    <script src="/static/mod_analysis.js?v=510"></script>
+    <script src="/static/mod_drawing.js?v=510"></script>
+    <script src="/static/mod_share_vault.js?v=510"></script>
+    <script src="/static/mod_extras.js?v=510"></script>
 
     <!-- MASTER CONTROLLER SCRIPT (100% FIXED) -->
     <script>
         (function() {
             // ================================================================
-            // 1. AJAX PREFILTER: GUARANTEES THINK TIME & DEPTH REACH PYTHON ENGINE
+            // 1. THEME APPLICATION & OFFLINE BOARD IMAGE CHECK
+            // ================================================================
+            window.applyThemeAndPieces = function() {
+                let themeSel = document.getElementById('setting-board-theme');
+                let theme = themeSel ? themeSel.value : (localStorage.getItem('saved_chess_theme') || 'theme-green');
+                
+                document.body.className = document.body.className.replace(/\btheme-[^\s]+\b/g, '').trim();
+                document.body.classList.remove('has-board-img');
+                document.body.classList.add(theme);
+                localStorage.setItem('saved_chess_theme', theme);
+
+                if (theme.startsWith('theme-board-')) {
+                    let charCode = theme.replace('theme-board-', '');
+                    let testImg = new Image();
+                    testImg.onload = function() {
+                        document.body.classList.add('has-board-img');
+                    };
+                    testImg.onerror = function() {
+                        document.body.classList.remove('has-board-img');
+                    };
+                    testImg.src = '/static/boards/' + charCode + '.png';
+                }
+
+                if (typeof renderBoard === 'function') renderBoard();
+            };
+
+            // ================================================================
+            // 2. AJAX PREFILTER: THINK TIME & DEPTH
             // ================================================================
             $.ajaxPrefilter(function(options, originalOptions, jqXHR) {
                 if (options.url && options.url.includes('/ai_move')) {
@@ -874,7 +898,7 @@
             });
 
             // ================================================================
-            // 2. DYNAMIC KING END EFFECTS
+            // 3. DYNAMIC KING END EFFECTS & DELAYED POPUP
             // ================================================================
             window.activeGameEndStatus = null;
             window.popupDelayTimer = null;
@@ -947,9 +971,6 @@
                 setTimeout(window.applyKingEndEffects, 25);
             };
 
-            // ================================================================
-            // DELAYED MATCH OVER POPUP (2.2 SECONDS DELAY TO SEE FALLEN KING)
-            // ================================================================
             function showMatchOverModalWithDelay(title, subtitle, delayMs = 2200) {
                 if (window.popupDelayTimer) clearTimeout(window.popupDelayTimer);
                 window.popupDelayTimer = setTimeout(function() {
@@ -979,7 +1000,6 @@
                 if (typeof window.applyKingEndEffects === 'function') window.applyKingEndEffects();
                 if (typeof playSnd === 'function') playSnd('gameover');
 
-                // 2.2 सेकंड की देरी ताकि राजा गिरने का एनिमेशन दिख सके!
                 showMatchOverModalWithDelay("Resignation", `${loserName} resigned. ${winnerName} won.`, 2200);
             };
 
@@ -991,12 +1011,11 @@
                 if (typeof window.applyKingEndEffects === 'function') window.applyKingEndEffects();
                 if (typeof playSnd === 'function') playSnd('gameover');
 
-                // 2.2 सेकंड की देरी
                 showMatchOverModalWithDelay("Match Drawn", "Draw agreed between players.", 2200);
             };
 
             // ================================================================
-            // 3. DRAW LINES / ARROWS (FULLY ACTIVE & RESTORED)
+            // 4. DRAW PALETTE TOGGLE
             // ================================================================
             window.toggleDrawMode = function() {
                 let palette = $('#draw-palette-bar');
@@ -1021,7 +1040,7 @@
             };
 
             // ================================================================
-            // 4. SETUP MODAL TOGGLE
+            // 5. SETUP MODAL TOGGLE & APPLY SETUP
             // ================================================================
             window.toggleSetupMode = function() {
                 let m = (document.getElementById('setup-mode') || {}).value || 'pvb';
@@ -1038,7 +1057,7 @@
 
                 if (pvpGroup) pvpGroup.style.display = (m === 'pvp') ? 'flex' : 'none';
                 if (uGroup) uGroup.style.display = (m === 'pvb') ? 'block' : 'none';
-                if (colorGroup) colorGroup.style.display = (m === 'pvb') ? 'flex' : 'none';
+                if (colorGroup) colorGroup.style.display = (m === 'pvb') ? 'block' : 'none';
 
                 if (eveGroup) eveGroup.style.display = (m === 'eve') ? 'flex' : 'none';
                 if (wBotGroup) wBotGroup.style.display = (m === 'bvb') ? 'block' : 'none';
@@ -1053,16 +1072,12 @@
                 if (oppLbl) oppLbl.innerText = (m === 'bvb') ? "Black Bot Level & Name:" : "Opponent Bot Level & Name:";
             };
 
-            // ================================================================
-            // 5. MASTER APPLY SETUP
-            // ================================================================
             window.applySetupAndStart = function() {
                 let mode = (document.getElementById('setup-mode') || {}).value || 'pvb';
                 window.gameMode = mode;
                 window.activeGameEndStatus = null;
                 window.clearKingEndEffects();
 
-                // 1. EXTRACT THINK TIME & CALCULATION DEPTH & STORE GLOBALLY
                 let thinkVal = parseFloat((document.getElementById('setup-think-time') || {}).value) || 0.8;
                 let depthVal = parseInt((document.getElementById('setup-depth-slider') || {}).value) || 20;
                 let personality = (document.getElementById('setup-personality') || {}).value || "default";
@@ -1073,15 +1088,11 @@
                 window.aiDepth = depthVal;
                 window.botPersonality = personality;
 
-                // 2. PARSE SELECTED TIME CONTROL
                 let timeVal = (document.getElementById('setup-time') || {}).value || "10|0";
-                let totalSecs = 600;
-                let incSecs = 0;
-                let isInf = false;
+                let totalSecs = 600, incSecs = 0, isInf = false;
 
                 if (timeVal === '0|0') {
-                    isInf = true;
-                    totalSecs = 0;
+                    isInf = true; totalSecs = 0;
                 } else if (timeVal === 'custom') {
                     let cM = parseInt((document.getElementById('custom-minutes') || {}).value) || 10;
                     let cS = parseInt((document.getElementById('custom-seconds') || {}).value) || 0;
@@ -1106,9 +1117,7 @@
                 if (document.getElementById('top-timer')) document.getElementById('top-timer').innerText = formattedTime;
                 if (document.getElementById('bottom-timer')) document.getElementById('bottom-timer').innerText = formattedTime;
 
-                // 3. APPLY NAMES & SIDES
-                let whiteVal = "Player 1";
-                let blackVal = "Player 2";
+                let whiteVal = "Player 1", blackVal = "Player 2";
 
                 if (mode === 'pvp') {
                     let wInp = document.getElementById('setup-pvp-white');
@@ -1124,12 +1133,10 @@
                     let bInp = document.getElementById('setup-bot-name');
                     let wName = (wInp && wInp.value.trim()) ? wInp.value.trim() : "Club Master";
                     let bName = (bInp && bInp.value.trim()) ? bInp.value.trim() : "Stockfish GM";
-
                     let wRatingStr = (parseInt(wLevel) >= 2850) ? "2850+" : wLevel;
                     let bRatingStr = (parseInt(bLevel) >= 2850) ? "2850+" : bLevel;
                     whiteVal = `${wName} (${wRatingStr} ELO)`;
                     blackVal = `${bName} (${bRatingStr} ELO)`;
-
                     window.currentWhiteElo = wLevel;
                     window.currentBlackElo = bLevel;
                     window.currentBoardOrientation = 'w';
@@ -1140,7 +1147,6 @@
                     let uName = (uInp && uInp.value.trim()) ? uInp.value.trim() : "Player";
                     let bName = (bInp && bInp.value.trim()) ? bInp.value.trim() : "Stockfish GM";
                     let bRatingStr = (parseInt(bLevel) >= 2850) ? "2850+" : bLevel;
-
                     window.currentBlackElo = bLevel;
 
                     let chosenCol = 'w';
@@ -1163,18 +1169,15 @@
                 } else if (mode === 'eve') {
                     let wEng = (document.getElementById('setup-white-engine') || {}).value || "Stockfish 19";
                     let bEng = (document.getElementById('setup-black-engine') || {}).value || "Stockfish 18";
-                    whiteVal = wEng;
-                    blackVal = bEng;
+                    whiteVal = wEng; blackVal = bEng;
                     window.currentBoardOrientation = 'w';
                 }
 
                 window.activeWhiteDisplayName = whiteVal;
                 window.activeBlackDisplayName = blackVal;
 
-                let bNameEl = document.getElementById('bottom-player-name');
-                let tNameEl = document.getElementById('top-player-name');
-                if (bNameEl) bNameEl.innerText = whiteVal;
-                if (tNameEl) tNameEl.innerText = blackVal;
+                if (document.getElementById('bottom-player-name')) document.getElementById('bottom-player-name').innerText = whiteVal;
+                if (document.getElementById('top-player-name')) document.getElementById('top-player-name').innerText = blackVal;
 
                 closeModal('setup-modal');
                 if (typeof window.startGame === 'function') window.startGame(true);
@@ -1241,27 +1244,6 @@
                     if (typeof renderBoard === 'function') renderBoard();
                 }
                 closeModal('settings-modal');
-            };
-
-            window.applyThemeAndPieces = function() {
-                let themeSel = document.getElementById('setting-board-theme');
-                let theme = themeSel ? themeSel.value : (localStorage.getItem('saved_chess_theme') || 'theme-green');
-                document.body.className = document.body.className.replace(/\btheme-[^\s]+\b/g, '').trim();
-                document.body.classList.remove('has-board-img');
-                document.body.classList.add(theme);
-
-                if (theme.startsWith('theme-board-')) {
-                    let charCode = theme.replace('theme-board-', '');
-                    let testImg = new Image();
-                    testImg.onload = function() {
-                        document.body.classList.add('has-board-img');
-                    };
-                    testImg.onerror = function() {
-                        document.body.classList.remove('has-board-img');
-                    };
-                    testImg.src = '/static/boards/' + charCode + '.png';
-                }
-                if (typeof renderBoard === 'function') renderBoard();
             };
 
             // ================================================================
@@ -1356,6 +1338,9 @@
             $(document).ready(function() {
                 $('#draw-palette-bar').removeClass('active-palette').hide();
                 window.toggleSetupMode();
+                if (typeof window.applyThemeAndPieces === 'function') {
+                    window.applyThemeAndPieces();
+                }
             });
         })();
     </script>
