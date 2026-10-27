@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>JoHnnY</title>
-    <link rel="stylesheet" href="/static/style.css?v=240">
+    <link rel="stylesheet" href="/static/style.css?v=250">
     <style>
         body {
             background: #161512 !important;
@@ -140,7 +140,7 @@
         .front-ctrl-btn { flex: 1; background: #282623; color: #d8d8d8; border: 1px solid #3a3732; padding: 7px 4px; font-size: 11px; font-weight: 600; border-radius: 4px; cursor: pointer; }
         .front-btn-hint { background: #38311e; border-color: #8a7332; color: #f0c15c; }
 
-        /* DRAW PALETTE */
+        /* DRAW PALETTE: NEVER VISIBLE ON LOAD */
         #draw-palette-bar, .draw-palette {
             position: static !important;
             display: none !important;
@@ -173,35 +173,39 @@
         .custom-input, select { width: 100%; box-sizing: border-box; padding: 8px 10px; background: #161512; border: 1px solid #383632; border-radius: 5px; color: #fff; font-size: 12.5px; }
 
         /* ====================================================================
-           1. PERFECT COMPACT SQUARE PLAY SIDE TILES (IMAGE 20 SIZE)
+           EXACT PLAY SIDE TILES & LABELS (IMAGE 26 SPECIFICATIONS)
            ==================================================================== */
         .color-selector {
             display: flex !important;
-            gap: 12px !important;
-            justify-content: center !important;
-            margin: 6px 0 10px 0 !important;
+            flex-direction: row !important;
+            gap: 20px !important;
+            justify-content: flex-start !important;
+            align-items: flex-start !important;
+            margin: 8px 0 6px 0 !important;
             width: 100% !important;
             box-sizing: border-box !important;
         }
         .color-selector label {
+            display: flex !important;
+            flex-direction: column !important;
+            align-items: center !important;
+            gap: 6px !important;
             cursor: pointer !important;
             margin: 0 !important;
-            width: 50px !important;
-            height: 50px !important;
+            width: 62px !important;
             flex: none !important;
-            display: block !important;
         }
         .color-selector input[type="radio"] {
             display: none !important;
         }
         .color-icon {
-            width: 50px !important;
-            height: 50px !important;
-            border-radius: 7px !important;
+            width: 62px !important;
+            height: 62px !important;
+            border-radius: 10px !important;
             display: flex !important;
             align-items: center !important;
             justify-content: center !important;
-            font-size: 24px !important;
+            font-size: 30px !important;
             border: 2px solid #383632 !important;
             transition: all 0.2s ease !important;
             box-sizing: border-box !important;
@@ -219,17 +223,29 @@
             background: linear-gradient(135deg, #ffffff 50%, #2b2823 50%) !important;
             color: #81b64c !important;
             font-weight: 900 !important;
-            font-size: 22px !important;
+            font-size: 26px !important;
             font-family: sans-serif !important;
         }
         .color-selector input[type="radio"]:checked + .color-icon {
             border-color: #81b64c !important;
-            box-shadow: 0 0 10px rgba(129, 182, 76, 0.9) !important;
-            transform: scale(1.08) !important;
+            box-shadow: 0 0 12px rgba(129, 182, 76, 0.95) !important;
+            transform: scale(1.05) !important;
+        }
+        .color-label {
+            font-size: 11px !important;
+            font-weight: 600 !important;
+            color: #8c8c8c !important;
+            text-align: center !important;
+            letter-spacing: 0.3px !important;
+            transition: color 0.2s ease !important;
+        }
+        .color-selector input[type="radio"]:checked ~ .color-label {
+            color: #81b64c !important;
+            font-weight: 700 !important;
         }
 
         /* ====================================================================
-           2. SETTINGS MODAL: STRICT LEFT-ALIGNMENT & SPACE-BETWEEN
+           SETTINGS MODAL: CLEAN ALIGNED ROWS (SPACE-BETWEEN)
            ==================================================================== */
         #settings-modal .modal-content, 
         #settings-modal .setup-box {
@@ -333,7 +349,7 @@
         #settings-modal input:checked + .switch-slider:before { transform: translateX(18px) !important; }
 
         /* ====================================================================
-           3. 100% BULLETPROOF THEMES (NO BLACK BOARD EVER)
+           THEMES (LIGHT & DARK SQUARES GUARANTEED)
            ==================================================================== */
         .square {
             position: relative;
@@ -356,7 +372,6 @@
         body.theme-dark .square.light  { background-color: #a0a0a0 !important; }
         body.theme-dark .square.dark   { background-color: #4c4c4c !important; }
 
-        /* Offline Themes Fallback Colors */
         body.theme-board-a .square.light { background-color: #f0d9b5 !important; }
         body.theme-board-a .square.dark  { background-color: #b58863 !important; }
         body.theme-board-b .square.light { background-color: #ffffdd !important; }
@@ -552,30 +567,35 @@
                 </select>
             </div>
 
+            <!-- Single Player Name -->
             <div class="setup-group" id="setup-username-group">
                 <label>Your Name:</label>
                 <input type="text" id="setup-username" value="Player" class="custom-input">
             </div>
 
-            <!-- COMPACT SQUARE PLAY SIDE TILES -->
+            <!-- PLAY SIDE WITH IMAGE 26 SQUARE TILES & LABELS -->
             <div class="setup-group" id="setup-color-group">
                 <label>Play Side:</label>
                 <div class="color-selector">
                     <label>
                         <input type="radio" name="play_color" value="w" checked>
                         <div class="color-icon white-icon">♔</div>
+                        <span class="color-label">White</span>
                     </label>
                     <label>
                         <input type="radio" name="play_color" value="random">
                         <div class="color-icon random-icon">?</div>
+                        <span class="color-label">Random</span>
                     </label>
                     <label>
                         <input type="radio" name="play_color" value="b">
                         <div class="color-icon black-icon">♚</div>
+                        <span class="color-label">Black</span>
                     </label>
                 </div>
             </div>
 
+            <!-- Pass & Play 2-Player Names -->
             <div id="setup-pvp-names-group" style="display: none; flex-direction: column; width: 100%;">
                 <div class="setup-group">
                     <label style="color:#81b64c;">White Name:</label>
@@ -591,6 +611,7 @@
                 </div>
             </div>
 
+            <!-- Engine vs Engine Selectors -->
             <div class="setup-group" id="setup-eve-group" style="display: none; flex-direction: column; gap: 8px;">
                 <div>
                     <label style="color:#81b64c; font-size:11.5px;">White Engine:</label>
@@ -616,6 +637,7 @@
                 </div>
             </div>
 
+            <!-- Bot Selectors -->
             <div class="setup-group" id="setup-white-bot-group" style="display: none;">
                 <label style="color:#81b64c;">White Bot Level & Name:</label>
                 <div style="display: flex; gap: 5px;">
@@ -652,6 +674,7 @@
                 </div>
             </div>
 
+            <!-- Bot Playing Style -->
             <div class="setup-group" id="setup-personality-group">
                 <label>Bot Playing Style:</label>
                 <select id="setup-personality">
@@ -663,11 +686,13 @@
                 </select>
             </div>
 
+            <!-- Bot Think Time Slider -->
             <div class="setup-group" id="setup-think-group">
                 <label>Bot Think Time per Move: <span id="setup-think-label" style="color:#5c9ded; font-weight:bold;">0.8s / move</span></label>
                 <input type="range" id="setup-think-time" min="0.1" max="5.0" step="0.1" value="0.8" style="width:100%;" oninput="document.getElementById('setup-think-label').innerText=this.value+'s / move'">
             </div>
 
+            <!-- Engine Calculation Depth Slider -->
             <div class="setup-group" id="setup-depth-group">
                 <label>Engine Calculation Depth: <span id="setup-depth-label" style="color:#81b64c; font-weight:bold;">Depth 20</span></label>
                 <input type="range" id="setup-depth-slider" min="4" max="28" step="1" value="20" style="width:100%;" oninput="document.getElementById('setup-depth-label').innerText='Depth '+this.value">
@@ -987,7 +1012,7 @@
     <script>
         (function() {
             // ================================================================
-            // 1. BOARD THEMES WITH FAIL-SAFE BACKGROUNDS (NO BLACK SQUARES)
+            // 1. BOARD THEMES WITH FAIL-SAFE BACKGROUNDS
             // ================================================================
             window.applyThemeAndPieces = function() {
                 let themeSel = document.getElementById('setting-board-theme');
@@ -1139,7 +1164,7 @@
             };
 
             // ================================================================
-            // 4. DRAWING CONTROLLER (WIRED BOTH TO CANVAS AND DRAWING ENGINE)
+            // 4. DRAWING CONTROLLER
             // ================================================================
             window.toggleDrawMode = function() {
                 let palette = $('#draw-palette-bar');
