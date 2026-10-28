@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>JoHnnY</title>
-    <link rel="stylesheet" href="/static/style.css?v=290">
+    <link rel="stylesheet" href="/static/style.css?v=300">
     <style>
         body {
             background: #161512 !important;
@@ -203,10 +203,6 @@
         .formal-btn-primary { background: #81b64c; border-color: #81b64c; color: #fff; }
 
         .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.85); display: flex; justify-content: center; align-items: flex-start !important; overflow-y: auto !important; padding: 14px 8px !important; box-sizing: border-box !important; z-index: 1000; }
-        
-        /* RATING PICKER PRIORITY Z-INDEX (ABOVE ALL DRAWERS) */
-        #rating-setup-modal { z-index: 1200 !important; }
-
         .modal-content, .kundli-box, .setup-box { width: 100% !important; max-width: 344px !important; max-height: 88vh !important; overflow-y: auto !important; overflow-x: hidden !important; margin: auto !important; background: #21201d; padding: 12px !important; border-radius: 8px; border: 1px solid #383632; box-sizing: border-box !important; }
         .sticky-top-bar { position: sticky !important; top: -14px !important; background: #21201d !important; z-index: 99 !important; padding: 8px 2px !important; margin: -10px -4px 10px -4px !important; border-bottom: 1px solid #363431 !important; display: flex !important; justify-content: space-between !important; align-items: center !important; }
         .big-close-btn { background: #363431 !important; color: #ddd !important; border: 1px solid #4a4844 !important; padding: 4px 10px !important; border-radius: 4px !important; font-size: 11.5px !important; font-weight: bold !important; cursor: pointer !important; }
@@ -283,6 +279,77 @@
         .color-selector input[type="radio"]:checked ~ .color-label {
             color: #81b64c !important;
             font-weight: 700 !important;
+        }
+
+        /* ====================================================================
+           CLASSIC ONBOARDING RATING PICKER MODAL (TOP PRIORITY & ANIMATED)
+           ==================================================================== */
+        #rating-setup-modal {
+            z-index: 999999 !important; /* Always sits above drawer and backdrops */
+        }
+        #rating-setup-modal .setup-box {
+            animation: ratingPopIn 0.32s cubic-bezier(0.18, 0.89, 0.32, 1.28) forwards !important;
+            border: 1px solid #4a463f !important;
+            box-shadow: 0 18px 45px rgba(0, 0, 0, 0.95), 0 0 20px rgba(129, 182, 76, 0.15) !important;
+            background: radial-gradient(circle at top, #24221f 0%, #151412 100%) !important;
+            border-radius: 10px !important;
+            max-width: 330px !important;
+        }
+        @keyframes ratingPopIn {
+            0% { transform: scale(0.85); opacity: 0; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+
+        .rating-tier-card {
+            background: #1d1c19 !important;
+            border: 1.5px solid #383632 !important;
+            color: #eee !important;
+            padding: 12px 6px !important;
+            border-radius: 8px !important;
+            cursor: pointer !important;
+            transition: all 0.2s cubic-bezier(0.2, 0.9, 0.3, 1.2) !important;
+            text-align: center !important;
+        }
+        .rating-tier-card:hover, .rating-tier-card:active {
+            border-color: #81b64c !important;
+            background: #252e1f !important;
+            transform: translateY(-2px) scale(1.02) !important;
+            box-shadow: 0 6px 14px rgba(0,0,0,0.6) !important;
+        }
+        .rating-tier-val {
+            font-size: 15px !important;
+            font-weight: 800 !important;
+            letter-spacing: 0.5px !important;
+        }
+        .rating-tier-sub {
+            font-size: 10.5px !important;
+            color: #999 !important;
+            margin-top: 3px !important;
+        }
+
+        .elo-slider-styled {
+            -webkit-appearance: none !important;
+            width: 100% !important;
+            height: 7px !important;
+            border-radius: 4px !important;
+            background: #2b2823 !important;
+            outline: none !important;
+            margin: 10px 0 6px 0 !important;
+        }
+        .elo-slider-styled::-webkit-slider-thumb {
+            -webkit-appearance: none !important;
+            appearance: none !important;
+            width: 22px !important;
+            height: 22px !important;
+            border-radius: 50% !important;
+            background: #81b64c !important;
+            border: 2px solid #ffffff !important;
+            box-shadow: 0 0 10px rgba(129, 182, 76, 0.9) !important;
+            cursor: pointer !important;
+            transition: transform 0.1s ease !important;
+        }
+        .elo-slider-styled::-webkit-slider-thumb:active {
+            transform: scale(1.22) !important;
         }
 
         /* SETTINGS MODAL */
@@ -899,42 +966,54 @@
         </div>
     </div>
 
-    <!-- 7. RATING SETUP / RESET MODAL (200 - 2800 ELO ONBOARDING PICKER) -->
+    <!-- 7. RATING SETUP / RESET MODAL (CLASSIC ANIMATED ONBOARDING PICKER) -->
     <div id="rating-setup-modal" class="modal-overlay" style="display: none;">
         <div class="modal-content setup-box">
-            <div class="sticky-top-bar">
-                <span style="color:#fff; font-size:15px; font-weight:bold;">Choose Your Rating</span>
+            <div class="sticky-top-bar" style="border-bottom: 1px solid #383531;">
+                <div style="display: flex; align-items: center; gap: 6px;">
+                    <span style="color:#f0c15c; font-size:18px;">♔</span>
+                    <span style="color:#fff; font-size:15px; font-weight:bold;">Choose Your Rating</span>
+                </div>
                 <button class="big-close-btn" onclick="closeModal('rating-setup-modal')">Close</button>
             </div>
-            <div style="font-size:11.5px; color:#aaa; margin-bottom:10px; text-align:left;">
-                Select your chess skill level or set a custom rating:
+            <div style="font-size:11.5px; color:#aaa; margin-bottom:12px; text-align:left; line-height: 1.4;">
+                Select your skill level to start playing and climbing the leaderboard:
             </div>
             
             <div style="display:grid; grid-template-columns: 1fr 1fr; gap:8px; margin-bottom:12px;">
-                <button type="button" onclick="setCareerRatingQuick(400)" style="background:#1b1c20; border:1px solid #383632; color:#eee; padding:10px 6px; border-radius:6px; font-weight:bold; cursor:pointer;">
-                    <div style="color:#81b64c; font-size:13px;">400 ELO</div>
-                    <div style="font-size:10px; color:#888;">New to Chess</div>
+                <button type="button" class="rating-tier-card" onclick="setCareerRatingQuick(400)">
+                    <div class="rating-tier-val" style="color:#81b64c;">400 ELO</div>
+                    <div class="rating-tier-sub">New to Chess</div>
                 </button>
-                <button type="button" onclick="setCareerRatingQuick(800)" style="background:#1b1c20; border:1px solid #383632; color:#eee; padding:10px 6px; border-radius:6px; font-weight:bold; cursor:pointer;">
-                    <div style="color:#81b64c; font-size:13px;">800 ELO</div>
-                    <div style="font-size:10px; color:#888;">Beginner</div>
+                <button type="button" class="rating-tier-card" onclick="setCareerRatingQuick(800)">
+                    <div class="rating-tier-val" style="color:#81b64c;">800 ELO</div>
+                    <div class="rating-tier-sub">Beginner</div>
                 </button>
-                <button type="button" onclick="setCareerRatingQuick(1200)" style="background:#1b1c20; border:1px solid #383632; color:#eee; padding:10px 6px; border-radius:6px; font-weight:bold; cursor:pointer;">
-                    <div style="color:#f0c15c; font-size:13px;">1200 ELO</div>
-                    <div style="font-size:10px; color:#888;">Intermediate</div>
+                <button type="button" class="rating-tier-card" onclick="setCareerRatingQuick(1200)">
+                    <div class="rating-tier-val" style="color:#f0c15c;">1200 ELO</div>
+                    <div class="rating-tier-sub">Intermediate</div>
                 </button>
-                <button type="button" onclick="setCareerRatingQuick(1600)" style="background:#1b1c20; border:1px solid #383632; color:#eee; padding:10px 6px; border-radius:6px; font-weight:bold; cursor:pointer;">
-                    <div style="color:#5c9ded; font-size:13px;">1600 ELO</div>
-                    <div style="font-size:10px; color:#888;">Advanced</div>
+                <button type="button" class="rating-tier-card" onclick="setCareerRatingQuick(1600)">
+                    <div class="rating-tier-val" style="color:#5c9ded;">1600 ELO</div>
+                    <div class="rating-tier-sub">Advanced</div>
                 </button>
             </div>
 
-            <div class="setup-group">
-                <label>Custom Rating: <span id="custom-elo-label" style="color:#f0c15c;">1200 ELO</span></label>
-                <input type="range" id="custom-elo-slider" min="200" max="2800" step="50" value="1200" style="width:100%;" oninput="document.getElementById('custom-elo-label').innerText = this.value + ' ELO'">
+            <div class="setup-group" style="background:#181715; border:1px solid #2d2b27; padding:10px; border-radius:8px; margin-bottom:10px;">
+                <div style="display:flex; justify-content:space-between; align-items:center;">
+                    <label style="margin:0; font-size:12px; color:#ddd;">Custom Level:</label>
+                    <span id="custom-elo-badge" style="background:#262420; color:#f0c15c; padding:3px 9px; border-radius:12px; font-weight:800; font-size:13px; border:1px solid #4a4435;">1200 ELO</span>
+                </div>
+                <div id="custom-elo-tier-name" style="font-size:10.5px; color:#81b64c; margin-top:3px; text-align:right;">Intermediate (Club Player)</div>
+                <input type="range" id="custom-elo-slider" class="elo-slider-styled" min="200" max="2800" step="25" value="1200" oninput="updateCustomEloSliderUI(this.value)">
+                <div style="display:flex; justify-content:space-between; font-size:9.5px; color:#666; margin-top:2px;">
+                    <span>200 (Beginner)</span>
+                    <span>1500 (Master)</span>
+                    <span>2800 (GM)</span>
+                </div>
             </div>
 
-            <button type="button" onclick="applyCustomRatingFromSlider()" style="width:100%; padding:10px; background:#81b64c; color:#fff; font-weight:bold; border:none; border-radius:5px; cursor:pointer; margin-top:6px;">Save Rating</button>
+            <button type="button" onclick="applyCustomRatingFromSlider()" style="width:100%; padding:11px; background:linear-gradient(90deg, #81b64c, #6c9c3e); color:#fff; font-size:13px; font-weight:800; border:none; border-radius:6px; cursor:pointer; box-shadow:0 4px 14px rgba(129,182,76,0.4); transition: transform 0.1s ease;">Confirm Rating</button>
         </div>
     </div>
 
@@ -1040,7 +1119,7 @@
             <div id="status">Ready to play</div>
             <textarea id="pgn-box" readonly style="display:none;"></textarea>
 
-            <!-- 2. NAVIGATION ROW: SYMMETRIC |< AND >| BUTTONS -->
+            <!-- NAVIGATION ROW: SYMMETRIC |< AND >| BUTTONS -->
             <div class="nav-row">
                 <button class="nav-btn" onclick="goToStart()" title="First Move">|&lt;</button>
                 <button class="nav-btn" onclick="goBackward()" title="Previous Move">&lt;</button>
@@ -1085,14 +1164,14 @@
     <!-- SCRIPTS -->
     <script src="/static/js/jquery.min.js"></script>
     <script src="/static/js/chess.min.js"></script>
-    <script src="/static/mod_core.js?v=530"></script>
-    <script src="/static/mod_openings.js?v=530"></script>
-    <script src="/static/mod_analysis.js?v=530"></script>
-    <script src="/static/mod_drawing.js?v=530"></script>
-    <script src="/static/mod_share_vault.js?v=530"></script>
-    <script src="/static/mod_extras.js?v=530"></script>
+    <script src="/static/mod_core.js?v=540"></script>
+    <script src="/static/mod_openings.js?v=540"></script>
+    <script src="/static/mod_analysis.js?v=540"></script>
+    <script src="/static/mod_drawing.js?v=540"></script>
+    <script src="/static/mod_share_vault.js?v=540"></script>
+    <script src="/static/mod_extras.js?v=540"></script>
 
-    <!-- MASTER CONTROLLER SCRIPT (100% FIXED) -->
+    <!-- MASTER CONTROLLER SCRIPT (100% FIXED ELO SYNC & SLIDER) -->
     <script>
         (function() {
             // ================================================================
@@ -1110,7 +1189,109 @@
             };
 
             // ================================================================
-            // 2. AJAX PREFILTER: THINK TIME & DEPTH SLIDERS
+            // 2. DYNAMIC ELO DISPLAY SYNCHRONIZER (NEVER REVERTS TO 1200)
+            // ================================================================
+            window.syncAllEloDisplays = function(elo) {
+                let num = (elo !== undefined) ? parseInt(elo) : parseInt(localStorage.getItem('chess_player_elo') || "1200");
+                if (isNaN(num)) num = 1200;
+                
+                let textStr = `${num} ELO`;
+                
+                // Sidebar drawer ELO
+                let sidebarVal = document.getElementById('sidebar-elo-val');
+                if (sidebarVal) sidebarVal.innerText = textStr;
+                
+                // Live board pill ELO
+                let pill = document.getElementById('live-player-elo-pill');
+                if (pill) pill.innerText = textStr;
+                
+                // Game Over Modal banner ELO
+                let modalBanner = document.getElementById('modal-elo-change-banner');
+                if (modalBanner) modalBanner.innerText = `Rating: ${textStr}`;
+            };
+
+            // ================================================================
+            // 3. SIDEBAR CONTROLLER (ALWAYS SYNCS LIVE ELO ON OPEN)
+            // ================================================================
+            window.toggleSidebarDrawer = function(force) {
+                let drawer = document.getElementById('chess-sidebar-drawer');
+                let backdrop = document.getElementById('sidebar-backdrop');
+                if (!drawer) return;
+                let isOpen = drawer.classList.contains('open');
+                let shouldOpen = (force !== undefined) ? force : !isOpen;
+                if (shouldOpen) {
+                    window.syncAllEloDisplays(); // Reads localStorage value immediately
+                    drawer.classList.add('open');
+                    if (backdrop) backdrop.style.display = 'block';
+                } else {
+                    drawer.classList.remove('open');
+                    if (backdrop) backdrop.style.display = 'none';
+                }
+            };
+
+            // ================================================================
+            // 4. RATING SETUP & RESET CONTROLS (200 - 2800 ELO SLIDER)
+            // ================================================================
+            window.updateCustomEloSliderUI = function(val) {
+                let num = parseInt(val) || 1200;
+                let badge = document.getElementById('custom-elo-badge');
+                let tier = document.getElementById('custom-elo-tier-name');
+                if (badge) badge.innerText = num + ' ELO';
+                
+                let tierText = "Intermediate (Club)";
+                let tierColor = "#f0c15c";
+                if (num <= 500) { tierText = "New to Chess (Novice)"; tierColor = "#81b64c"; }
+                else if (num <= 900) { tierText = "Casual Beginner"; tierColor = "#81b64c"; }
+                else if (num <= 1300) { tierText = "Intermediate (Club Player)"; tierColor = "#f0c15c"; }
+                else if (num <= 1700) { tierText = "Advanced (Tournament)"; tierColor = "#5c9ded"; }
+                else if (num <= 2200) { tierText = "Candidate Master Level"; tierColor = "#b388ff"; }
+                else { tierText = "Grandmaster Strength"; tierColor = "#ff7043"; }
+                
+                if (tier) {
+                    tier.innerText = tierText;
+                    tier.style.color = tierColor;
+                }
+            };
+
+            window.openRatingPickerModal = function() {
+                if (typeof window.toggleSidebarDrawer === 'function') {
+                    window.toggleSidebarDrawer(false); // Cleanly closes drawer first
+                }
+                let m = document.getElementById('rating-setup-modal');
+                if (m) m.style.display = 'flex';
+                
+                let cur = parseInt(localStorage.getItem('chess_player_elo') || "1200");
+                let s = document.getElementById('custom-elo-slider');
+                if (s) {
+                    s.value = cur;
+                    window.updateCustomEloSliderUI(cur);
+                }
+            };
+
+            window.setCareerRatingQuick = function(elo) {
+                let num = parseInt(elo) || 1200;
+                localStorage.setItem('chess_player_elo', num.toString());
+                localStorage.setItem('chess_player_rating_chosen', 'true');
+                
+                window.syncAllEloDisplays(num);
+                closeModal('rating-setup-modal');
+                if (typeof showAndroidToast === 'function') {
+                    showAndroidToast(`Rating set to ${num} ELO`);
+                }
+            };
+
+            window.applyCustomRatingFromSlider = function() {
+                let s = document.getElementById('custom-elo-slider');
+                let elo = s ? parseInt(s.value) : 1200;
+                window.setCareerRatingQuick(elo);
+            };
+
+            window.resetCareerRating = function() {
+                window.openRatingPickerModal();
+            };
+
+            // ================================================================
+            // 5. AJAX PREFILTER: THINK TIME & DEPTH SLIDERS
             // ================================================================
             $.ajaxPrefilter(function(options, originalOptions, jqXHR) {
                 if (options.url && options.url.includes('/ai_move')) {
@@ -1131,7 +1312,7 @@
             });
 
             // ================================================================
-            // 3. KING END EFFECTS (FIXED: NEVER ANNOUNCES ON REVIEW MOVES)
+            // 6. KING END EFFECTS & DELAYED POPUP
             // ================================================================
             window.activeGameEndStatus = null;
             window.popupDelayTimer = null;
@@ -1145,11 +1326,8 @@
                 if (typeof game === 'undefined') return;
                 window.clearKingEndEffects();
 
-                // Review karte waqt koi piece tilt ya animate nahi hoga!
                 let isLiveTip = (typeof historyIndex !== 'undefined' && typeof gameHistory !== 'undefined') ? (historyIndex === gameHistory.length - 1) : true;
-                if (!isLiveTip) {
-                    return; 
-                }
+                if (!isLiveTip) return;
 
                 let isMate = (typeof game.in_checkmate === 'function' && game.in_checkmate());
                 let isDraw = (typeof game.in_draw === 'function' && game.in_draw()) || 
@@ -1256,7 +1434,7 @@
             };
 
             // ================================================================
-            // 4. DRAWING CONTROLLER
+            // 7. DRAWING CONTROLLER
             // ================================================================
             window.toggleDrawMode = function() {
                 let palette = $('#draw-palette-bar');
@@ -1283,7 +1461,7 @@
             };
 
             // ================================================================
-            // 5. SETUP MODAL TOGGLE & START
+            // 8. SETUP MODAL & START
             // ================================================================
             window.toggleSetupMode = function() {
                 let m = (document.getElementById('setup-mode') || {}).value || 'pvb';
@@ -1454,6 +1632,8 @@
 
                     if (document.getElementById('top-timer')) document.getElementById('top-timer').innerText = formattedTime;
                     if (document.getElementById('bottom-timer')) document.getElementById('bottom-timer').innerText = formattedTime;
+
+                    window.syncAllEloDisplays(); // Always keep Elo synced
                 }, 70);
             };
 
@@ -1465,7 +1645,7 @@
             };
 
             // ================================================================
-            // 6. SETTINGS MODAL & THEMES
+            // 9. SETTINGS MODAL & THEMES
             // ================================================================
             window.openSettingsModal = function() {
                 let m = document.getElementById('settings-modal');
@@ -1509,7 +1689,7 @@
             };
 
             // ================================================================
-            // 7. ARCHIVE DEDUPLICATION & COMPLETE PGN REPLAY
+            // 10. ARCHIVE DEDUPLICATION & REPLAY
             // ================================================================
             window.vaultMatchesById = {};
 
@@ -1567,7 +1747,6 @@
                 });
             }
 
-            // LOAD SAVED MATCH WITH COMPLETE MOVE HISTORY (REPLAY FIX)
             window.loadVaultMatch = function(id, fen, isResume, white, black) {
                 let match = window.vaultMatchesById ? window.vaultMatchesById[id] : null;
                 closeModal('vault-modal');
@@ -1697,46 +1876,7 @@
             };
 
             // ================================================================
-            // 8. RATING SETUP & RESET CONTROLS (ONBOARDING + SIDEBAR RESET)
-            // ================================================================
-            window.openRatingPickerModal = function() {
-                if (typeof window.toggleSidebarDrawer === 'function') {
-                    window.toggleSidebarDrawer(false);
-                }
-                let m = document.getElementById('rating-setup-modal');
-                if (m) m.style.display = 'flex';
-                let cur = parseInt(localStorage.getItem('chess_player_elo') || "1200");
-                let s = document.getElementById('custom-elo-slider');
-                if (s) {
-                    s.value = cur;
-                    let lbl = document.getElementById('custom-elo-label');
-                    if (lbl) lbl.innerText = cur + ' ELO';
-                }
-            };
-
-            window.setCareerRatingQuick = function(elo) {
-                localStorage.setItem('chess_player_elo', elo.toString());
-                localStorage.setItem('chess_player_rating_chosen', 'true');
-                $('#sidebar-elo-val').text(`${elo} ELO`);
-                $('#live-player-elo-pill').text(`${elo} ELO`);
-                let modalBanner = document.getElementById('modal-elo-change-banner');
-                if (modalBanner) modalBanner.innerText = `Rating: ${elo} ELO`;
-                closeModal('rating-setup-modal');
-                if (typeof showAndroidToast === 'function') showAndroidToast(`Rating set to ${elo} ELO`);
-            };
-
-            window.applyCustomRatingFromSlider = function() {
-                let s = document.getElementById('custom-elo-slider');
-                let elo = s ? parseInt(s.value) : 1200;
-                window.setCareerRatingQuick(elo);
-            };
-
-            window.resetCareerRating = function() {
-                window.openRatingPickerModal();
-            };
-
-            // ================================================================
-            // 9. INITIALIZATION ON LOAD (FIRST-TIME USER ONBOARDING TRIGGER)
+            // 11. INITIALIZATION ON LOAD (FIRST-TIME USER + AUTO SYNC)
             // ================================================================
             $(document).ready(function() {
                 $('#draw-palette-bar').removeClass('active-palette').hide();
@@ -1745,13 +1885,16 @@
                     window.applyThemeAndPieces();
                 }
 
-                // First-time user rating picker check (runs right after splash fades)
-                setTimeout(function() {
-                    let hasChosen = localStorage.getItem('chess_player_rating_chosen');
-                    if (!hasChosen) {
+                // Initial live sync for player rating:
+                window.syncAllEloDisplays();
+
+                // First-time user onboarding modal trigger:
+                let hasChosen = localStorage.getItem('chess_player_rating_chosen');
+                if (!hasChosen) {
+                    setTimeout(function() {
                         window.openRatingPickerModal();
-                    }
-                }, 1300);
+                    }, 1200);
+                }
             });
         })();
     </script>
