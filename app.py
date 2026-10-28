@@ -4,6 +4,8 @@ import random
 import shutil
 import subprocess
 import threading
+import tempfile
+import uuid
 import urllib.request
 import zipfile
 from datetime import datetime
@@ -328,210 +330,262 @@ def serve_board_theme_file(filename):
     return send_from_directory(BOARDS_DIR, filename)
 
 # ============================================================================
-# SUPABASE DATABASE ROUTES (FAIL-SAFE CLOUD + LOCAL SYNC)
+# DEVICE-SCOPED ARCHIVE (existing Supabase + JSON storage, no engine changes)
+# Supabase one-time migration (run as database owner, not with the public API key):
+# ALTER TABLE public.matches ADD COLUMN IF NOT EXISTS device_id text;
+# CREATE INDEX IF NOT EXISTS matches_device_id_idx ON public.matches(device_id);
+# Unowned legacy rows are retained, never automatically claimed by a new device.
 # ============================================================================
 
+vault_storage_lock = threading.RLock()
+
+
+def archive_device_id():
+    value = request.args.get('device_id') if request.method == 'GET' else request.form.get('device_id')
+    if not isinstance(value, str) or not 8 <= len(value) <= 128:
+        return None
+    if any(c not in 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-' for c in value):
+        return None
+    return value
+
+
 def get_local_matches():
-    if os.path.exists(LOCAL_MATCHES_FILE):
-        try:
+    with vault_storage_lock:
+        if os.path.exists(LOCAL_MATCHES_FILE):
             with open(LOCAL_MATCHES_FILE, 'r', encoding='utf-8') as f:
-                return json.load(f)
-        except Exception:
-            return []
-    return []
+                data = json.load(f)
+            if not isinstance(data, list):
+                raise ValueError('Local archive must be a list; refusing to overwrite it.')
+            return data
+        return []
+
 
 def save_local_matches(matches_list):
+    # Atomic replacement prevents torn JSON; callers hold the same RLock for RMW.
+    # Keep the previous 60-row retention per device, not 60 rows across all phones.
+    # Legacy/unowned entries are kept intact, outside the per-device retention cap.
+    with vault_storage_lock:
+        counts, kept = {}, []
+        for item in matches_list:
+            owner = item.get('device_id') if isinstance(item, dict) else None
+            if isinstance(owner, str) and owner:
+                counts[owner] = counts.get(owner, 0) + 1
+                if counts[owner] > 60:
+                    continue
+            kept.append(item)
+        folder = os.path.dirname(LOCAL_MATCHES_FILE) or '.'
+        os.makedirs(folder, exist_ok=True)
+        handle, temp_path = tempfile.mkstemp(prefix='.matches-', suffix='.tmp', dir=folder)
+        try:
+            with os.fdopen(handle, 'w', encoding='utf-8') as f:
+                json.dump(kept, f)
+                f.flush()
+                os.fsync(f.fileno())
+            os.replace(temp_path, LOCAL_MATCHES_FILE)
+        finally:
+            if os.path.exists(temp_path):
+                os.unlink(temp_path)
+
+
+def owned_archive_rows(rows, device_id):
+    if not isinstance(rows, list):
+        return []
+    return [m for m in rows if isinstance(m, dict) and m.get('device_id') == device_id]
+
+
+def archive_schema_missing(response):
+    # No unsafe global-query fallback when a deployed Supabase schema is old.
     try:
-        with open(LOCAL_MATCHES_FILE, 'w', encoding='utf-8') as f:
-            json.dump(matches_list[:60], f)
+        error = response.json()
+        text = str(error).lower()
+        return response.status_code >= 400 and 'device_id' in text and (
+            '42703' in text or 'pgrst204' in text or 'does not exist' in text or 'schema cache' in text)
     except Exception:
-        pass
+        return False
+
+
+def device_archive_matches(device_id):
+    cloud = []
+    if requests is not None:
+        try:
+            res = requests.get(
+                f'{SUPABASE_URL}/rest/v1/matches', headers=SUPABASE_HEADERS,
+                params={'device_id': 'eq.' + device_id, 'select': '*', 'order': 'id.desc', 'limit': 50}, timeout=5)
+            if res.status_code == 200:
+                cloud = owned_archive_rows(res.json(), device_id)
+        except Exception:
+            pass
+    local = owned_archive_rows(get_local_matches(), device_id)
+    combined, seen_ids, seen_pgns = [], set(), set()
+    # A recent offline local update takes precedence over an older cloud mirror.
+    for match in local + cloud:
+        mid = str(match.get('id', ''))
+        pgn = (match.get('pgn') or '').strip()
+        sig = pgn if len(pgn) > 10 else f"{match.get('date')}_{match.get('white')}_{match.get('black')}"
+        if (mid and mid in seen_ids) or sig in seen_pgns:
+            continue
+        if mid:
+            seen_ids.add(mid)
+        seen_pgns.add(sig)
+        combined.append(match)
+    return combined
+
 
 @app.route('/save_match', methods=['POST'])
 def save_match():
+    device_id = archive_device_id()
+    if not device_id:
+        return jsonify({'status': 'error', 'message': 'A valid device_id is required.'}), 400
     match_id = request.form.get('id', '').strip()
-    user_local_date = request.form.get('date', '').strip()
-    if not user_local_date:
-        user_local_date = datetime.now().strftime("%d %b %Y • %I:%M %p")
-
-    result_status = request.form.get('result', 'Match Over')
+    if match_id in ('null', 'undefined', '0'):
+        match_id = ''
+    user_local_date = request.form.get('date', '').strip() or datetime.now().strftime('%d %b %Y • %I:%M %p')
     match_payload = {
-        "date": user_local_date,
-        "white": request.form.get('white', 'White'),
-        "black": request.form.get('black', 'Black'),
-        "result": result_status,
-        "w_acc": request.form.get('w_acc', '--%'),
-        "b_acc": request.form.get('b_acc', '--%'),
-        "opening": request.form.get('opening', 'Standard'),
-        "pgn": request.form.get('pgn', ''),
-        "fen": request.form.get('fen', '')
+        'device_id': device_id, 'date': user_local_date,
+        'white': request.form.get('white', 'White'), 'black': request.form.get('black', 'Black'),
+        'result': request.form.get('result', 'Match Over'),
+        'w_acc': request.form.get('w_acc', '--%'), 'b_acc': request.form.get('b_acc', '--%'),
+        'opening': request.form.get('opening', 'Standard'),
+        'pgn': request.form.get('pgn', ''), 'fen': request.form.get('fen', '')
     }
-
-    local_data = get_local_matches()
-    assigned_local_id = match_id if (match_id and match_id not in ['null', 'undefined', '0']) else str(int(datetime.now().timestamp() * 1000))
-    match_payload["id"] = assigned_local_id
-
-    updated_locally = False
-    for idx, item in enumerate(local_data):
-        if str(item.get("id")) == str(assigned_local_id):
-            local_data[idx] = match_payload
-            updated_locally = True
-            break
-    if not updated_locally:
-        local_data.insert(0, match_payload)
-    save_local_matches(local_data)
-
-    is_valid_numeric_id = bool(match_id and match_id.isdigit() and int(match_id) > 0)
-
-    if requests is not None:
+    with vault_storage_lock:
         try:
-            if is_valid_numeric_id:
-                patch_headers = {**SUPABASE_HEADERS, "Prefer": "return=representation"}
-                res = requests.patch(
-                    f"{SUPABASE_URL}/rest/v1/matches?id=eq.{match_id}",
-                    headers=patch_headers,
-                    json=match_payload,
-                    timeout=5
-                )
-                if res.status_code in [200, 204]:
-                    rows = res.json() if res.text else []
-                    if rows and len(rows) > 0:
-                        return jsonify({"status": "updated", "id": match_id})
-
-            if "in progress" in result_status.lower():
-                check = requests.get(
-                    f"{SUPABASE_URL}/rest/v1/matches?result=ilike.*In Progress*&order=id.desc&limit=1",
-                    headers=SUPABASE_HEADERS,
-                    timeout=5
-                )
-                if check.status_code == 200:
-                    existing = check.json()
-                    if existing and len(existing) > 0:
-                        existing_id = existing[0]["id"]
-                        requests.patch(
-                            f"{SUPABASE_URL}/rest/v1/matches?id=eq.{existing_id}",
-                            headers=SUPABASE_HEADERS,
-                            json=match_payload,
-                            timeout=5
-                        )
-                        return jsonify({"status": "updated", "id": existing_id})
-
-            headers = {**SUPABASE_HEADERS, "Prefer": "return=representation"}
-            cloud_payload = {k: v for k, v in match_payload.items() if k != "id"}
-            res = requests.post(
-                f"{SUPABASE_URL}/rest/v1/matches",
-                headers=headers,
-                json=cloud_payload,
-                timeout=5
-            )
-            if res.status_code in [200, 201]:
-                created = res.json()
-                new_id = created[0]["id"] if isinstance(created, list) and len(created) > 0 else assigned_local_id
-                return jsonify({"status": "saved", "id": new_id})
+            local = get_local_matches()
         except Exception:
-            pass
+            app.logger.exception('Local archive could not be read; no existing data was overwritten.')
+            return jsonify({'status': 'error', 'message': 'Local archive could not be read.'}), 500
+        existing = next((m for m in owned_archive_rows(local, device_id)
+                         if str(m.get('id')) == match_id), None) if match_id else None
+        # An ID found under another owner (including an unowned legacy row) is not claimable.
+        if match_id and existing is None and any(isinstance(m, dict) and str(m.get('id')) == match_id for m in local):
+            return jsonify({'status': 'error', 'message': 'Match not found for this device.'}), 404
+        assigned_id = match_id or ('local_' + uuid.uuid4().hex)
+        cloud_synced = False
+        numeric_id = bool(match_id and match_id.isdigit() and int(match_id) > 0)
+        if requests is not None:
+            try:
+                headers = {**SUPABASE_HEADERS, 'Prefer': 'return=representation'}
+                if numeric_id:
+                    res = requests.patch(
+                        f'{SUPABASE_URL}/rest/v1/matches', headers=headers,
+                        params={'id': 'eq.' + match_id, 'device_id': 'eq.' + device_id},
+                        json=match_payload, timeout=5)
+                    if res.status_code in (200, 204):
+                        rows = owned_archive_rows(res.json() if res.text else [], device_id)
+                        if rows:
+                            assigned_id = str(rows[0]['id'])
+                            cloud_synced = True
+                        elif existing is None:
+                            return jsonify({'status': 'error', 'message': 'Match not found for this device.'}), 404
+                    elif existing is None:
+                        return jsonify({'status': 'error', 'message': 'Match ownership could not be verified.'}), 503
+                else:
+                    # Never update the global "latest in-progress" game. Only an explicit
+                    # owned ID can update a session; fresh saves create a separate record.
+                    res = requests.post(f'{SUPABASE_URL}/rest/v1/matches', headers=headers,
+                                        json=match_payload, timeout=5)
+                    if res.status_code in (200, 201):
+                        rows = owned_archive_rows(res.json(), device_id)
+                        if rows:
+                            assigned_id = str(rows[0]['id'])
+                            cloud_synced = True
+            except Exception:
+                if numeric_id and existing is None:
+                    return jsonify({'status': 'error', 'message': 'Match ownership could not be verified.'}), 503
+        elif numeric_id and existing is None:
+            return jsonify({'status': 'error', 'message': 'Match ownership could not be verified.'}), 503
+        match_payload['id'] = assigned_id
+        # Replace only this owner's matching local session, retaining every other device.
+        local = [m for m in local if not (isinstance(m, dict) and m.get('device_id') == device_id
+                 and str(m.get('id')) in {match_id, assigned_id})]
+        local.insert(0, match_payload)
+        try:
+            save_local_matches(local)
+        except Exception:
+            app.logger.exception('Could not persist the local archive.')
+            if not cloud_synced:
+                return jsonify({'status': 'error', 'message': 'The match could not be saved.'}), 500
+    return jsonify({'status': ('updated' if existing else 'saved') if cloud_synced else 'saved_locally',
+                    'id': assigned_id, 'device_id': device_id, 'cloud_synced': cloud_synced})
 
-    return jsonify({"status": "saved_locally", "id": assigned_local_id})
 
 @app.route('/get_matches', methods=['POST', 'GET'])
 def get_matches():
-    cloud_matches = []
-    if requests is not None:
-        try:
-            res = requests.get(
-                f"{SUPABASE_URL}/rest/v1/matches?select=*&order=id.desc&limit=50",
-                headers=SUPABASE_HEADERS,
-                timeout=5
-            )
-            if res.status_code == 200:
-                cloud_matches = res.json() or []
-        except Exception:
-            cloud_matches = []
+    device_id = archive_device_id()
+    if not device_id:
+        return jsonify({'matches': []})
+    try:
+        return jsonify({'matches': device_archive_matches(device_id)})
+    except Exception:
+        app.logger.exception('Could not read the local archive.')
+        return jsonify({'status': 'error', 'matches': [], 'message': 'Archive unavailable.'}), 500
 
-    local_matches = get_local_matches()
 
-    combined = []
-    seen_pgns = set()
+def delete_device_cloud_matches(device_id, match_id=None):
+    if requests is None:
+        return True
+    params = {'device_id': 'eq.' + device_id}
+    if match_id is not None:
+        if not match_id.isdigit():
+            return True  # local-only IDs have never been inserted as cloud primary keys
+        params['id'] = 'eq.' + match_id
+    try:
+        res = requests.delete(f'{SUPABASE_URL}/rest/v1/matches', headers=SUPABASE_HEADERS,
+                              params=params, timeout=5)
+        return res.status_code in (200, 204) or archive_schema_missing(res)
+    except Exception:
+        return False
 
-    for m in cloud_matches:
-        pgn_sig = (m.get('pgn') or '').strip()
-        key = pgn_sig if len(pgn_sig) > 10 else f"{m.get('date')}_{m.get('white')}_{m.get('black')}"
-        if key not in seen_pgns:
-            seen_pgns.add(key)
-            combined.append(m)
-
-    for m in local_matches:
-        pgn_sig = (m.get('pgn') or '').strip()
-        key = pgn_sig if len(pgn_sig) > 10 else f"{m.get('date')}_{m.get('white')}_{m.get('black')}"
-        if key not in seen_pgns:
-            seen_pgns.add(key)
-            combined.append(m)
-
-    return jsonify({"matches": combined})
 
 @app.route('/delete_match', methods=['POST'])
 def delete_match():
+    device_id = archive_device_id()
+    if not device_id:
+        return jsonify({'status': 'error', 'message': 'A valid device_id is required.'}), 400
     match_id = request.form.get('id', '').strip()
     if not match_id:
-        return jsonify({"status": "error", "message": "No match ID provided"}), 400
-
-    local_data = get_local_matches()
-    local_data = [m for m in local_data if str(m.get('id')) != str(match_id)]
-    save_local_matches(local_data)
-
-    if requests is not None and match_id.isdigit():
+        return jsonify({'status': 'error', 'message': 'No match ID provided.'}), 400
+    with vault_storage_lock:
         try:
-            requests.delete(
-                f"{SUPABASE_URL}/rest/v1/matches?id=eq.{match_id}",
-                headers=SUPABASE_HEADERS,
-                timeout=5
-            )
+            local = get_local_matches()
+            if not delete_device_cloud_matches(device_id, match_id):
+                return jsonify({'status': 'error', 'message': 'Cloud deletion was not confirmed. Please retry.'}), 503
+            save_local_matches([m for m in local if not (isinstance(m, dict) and
+                m.get('device_id') == device_id and str(m.get('id')) == match_id)])
         except Exception:
-            pass
+            app.logger.exception('Could not delete the local match.')
+            return jsonify({'status': 'error', 'message': 'Match deletion failed.'}), 500
+    return jsonify({'status': 'deleted'})
 
-    return jsonify({"status": "deleted"})
 
 @app.route('/delete_all_matches', methods=['POST'])
 def delete_all_matches():
-    save_local_matches([])
-
-    if requests is not None:
+    device_id = archive_device_id()
+    if not device_id:
+        return jsonify({'status': 'error', 'message': 'A valid device_id is required.'}), 400
+    with vault_storage_lock:
         try:
-            requests.delete(
-                f"{SUPABASE_URL}/rest/v1/matches?id=gt.0",
-                headers=SUPABASE_HEADERS,
-                timeout=5
-            )
+            local = get_local_matches()
+            if not delete_device_cloud_matches(device_id):
+                return jsonify({'status': 'error', 'message': 'Cloud deletion was not confirmed. Please retry.'}), 503
+            save_local_matches([m for m in local if not (isinstance(m, dict) and m.get('device_id') == device_id)])
         except Exception:
-            pass
+            app.logger.exception('Could not clear the device archive.')
+            return jsonify({'status': 'error', 'message': 'Archive deletion failed.'}), 500
+    return jsonify({'status': 'cleared'})
 
-    return jsonify({"status": "cleared"})
 
 @app.route('/api/export_all_pgn', methods=['GET'])
 def export_all_pgn():
-    matches_data = []
-    if requests is not None:
-        try:
-            res = requests.get(
-                f"{SUPABASE_URL}/rest/v1/matches?select=pgn&order=id.asc",
-                headers=SUPABASE_HEADERS,
-                timeout=5
-            )
-            if res.status_code == 200:
-                matches_data = res.json() or []
-        except Exception:
-            pass
-
-    if not matches_data:
-        matches_data = get_local_matches()
-
-    all_pgns = [r.get("pgn", "").strip() for r in matches_data if r.get("pgn", "").strip()]
-    combined_text = "\n\n\n".join(all_pgns)
-    return jsonify({
-        "status": "success",
-        "count": len(all_pgns),
-        "multi_pgn": combined_text
-    })
+    device_id = archive_device_id()
+    if not device_id:
+        return jsonify({'status': 'success', 'count': 0, 'multi_pgn': ''})
+    try:
+        matches = device_archive_matches(device_id)
+    except Exception:
+        return jsonify({'status': 'error', 'count': 0, 'multi_pgn': '', 'message': 'Archive unavailable.'}), 500
+    all_pgns = [r.get('pgn', '').strip() for r in matches if r.get('pgn', '').strip()]
+    return jsonify({'status': 'success', 'count': len(all_pgns), 'multi_pgn': '\n\n\n'.join(all_pgns)})
 
 @app.route('/sound/<path:filename>')
 def serve_sound(filename):
