@@ -281,75 +281,102 @@
             font-weight: 700 !important;
         }
 
-        /* ====================================================================
-           CLASSIC ONBOARDING RATING PICKER MODAL (TOP PRIORITY & ANIMATED)
-           ==================================================================== */
+        /* Scoped animated rating onboarding: no board/control selectors. */
         #rating-setup-modal {
-            z-index: 999999 !important; /* Always sits above drawer and backdrops */
+            --rating-accent: #81b64c; --rating-progress: 38.4615%;
+            z-index: 999999 !important;
+            background: rgba(8, 13, 10, .78) !important;
+            -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
+            align-items: center !important; padding: 14px 8px !important;
         }
         #rating-setup-modal .setup-box {
-            animation: ratingPopIn 0.32s cubic-bezier(0.18, 0.89, 0.32, 1.28) forwards !important;
-            border: 1px solid #4a463f !important;
-            box-shadow: 0 18px 45px rgba(0, 0, 0, 0.95), 0 0 20px rgba(129, 182, 76, 0.15) !important;
-            background: radial-gradient(circle at top, #24221f 0%, #151412 100%) !important;
-            border-radius: 10px !important;
-            max-width: 330px !important;
+            width: 100% !important; max-width: 334px !important;
+            max-height: calc(100vh - 28px) !important;
+            max-height: calc(100dvh - 28px) !important;
+            box-sizing: border-box !important; overflow-y: auto !important;
+            padding: 16px !important; border-radius: 16px !important;
+            border: 1px solid rgba(208, 224, 185, .22) !important;
+            background: radial-gradient(ellipse at 15% 0%, rgba(129,182,76,.14), transparent 58%), linear-gradient(155deg, #242720, #141712 72%) !important;
+            box-shadow: 0 24px 70px rgba(0,0,0,.65), inset 0 1px 0 rgba(255,255,255,.05) !important;
+            animation: ratingPopIn .48s cubic-bezier(.16, 1.22, .35, 1) both !important;
         }
         @keyframes ratingPopIn {
-            0% { transform: scale(0.85); opacity: 0; }
-            100% { transform: scale(1); opacity: 1; }
+            0% { transform: scale(.78) translateY(24px); opacity: 0; }
+            72% { transform: scale(1.015) translateY(-2px); opacity: 1; }
+            100% { transform: scale(1) translateY(0); opacity: 1; }
         }
-
-        .rating-tier-card {
-            background: #1d1c19 !important;
-            border: 1.5px solid #383632 !important;
-            color: #eee !important;
-            padding: 12px 6px !important;
-            border-radius: 8px !important;
-            cursor: pointer !important;
-            transition: all 0.2s cubic-bezier(0.2, 0.9, 0.3, 1.2) !important;
-            text-align: center !important;
+        #rating-setup-modal .rating-header {
+            position: sticky !important; top: -16px !important; z-index: 2;
+            display: flex; align-items: center; justify-content: space-between; gap: 8px;
+            margin: -16px -16px 12px; padding: 12px 16px;
+            background: rgba(28,32,25,.96); border-bottom: 1px solid rgba(255,255,255,.08);
         }
-        .rating-tier-card:hover, .rating-tier-card:active {
-            border-color: #81b64c !important;
-            background: #252e1f !important;
-            transform: translateY(-2px) scale(1.02) !important;
-            box-shadow: 0 6px 14px rgba(0,0,0,0.6) !important;
+        #rating-setup-modal .rating-title-group { display: flex; align-items: center; gap: 10px; min-width: 0; }
+        #rating-setup-modal .rating-crown {
+            flex: none; width: 34px; height: 38px; display: grid; place-items: center;
+            color: #f0c15c; font-family: Georgia, serif; font-size: 30px;
+            text-shadow: 0 0 16px rgba(240,193,92,.3);
+            animation: ratingCrownFloat 3s ease-in-out infinite;
         }
-        .rating-tier-val {
-            font-size: 15px !important;
-            font-weight: 800 !important;
-            letter-spacing: 0.5px !important;
+        @keyframes ratingCrownFloat { 0%,100% { transform: translateY(0) rotate(-3deg); } 50% { transform: translateY(-4px) rotate(3deg); } }
+        #rating-setup-modal .rating-eyebrow { color: #92a580; font-size: 8px; font-weight: 800; letter-spacing: 1.7px; text-transform: uppercase; }
+        #rating-setup-modal #rating-picker-title { display: block; color: #f1f4ec; font-size: 16px; font-weight: 800; line-height: 1.3; }
+        #rating-setup-modal .rating-close { min-height: 34px; flex: none; background: rgba(255,255,255,.055); color: #c7d0bf; border: 1px solid rgba(255,255,255,.13); border-radius: 8px; padding: 6px 9px; font-size: 10px; }
+        #rating-setup-modal .rating-intro { font-size: 11.5px; line-height: 1.5; color: #aab5a0; text-align: left; margin: 0 0 12px; }
+        #rating-setup-modal .rating-tier-grid { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 8px; margin-bottom: 12px; }
+        #rating-setup-modal .rating-tier-card {
+            --tier-accent: #81b64c; position: relative; min-width: 0;
+            display: flex; align-items: center; gap: 9px; min-height: 74px;
+            padding: 11px 9px; border: 1px solid rgba(255,255,255,.12); border-radius: 11px;
+            background: linear-gradient(135deg, rgba(255,255,255,.045), rgba(255,255,255,.012));
+            text-align: left; cursor: pointer; color: #edf2e6;
+            transition: transform .18s ease, border-color .18s ease, box-shadow .18s ease;
         }
-        .rating-tier-sub {
-            font-size: 10.5px !important;
-            color: #999 !important;
-            margin-top: 3px !important;
+        #rating-setup-modal .rating-tier-card:nth-child(2) { --tier-accent: #cda678; }
+        #rating-setup-modal .rating-tier-card:nth-child(3) { --tier-accent: #f0c15c; }
+        #rating-setup-modal .rating-tier-card:nth-child(4) { --tier-accent: #78bafa; }
+        #rating-setup-modal .rating-tier-card:hover { transform: translateY(-2px); border-color: var(--tier-accent); }
+        #rating-setup-modal .rating-tier-card:active { transform: scale(.98); }
+        #rating-setup-modal .rating-tier-card.is-selected { border-color: var(--tier-accent); box-shadow: inset 0 0 0 1px var(--tier-accent), 0 0 16px rgba(129,182,76,.09); }
+        #rating-setup-modal .rating-piece-icon { flex: none; font-family: Georgia, serif; font-size: 29px; line-height: 1; color: var(--tier-accent); }
+        #rating-setup-modal .rating-tier-copy { min-width: 0; }
+        #rating-setup-modal .rating-tier-val { display: block; font-size: 14px; font-weight: 800; color: var(--tier-accent); white-space: nowrap; }
+        #rating-setup-modal .rating-tier-sub { display: block; font-size: 10px; line-height: 1.4; color: #b0b8a9; margin-top: 3px; }
+        #rating-setup-modal .rating-custom-level { display: block !important; width: 100% !important; min-width: 0; box-sizing: border-box !important; padding: 12px; margin-bottom: 12px; border: 1px solid rgba(255,255,255,.09); border-radius: 11px; background: rgba(0,0,0,.2); }
+        #rating-setup-modal .rating-custom-heading { display: flex; align-items: center; justify-content: space-between; gap: 6px; flex-wrap: wrap; }
+        #rating-setup-modal .rating-custom-heading label { color: #c6d0bc; font-size: 11px; margin: 0; }
+        #rating-setup-modal #custom-elo-badge { display: inline-block; padding: 5px 10px; border: 1px solid var(--rating-accent); border-radius: 20px; color: var(--rating-accent); background: rgba(255,255,255,.03); font-size: 13px; font-weight: 800; font-variant-numeric: tabular-nums; animation: ratingBadgeBreath 2.8s ease-in-out infinite; }
+        @keyframes ratingBadgeBreath { 0%,100% { transform: scale(1); } 50% { transform: scale(1.025); } }
+        @keyframes ratingBadgeBounce { 0%,100% { transform: scale(1); } 45% { transform: scale(1.13); } }
+        #rating-setup-modal #custom-elo-badge.rating-value-changed { animation: ratingBadgeBounce .32s ease-out, ratingBadgeBreath 2.8s .32s ease-in-out infinite; }
+        #rating-setup-modal #custom-elo-tier-name { width: 100%; margin-top: 7px; font-size: 10.5px; text-align: left; line-height: 1.4; color: var(--rating-accent); }
+        #rating-setup-modal .elo-slider-styled {
+            display: block; -webkit-appearance: none; appearance: none; width: 100%; min-width: 0;
+            box-sizing: border-box; height: 7px; margin: 17px 0 13px; border-radius: 20px;
+            background: linear-gradient(to right, var(--rating-accent) 0%, var(--rating-accent) var(--rating-progress), #343a2f var(--rating-progress), #343a2f 100%);
+            box-shadow: inset 0 1px 3px rgba(0,0,0,.4); cursor: pointer;
         }
-
-        .elo-slider-styled {
-            -webkit-appearance: none !important;
-            width: 100% !important;
-            height: 7px !important;
-            border-radius: 4px !important;
-            background: #2b2823 !important;
-            outline: none !important;
-            margin: 10px 0 6px 0 !important;
-        }
-        .elo-slider-styled::-webkit-slider-thumb {
-            -webkit-appearance: none !important;
-            appearance: none !important;
-            width: 22px !important;
-            height: 22px !important;
-            border-radius: 50% !important;
-            background: #81b64c !important;
-            border: 2px solid #ffffff !important;
-            box-shadow: 0 0 10px rgba(129, 182, 76, 0.9) !important;
-            cursor: pointer !important;
-            transition: transform 0.1s ease !important;
-        }
-        .elo-slider-styled::-webkit-slider-thumb:active {
-            transform: scale(1.22) !important;
+        #rating-setup-modal .elo-slider-styled::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 23px; height: 23px; border: 2px solid #f2f6ea; border-radius: 50%; background: var(--rating-accent); box-shadow: 0 0 13px rgba(129,182,76,.4); transition: transform .12s ease; }
+        #rating-setup-modal .elo-slider-styled::-webkit-slider-thumb:active { transform: scale(1.14); }
+        #rating-setup-modal .elo-slider-styled::-moz-range-thumb { width: 20px; height: 20px; border: 2px solid #f2f6ea; border-radius: 50%; background: var(--rating-accent); box-shadow: 0 0 13px rgba(129,182,76,.4); }
+        #rating-setup-modal .rating-slider-scale { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 6px; width: 100%; color: #818c77; font-size: 9px; line-height: 1.4; }
+        #rating-setup-modal .rating-slider-scale > span { min-width: 0; text-align: center; }
+        #rating-setup-modal .rating-slider-scale > span:first-child { text-align: left; }
+        #rating-setup-modal .rating-slider-scale > span:last-child { text-align: right; }
+        #rating-setup-modal .rating-slider-scale strong { display: block; color: #b2bca7; font-weight: 600; }
+        #rating-setup-modal .rating-confirm { position: relative; isolation: isolate; overflow: hidden; width: 100%; min-height: 45px; border: 1px solid #9dcf61; border-radius: 10px; color: #14200b; background: linear-gradient(110deg,#9bd65b,#81b64c 52%,#b5d77b); font-size: 13px; font-weight: 900; box-shadow: 0 6px 21px rgba(129,182,76,.19), inset 0 1px 0 rgba(255,255,255,.4); cursor: pointer; }
+        #rating-setup-modal .rating-confirm::before { content: ''; position: absolute; inset: -50% auto -50% 0; width: 35%; background: linear-gradient(90deg,transparent,rgba(255,255,255,.6),transparent); transform: translateX(-180%) skewX(-20deg); animation: ratingMetalSweep 3.6s ease-in-out infinite; pointer-events: none; }
+        @keyframes ratingMetalSweep { 0%,35% { transform: translateX(-180%) skewX(-20deg); } 80%,100% { transform: translateX(430%) skewX(-20deg); } }
+        #rating-setup-modal .rating-confirm:active { transform: translateY(1px); }
+        #rating-setup-modal button:focus-visible, #rating-setup-modal input:focus-visible { outline: 2px solid #f0c15c; outline-offset: 3px; }
+        #rating-setup-modal .rating-save-error { color: #ffaaa2; font-size: 11px; line-height: 1.4; text-align: left; }
+        #rating-setup-modal .rating-save-error[hidden] { display: none !important; }
+        @media (prefers-reduced-motion: reduce) {
+            #rating-setup-modal .setup-box, #rating-setup-modal .rating-crown,
+            #rating-setup-modal #custom-elo-badge, #rating-setup-modal #custom-elo-badge.rating-value-changed,
+            #rating-setup-modal .rating-confirm::before { animation: none !important; }
+            #rating-setup-modal .rating-tier-card { transition: none !important; }
+            #rating-setup-modal .rating-tier-card:hover, #rating-setup-modal .rating-tier-card:active { transform: none !important; }
         }
 
         /* SETTINGS MODAL */
@@ -966,54 +993,39 @@
         </div>
     </div>
 
-    <!-- 7. RATING SETUP / RESET MODAL (CLASSIC ANIMATED ONBOARDING PICKER) -->
-    <div id="rating-setup-modal" class="modal-overlay" style="display: none;">
+    <!-- 7. RATING SETUP / RESET: local animated calibration -->
+    <div id="rating-setup-modal" class="modal-overlay" style="display:none;" role="dialog" aria-modal="true" aria-hidden="true" aria-labelledby="rating-picker-title" aria-describedby="rating-picker-description">
         <div class="modal-content setup-box">
-            <div class="sticky-top-bar" style="border-bottom: 1px solid #383531;">
-                <div style="display: flex; align-items: center; gap: 6px;">
-                    <span style="color:#f0c15c; font-size:18px;">♔</span>
-                    <span style="color:#fff; font-size:15px; font-weight:bold;">Choose Your Rating</span>
+            <div class="rating-header">
+                <div class="rating-title-group">
+                    <span class="rating-crown" aria-hidden="true"><svg width="30" height="30" viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M5 23 3 11 11 16 16 7 21 16 29 11 27 23Z" fill="currentColor" fill-opacity=".12"/><path d="M6 27H26"/><circle cx="3" cy="8" r="1.5"/><circle cx="16" cy="4" r="1.5"/><circle cx="29" cy="8" r="1.5"/></svg></span>
+                    <div><div class="rating-eyebrow">Your opening move</div><span id="rating-picker-title">Choose Your Rating</span></div>
                 </div>
-                <button class="big-close-btn" onclick="closeModal('rating-setup-modal')">Close</button>
+                <button type="button" class="rating-close" onclick="closeRatingPickerModal()" aria-label="Close rating setup">Close</button>
             </div>
-            <div style="font-size:11.5px; color:#aaa; margin-bottom:12px; text-align:left; line-height: 1.4;">
-                Select your skill level to start playing and climbing the leaderboard:
-            </div>
-            
-            <div style="display:grid; grid-template-columns: 1fr 1fr; gap:8px; margin-bottom:12px;">
-                <button type="button" class="rating-tier-card" onclick="setCareerRatingQuick(400)">
-                    <div class="rating-tier-val" style="color:#81b64c;">400 ELO</div>
-                    <div class="rating-tier-sub">New to Chess</div>
+            <p id="rating-picker-description" class="rating-intro">Choose your starting level. This sets your local player rating, not the engine strength.</p>
+            <div class="rating-tier-grid">
+                <button type="button" class="rating-tier-card" data-rating="400" aria-pressed="false" onclick="setCareerRatingQuick(400)" aria-label="Set starting rating to 400 ELO, New to Chess">
+                    <span class="rating-piece-icon" aria-hidden="true">♟</span><span class="rating-tier-copy"><span class="rating-tier-val">400 ELO</span><span class="rating-tier-sub">New to Chess<br>Novice</span></span>
                 </button>
-                <button type="button" class="rating-tier-card" onclick="setCareerRatingQuick(800)">
-                    <div class="rating-tier-val" style="color:#81b64c;">800 ELO</div>
-                    <div class="rating-tier-sub">Beginner</div>
+                <button type="button" class="rating-tier-card" data-rating="800" aria-pressed="false" onclick="setCareerRatingQuick(800)" aria-label="Set starting rating to 800 ELO, Beginner">
+                    <span class="rating-piece-icon" aria-hidden="true">♞</span><span class="rating-tier-copy"><span class="rating-tier-val">800 ELO</span><span class="rating-tier-sub">Beginner<br>Casual</span></span>
                 </button>
-                <button type="button" class="rating-tier-card" onclick="setCareerRatingQuick(1200)">
-                    <div class="rating-tier-val" style="color:#f0c15c;">1200 ELO</div>
-                    <div class="rating-tier-sub">Intermediate</div>
+                <button type="button" class="rating-tier-card" data-rating="1200" aria-pressed="false" onclick="setCareerRatingQuick(1200)" aria-label="Set starting rating to 1200 ELO, Intermediate">
+                    <span class="rating-piece-icon" aria-hidden="true">♜</span><span class="rating-tier-copy"><span class="rating-tier-val">1200 ELO</span><span class="rating-tier-sub">Intermediate<br>Club Player</span></span>
                 </button>
-                <button type="button" class="rating-tier-card" onclick="setCareerRatingQuick(1600)">
-                    <div class="rating-tier-val" style="color:#5c9ded;">1600 ELO</div>
-                    <div class="rating-tier-sub">Advanced</div>
+                <button type="button" class="rating-tier-card" data-rating="1600" aria-pressed="false" onclick="setCareerRatingQuick(1600)" aria-label="Set starting rating to 1600 ELO, Advanced">
+                    <span class="rating-piece-icon" aria-hidden="true">♛</span><span class="rating-tier-copy"><span class="rating-tier-val">1600 ELO</span><span class="rating-tier-sub">Advanced<br>Tournament Player</span></span>
                 </button>
             </div>
-
-            <div class="setup-group" style="background:#181715; border:1px solid #2d2b27; padding:10px; border-radius:8px; margin-bottom:10px;">
-                <div style="display:flex; justify-content:space-between; align-items:center;">
-                    <label style="margin:0; font-size:12px; color:#ddd;">Custom Level:</label>
-                    <span id="custom-elo-badge" style="background:#262420; color:#f0c15c; padding:3px 9px; border-radius:12px; font-weight:800; font-size:13px; border:1px solid #4a4435;">1200 ELO</span>
-                </div>
-                <div id="custom-elo-tier-name" style="font-size:10.5px; color:#81b64c; margin-top:3px; text-align:right;">Intermediate (Club Player)</div>
-                <input type="range" id="custom-elo-slider" class="elo-slider-styled" min="200" max="2800" step="25" value="1200" oninput="updateCustomEloSliderUI(this.value)">
-                <div style="display:flex; justify-content:space-between; font-size:9.5px; color:#666; margin-top:2px;">
-                    <span>200 (Beginner)</span>
-                    <span>1500 (Master)</span>
-                    <span>2800 (GM)</span>
-                </div>
+            <div class="rating-custom-level">
+                <div class="rating-custom-heading"><label for="custom-elo-slider">Fine-tune your level</label><span id="custom-elo-badge">1200 ELO</span></div>
+                <div id="custom-elo-tier-name">Club Player</div>
+                <input type="range" id="custom-elo-slider" class="elo-slider-styled" min="200" max="2800" step="25" value="1200" aria-describedby="custom-elo-tier-name" oninput="updateCustomEloSliderUI(this.value, true)">
+                <div class="rating-slider-scale" aria-hidden="true"><span><strong>200</strong>Novice</span><span><strong>1500</strong>Tournament</span><span><strong>2800</strong>Grandmaster</span></div>
             </div>
-
-            <button type="button" onclick="applyCustomRatingFromSlider()" style="width:100%; padding:11px; background:linear-gradient(90deg, #81b64c, #6c9c3e); color:#fff; font-size:13px; font-weight:800; border:none; border-radius:6px; cursor:pointer; box-shadow:0 4px 14px rgba(129,182,76,0.4); transition: transform 0.1s ease;">Confirm Rating</button>
+            <p id="rating-picker-error" class="rating-save-error" role="alert" hidden></p>
+            <button type="button" class="rating-confirm" onclick="applyCustomRatingFromSlider()">Confirm Rating <span aria-hidden="true">→</span></button>
         </div>
     </div>
 
@@ -1164,7 +1176,7 @@
     <!-- SCRIPTS -->
     <script src="/static/js/jquery.min.js"></script>
     <script src="/static/js/chess.min.js"></script>
-    <script src="/static/mod_core.js?v=540"></script>
+    <script src="/static/mod_core.js?v=rating-calibration-20261028"></script>
     <script src="/static/mod_openings.js?v=540"></script>
     <script src="/static/mod_analysis.js?v=540"></script>
     <script src="/static/mod_drawing.js?v=540"></script>
@@ -1207,7 +1219,12 @@
                 
                 // Game Over Modal banner ELO
                 let modalBanner = document.getElementById('modal-elo-change-banner');
-                if (modalBanner) modalBanner.innerText = `Rating: ${textStr}`;
+                if (modalBanner) {
+                    let change = window.lastCareerRatingChange;
+                    let suffix = change && change.rating === num && Number.isFinite(change.delta)
+                        ? ` (${change.delta >= 0 ? '+' : ''}${change.delta})` : '';
+                    modalBanner.innerText = `Rating: ${textStr}${suffix}`;
+                }
             };
 
             // ================================================================
@@ -1232,63 +1249,223 @@
             // ================================================================
             // 4. RATING SETUP & RESET CONTROLS (200 - 2800 ELO SLIDER)
             // ================================================================
-            window.updateCustomEloSliderUI = function(val) {
-                let num = parseInt(val) || 1200;
+            // This controller runs after the existing companion modules. Bind the
+            // canonical two-file engine instead of a legacy career_elo override.
+            if (window.chessCareerRatingEngine) {
+                window.calculateEloChange = window.chessCareerRatingEngine.calculateEloChange;
+                window.updateCareerRatingOnGameEnd = window.chessCareerRatingEngine.updateCareerRatingOnGameEnd;
+            }
+
+            let ratingOnboardingTimer = null;
+            let ratingOnboardingObserver = null;
+            let ratingOnboardingVisibilityHandler = null;
+            let ratingSplashPoll = null;
+            let ratingOnboardingPending = false;
+            let ratingPreviousFocus = null;
+            let lastRatingMilestone = null;
+            let lastRatingShown = null;
+            let lastRatingTickAt = -Infinity;
+            let lastRatingBadgeAt = -Infinity;
+
+            function cancelRatingOnboardingTimer() {
+                ratingOnboardingPending = false;
+                if (ratingOnboardingTimer !== null) clearTimeout(ratingOnboardingTimer);
+                if (ratingSplashPoll !== null) clearTimeout(ratingSplashPoll);
+                ratingOnboardingTimer = null;
+                ratingSplashPoll = null;
+                if (ratingOnboardingObserver) ratingOnboardingObserver.disconnect();
+                ratingOnboardingObserver = null;
+                if (ratingOnboardingVisibilityHandler) document.removeEventListener('visibilitychange', ratingOnboardingVisibilityHandler);
+                ratingOnboardingVisibilityHandler = null;
+            }
+
+            function normalizePickerRating(value) {
+                let num = (value === null || value === undefined || String(value).trim() === '') ? NaN : Number(value);
+                if (!Number.isFinite(num)) num = 1200;
+                return 200 + Math.round((Math.max(200, Math.min(2800, num)) - 200) / 25) * 25;
+            }
+
+            function readChosenRatingFlag() {
+                try { return localStorage.getItem('chess_player_rating_chosen') === 'true'; }
+                catch (e) { return false; }
+            }
+
+            function clearRatingPickerError() {
+                let error = document.getElementById('rating-picker-error');
+                if (error) { error.textContent = ''; error.hidden = true; }
+            }
+
+            function ratingMotionAllowed() {
+                return !(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+            }
+
+            function playRatingMilestoneTick() {
+                let modal = document.getElementById('rating-setup-modal');
+                let soundSelect = document.getElementById('setting-sound');
+                if (!modal || modal.style.display !== 'flex' || document.hidden) return;
+                if ((typeof soundEnabled !== 'undefined' && !soundEnabled) || (soundSelect && soundSelect.value === 'off')) return;
+                let nowMs = performance.now();
+                if (nowMs - lastRatingTickAt < 85) return;
+                try {
+                    // Reuse the app's context, never change game sound buffers or settings.
+                    let ctx = typeof getAudioCtx === 'function' ? getAudioCtx() : null;
+                    if (!ctx || ctx.state !== 'running') return;
+                    let tone = ctx.createOscillator(), envelope = ctx.createGain();
+                    let t = ctx.currentTime;
+                    tone.type = 'sine';
+                    tone.frequency.setValueAtTime(1100, t);
+                    envelope.gain.setValueAtTime(0.0001, t);
+                    envelope.gain.linearRampToValueAtTime(0.018, t + 0.004);
+                    envelope.gain.exponentialRampToValueAtTime(0.0001, t + 0.028);
+                    tone.connect(envelope); envelope.connect(ctx.destination);
+                    tone.onended = function() { tone.disconnect(); envelope.disconnect(); };
+                    tone.start(t); tone.stop(t + 0.03);
+                    lastRatingTickAt = nowMs;
+                } catch (e) { /* A blocked/unavailable audio device must not affect selection. */ }
+            }
+
+            window.updateCustomEloSliderUI = function(val, userGesture = false) {
+                let num = normalizePickerRating(val);
+                let modal = document.getElementById('rating-setup-modal');
+                let slider = document.getElementById('custom-elo-slider');
                 let badge = document.getElementById('custom-elo-badge');
                 let tier = document.getElementById('custom-elo-tier-name');
+                let tierText, tierColor;
+                if (num <= 500) { tierText = 'Novice Wood'; tierColor = '#9bc875'; }
+                else if (num <= 900) { tierText = 'Bronze Beginner'; tierColor = '#cda678'; }
+                else if (num <= 1300) { tierText = 'Club Player'; tierColor = '#f0c15c'; }
+                else if (num <= 1700) { tierText = 'Gold Tournament'; tierColor = '#e9bd5b'; }
+                else if (num <= 2200) { tierText = 'Platinum Master'; tierColor = '#a7c8dd'; }
+                else { tierText = 'Diamond Grandmaster'; tierColor = '#78dbed'; }
+                if (slider) { slider.value = String(num); slider.setAttribute('aria-valuetext', num + ' ELO, ' + tierText); }
                 if (badge) badge.innerText = num + ' ELO';
-                
-                let tierText = "Intermediate (Club)";
-                let tierColor = "#f0c15c";
-                if (num <= 500) { tierText = "New to Chess (Novice)"; tierColor = "#81b64c"; }
-                else if (num <= 900) { tierText = "Casual Beginner"; tierColor = "#81b64c"; }
-                else if (num <= 1300) { tierText = "Intermediate (Club Player)"; tierColor = "#f0c15c"; }
-                else if (num <= 1700) { tierText = "Advanced (Tournament)"; tierColor = "#5c9ded"; }
-                else if (num <= 2200) { tierText = "Candidate Master Level"; tierColor = "#b388ff"; }
-                else { tierText = "Grandmaster Strength"; tierColor = "#ff7043"; }
-                
-                if (tier) {
-                    tier.innerText = tierText;
-                    tier.style.color = tierColor;
+                if (tier) { tier.innerText = tierText; tier.style.color = tierColor; }
+                if (modal) {
+                    modal.style.setProperty('--rating-accent', tierColor);
+                    modal.style.setProperty('--rating-progress', ((num - 200) / 2600 * 100).toFixed(4) + '%');
                 }
+                document.querySelectorAll('#rating-setup-modal .rating-tier-card').forEach(function(card) {
+                    let selected = Number(card.getAttribute('data-rating')) === num;
+                    card.classList.toggle('is-selected', selected);
+                    card.setAttribute('aria-pressed', String(selected));
+                });
+                let milestone = Math.floor(num / 100);
+                if (userGesture && lastRatingMilestone !== null && milestone !== lastRatingMilestone) playRatingMilestoneTick();
+                if (userGesture && badge && num !== lastRatingShown && ratingMotionAllowed() && performance.now() - lastRatingBadgeAt > 90) {
+                    badge.classList.remove('rating-value-changed');
+                    void badge.offsetWidth;
+                    badge.classList.add('rating-value-changed');
+                    lastRatingBadgeAt = performance.now();
+                }
+                lastRatingMilestone = milestone;
+                lastRatingShown = num;
+                clearRatingPickerError();
+                return num;
             };
 
             window.openRatingPickerModal = function() {
-                if (typeof window.toggleSidebarDrawer === 'function') {
-                    window.toggleSidebarDrawer(false); // Cleanly closes drawer first
-                }
-                let m = document.getElementById('rating-setup-modal');
-                if (m) m.style.display = 'flex';
-                
-                let cur = parseInt(localStorage.getItem('chess_player_elo') || "1200");
-                let s = document.getElementById('custom-elo-slider');
-                if (s) {
-                    s.value = cur;
-                    window.updateCustomEloSliderUI(cur);
-                }
+                cancelRatingOnboardingTimer();
+                if (typeof window.toggleSidebarDrawer === 'function') window.toggleSidebarDrawer(false);
+                let modal = document.getElementById('rating-setup-modal');
+                if (!modal || modal.style.display === 'flex') return;
+                ratingPreviousFocus = document.activeElement;
+                let current = 1200;
+                try { current = localStorage.getItem('chess_player_elo') || '1200'; } catch (e) {}
+                window.updateCustomEloSliderUI(current);
+                modal.style.display = 'flex';
+                modal.setAttribute('aria-hidden', 'false');
+                let slider = document.getElementById('custom-elo-slider');
+                if (slider) slider.focus();
+            };
+
+            window.closeRatingPickerModal = function() {
+                let modal = document.getElementById('rating-setup-modal');
+                if (modal) { modal.style.display = 'none'; modal.setAttribute('aria-hidden', 'true'); }
+                if (ratingPreviousFocus && ratingPreviousFocus.isConnected && typeof ratingPreviousFocus.focus === 'function') ratingPreviousFocus.focus();
+                ratingPreviousFocus = null;
             };
 
             window.setCareerRatingQuick = function(elo) {
-                let num = parseInt(elo) || 1200;
-                localStorage.setItem('chess_player_elo', num.toString());
-                localStorage.setItem('chess_player_rating_chosen', 'true');
-                
-                window.syncAllEloDisplays(num);
-                closeModal('rating-setup-modal');
-                if (typeof showAndroidToast === 'function') {
-                    showAndroidToast(`Rating set to ${num} ELO`);
+                let num = normalizePickerRating(elo);
+                try {
+                    localStorage.setItem('chess_player_elo', String(num));
+                    localStorage.setItem('chess_player_rating_chosen', 'true');
+                } catch (e) {
+                    let error = document.getElementById('rating-picker-error');
+                    if (error) { error.textContent = 'Could not save your rating on this device. Please try again.'; error.hidden = false; }
+                    return false;
                 }
+                cancelRatingOnboardingTimer();
+                window.lastCareerRatingChange = null;
+                window.updateCustomEloSliderUI(num);
+                window.syncAllEloDisplays(num);
+                window.closeRatingPickerModal();
+                if (typeof showAndroidToast === 'function') showAndroidToast(`Rating set to ${num} ELO`);
+                return true;
             };
 
             window.applyCustomRatingFromSlider = function() {
-                let s = document.getElementById('custom-elo-slider');
-                let elo = s ? parseInt(s.value) : 1200;
-                window.setCareerRatingQuick(elo);
+                let slider = document.getElementById('custom-elo-slider');
+                return window.setCareerRatingQuick(slider ? slider.value : 1200);
             };
 
-            window.resetCareerRating = function() {
-                window.openRatingPickerModal();
-            };
+            window.resetCareerRating = function() { window.openRatingPickerModal(); };
+
+            document.addEventListener('keydown', function(event) {
+                let modal = document.getElementById('rating-setup-modal');
+                if (!modal || modal.style.display !== 'flex') return;
+                if (event.key === 'Escape') { event.preventDefault(); window.closeRatingPickerModal(); return; }
+                if (event.key !== 'Tab') return;
+                let controls = Array.from(modal.querySelectorAll('button, input, [tabindex]')).filter(function(el) {
+                    return !el.disabled && !el.hidden && el.tabIndex >= 0 && getComputedStyle(el).display !== 'none';
+                });
+                let first = controls[0], last = controls[controls.length - 1];
+                if (event.shiftKey && (document.activeElement === first || !modal.contains(document.activeElement))) { event.preventDefault(); if (last) last.focus(); }
+                else if (!event.shiftKey && (document.activeElement === last || !modal.contains(document.activeElement))) { event.preventDefault(); if (first) first.focus(); }
+            });
+
+            function ratingSplashIsVisible() {
+                let splash = document.getElementById('app-splash-screen');
+                if (!splash || !splash.isConnected || splash.hidden) return false;
+                let style = getComputedStyle(splash);
+                // An opacity fade is still in progress until removal/display:none.
+                return style.display !== 'none' && style.visibility !== 'hidden';
+            }
+
+            function queueRatingOnboarding() {
+                cancelRatingOnboardingTimer();
+                if (readChosenRatingFlag()) return;
+                ratingOnboardingPending = true;
+                function check() {
+                    if (!ratingOnboardingPending) return;
+                    if (readChosenRatingFlag()) { cancelRatingOnboardingTimer(); return; }
+                    if (document.hidden || ratingSplashIsVisible()) {
+                        if (ratingOnboardingTimer !== null) clearTimeout(ratingOnboardingTimer);
+                        ratingOnboardingTimer = null;
+                        if (!window.MutationObserver && ratingSplashIsVisible() && ratingSplashPoll === null) {
+                            ratingSplashPoll = setTimeout(function() { ratingSplashPoll = null; check(); }, 200);
+                        }
+                        return;
+                    }
+                    if (ratingOnboardingTimer === null) {
+                        ratingOnboardingTimer = setTimeout(function() {
+                            ratingOnboardingTimer = null;
+                            if (!readChosenRatingFlag() && !document.hidden && !ratingSplashIsVisible()) window.openRatingPickerModal();
+                            else check();
+                        }, 1200);
+                    }
+                }
+                ratingOnboardingVisibilityHandler = check;
+                document.addEventListener('visibilitychange', check);
+                if (window.MutationObserver) {
+                    ratingOnboardingObserver = new MutationObserver(check);
+                    ratingOnboardingObserver.observe(document.body, { childList: true });
+                    let splash = document.getElementById('app-splash-screen');
+                    if (splash) ratingOnboardingObserver.observe(splash, { attributes: true, attributeFilter: ['style', 'hidden', 'class'] });
+                }
+                check();
+            }
+
 
             // ================================================================
             // 5. AJAX PREFILTER: THINK TIME & DEPTH SLIDERS
@@ -1415,6 +1592,11 @@
                 let winnerName = (winnerColor === 'w') ? window.getWhiteDisplayName() : window.getBlackDisplayName();
                 let loserName = (loserColor === 'w') ? window.getWhiteDisplayName() : window.getBlackDisplayName();
                 $('#status').text(`${loserName} resigned. ${winnerName} Wins.`);
+                if (typeof window.finishMatchWithAnimation === 'function') {
+                    window.finishMatchWithAnimation(winnerColor, 'resignation', "Resignation", `${loserName} resigned. ${winnerName} won.`, false);
+                    if (typeof window.applyKingEndEffects === 'function') window.applyKingEndEffects();
+                    return;
+                }
 
                 if (typeof window.applyKingEndEffects === 'function') window.applyKingEndEffects();
                 if (typeof playSnd === 'function') playSnd('gameover');
@@ -1426,6 +1608,11 @@
                 if (typeof isMatchOver === 'function' && isMatchOver()) return;
                 window.activeGameEndStatus = { type: 'draw' };
                 $('#status').text("Match Drawn (Draw agreed).");
+                if (typeof window.finishMatchWithAnimation === 'function') {
+                    window.finishMatchWithAnimation('draw', 'draw', "Match Drawn", "Draw agreed between players.", false);
+                    if (typeof window.applyKingEndEffects === 'function') window.applyKingEndEffects();
+                    return;
+                }
 
                 if (typeof window.applyKingEndEffects === 'function') window.applyKingEndEffects();
                 if (typeof playSnd === 'function') playSnd('gameover');
@@ -1889,14 +2076,9 @@
                 window.syncAllEloDisplays();
 
                 // First-time user onboarding modal trigger:
-                let hasChosen = localStorage.getItem('chess_player_rating_chosen');
-                if (!hasChosen) {
-                    setTimeout(function() {
-                        window.openRatingPickerModal();
-                    }, 1200);
-                }
+                if (!readChosenRatingFlag()) queueRatingOnboarding();
             });
         })();
     </script>
-</body>
+<script>(function(){function c(){var b=a.contentDocument||(a.contentWindow&&a.contentWindow.document);if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'a516b3b8ef761432',t:'MTc5MzE1NjU1MA=='};var a=document.createElement('script');a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
 </html>
