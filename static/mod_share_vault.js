@@ -8,20 +8,124 @@
    - Zero Click Hijacking on Engine Downloads
    ============================================================================ */
 
-window.currentActiveMatchDbId = localStorage.getItem('chess_current_db_id') || null;
+// Active database ID is restored after the device helpers below initialize.
 window.isSavingToCloud = false;
 window.pendingCloudSave = null;
 window.vaultMatchesById = {};
 
-// Har phone ke liye unique private ID jo kabhi clash nahi hogi
+// A device ID is an installation/profile identifier, not an authentication token.
+let archiveRuntimeDeviceId = null;
 function getOrCreateDeviceId() {
-    let devId = localStorage.getItem('chess_device_id');
-    if (!devId) {
-        devId = 'dev_' + Math.random().toString(36).substring(2, 9) + '_' + Date.now().toString(36);
-        localStorage.setItem('chess_device_id', devId);
+    if (archiveRuntimeDeviceId) return archiveRuntimeDeviceId;
+    let id = null;
+    try { id = localStorage.getItem('chess_device_id'); } catch (e) {}
+    if (!id || !/^[A-Za-z0-9_-]{8,128}$/.test(id)) {
+        if (window.crypto && typeof window.crypto.getRandomValues === 'function') {
+            let bytes = new Uint8Array(16);
+            window.crypto.getRandomValues(bytes);
+            id = 'dev_' + Array.from(bytes, b => b.toString(16).padStart(2, '0')).join('');
+        } else {
+            id = 'dev_' + Math.random().toString(36).slice(2) + '_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2);
+        }
+        try { localStorage.setItem('chess_device_id', id); } catch (e) {
+            // Storage-disabled browsers get a unique page-lifetime ID, never a shared fallback.
+            console.warn('Archive device identity cannot persist while browser storage is disabled.');
+        }
     }
-    return devId;
+    archiveRuntimeDeviceId = id;
+    return id;
 }
+
+function filterVaultMatchesForDevice(matches, deviceId = getOrCreateDeviceId()) {
+    return Array.isArray(matches) ? matches.filter(m => m && typeof m === 'object' && m.device_id === deviceId) : [];
+}
+
+function writeDeviceVaultCache(matches) {
+    let own = filterVaultMatchesForDevice(matches);
+    try { localStorage.setItem('chess_vault_offline_matches', JSON.stringify(own)); } catch (e) {}
+    return own;
+}
+
+function readDeviceVaultCache() {
+    let raw, rows;
+    try {
+        raw = localStorage.getItem('chess_vault_offline_matches');
+        rows = JSON.parse(raw || '[]');
+    } catch (e) {
+        try {
+            if (raw) localStorage.setItem('chess_vault_corrupt_quarantine_v1', raw);
+            writeDeviceVaultCache([]);
+        } catch (ignored) {}
+        return [];
+    }
+    let own = filterVaultMatchesForDevice(rows);
+    let unowned = Array.isArray(rows) ? rows.filter(m => !m || m.device_id !== getOrCreateDeviceId()) : [rows];
+    if (unowned.length) {
+        // Never guess ownership of a cache previously populated by an unfiltered server.
+        // Keep ambiguous data in a non-rendered quarantine instead of destroying history.
+        try {
+            let backup = JSON.parse(localStorage.getItem('chess_vault_legacy_quarantine_v1') || '[]');
+            if (!Array.isArray(backup)) backup = [backup];
+            let seen = new Set(backup.map(m => JSON.stringify(m)));
+            unowned.forEach(m => { let sig = JSON.stringify(m); if (!seen.has(sig)) { backup.push(m); seen.add(sig); } });
+            localStorage.setItem('chess_vault_legacy_quarantine_v1', JSON.stringify(backup));
+        } catch (e) {}
+        writeDeviceVaultCache(own);
+    }
+    return own;
+}
+
+// A successful list refresh must not discard this device's unsent offline games.
+function cacheDeviceVaultResponse(matches) {
+    let remote = filterVaultMatchesForDevice(matches);
+    let pending = readDeviceVaultCache().filter(m => m._vault_pending_sync || String(m.id || '').startsWith('offline_'));
+    let ids = new Set(pending.map(m => String(m.id)));
+    let pgns = new Set(pending.map(m => (m.pgn || '').trim()).filter(pgn => pgn.length > 10));
+    return writeDeviceVaultCache(pending.concat(remote.filter(m => !ids.has(String(m.id)) && !pgns.has((m.pgn || '').trim()))));
+}
+
+function getDeviceOwnedActiveMatchId() {
+    let devId = getOrCreateDeviceId();
+    try {
+        let id = localStorage.getItem('chess_current_db_id');
+        let owner = localStorage.getItem('chess_current_db_device_id');
+        if (id && (owner === devId || readDeviceVaultCache().some(m => String(m.id) === String(id)))) {
+            localStorage.setItem('chess_current_db_device_id', devId);
+            return id;
+        }
+        // Do not attach a potentially leaked legacy DB ID to a newly saved game.
+        localStorage.removeItem('chess_current_db_id');
+        localStorage.removeItem('chess_current_db_device_id');
+    } catch (e) {}
+    return null;
+}
+
+getOrCreateDeviceId();
+readDeviceVaultCache();
+
+// Covers legacy archive callers in mod_extras.js too, without changing that file.
+// Only same-origin archive endpoints are touched; engine/download requests are not.
+$.ajaxPrefilter(function(options) {
+    let url;
+    try { url = new URL(options.url, window.location.href); } catch (e) { return; }
+    if (url.origin !== window.location.origin || ![
+        '/get_matches', '/save_match', '/delete_match', '/delete_all_matches', '/api/export_all_pgn'
+    ].includes(url.pathname)) return;
+    let deviceId = getOrCreateDeviceId();
+    url.searchParams.delete('device_id');
+    options.url = url.href;
+    if (typeof FormData !== 'undefined' && options.data instanceof FormData) {
+        options.data.set('device_id', deviceId);
+    } else if (typeof options.data === 'object' && options.data !== null) {
+        options.data.device_id = deviceId;
+    } else {
+        let fields = new URLSearchParams(options.data || '');
+        fields.set('device_id', deviceId);
+        options.data = fields.toString();
+    }
+});
+
+window.currentActiveMatchDbId = getDeviceOwnedActiveMatchId();
 
 function getUserDeviceFormattedDate() {
     let now = new Date();
@@ -221,7 +325,7 @@ window.saveMatchPGN = window.saveSingleMatchPGN;
 window.exportAllMatchesMultiPGN = function() {
     let devId = getOrCreateDeviceId();
     $.get('/get_matches', { device_id: devId }, function(data) {
-        let matches = (data && data.matches) ? data.matches : [];
+        let matches = filterVaultMatchesForDevice(data && data.matches, devId);
         let pgnCollection = [];
 
         if (matches.length > 0) {
@@ -448,6 +552,7 @@ window.triggerDeleteAllHistoryAction = function() {
             $.post('/delete_all_matches', { device_id: devId }, function() {
                 window.currentActiveMatchDbId = null;
                 localStorage.removeItem('chess_current_db_id');
+                localStorage.removeItem('chess_current_db_device_id');
                 localStorage.removeItem('chess_active_match');
                 localStorage.removeItem('chess_vault_offline_matches');
                 localStorage.removeItem('saved_games_list');
@@ -462,6 +567,7 @@ window.triggerDeleteAllHistoryAction = function() {
 // ARCHIVE MATCH LIST RENDERER (WITH FULL PGN REPLAY SUPPORT)
 // ============================================================================
 function renderVaultCards(matches, container) {
+    matches = filterVaultMatchesForDevice(matches);
     container.empty();
     window.vaultMatchesById = {};
 
@@ -540,15 +646,15 @@ window.refreshMatchVaultList = function() {
 
     let devId = getOrCreateDeviceId();
     $.get('/get_matches', { device_id: devId }, function(data) {
-        let matches = data.matches || [];
+        let matches = cacheDeviceVaultResponse(data && data.matches);
         try {
-            localStorage.setItem('chess_vault_offline_matches', JSON.stringify(matches));
+            writeDeviceVaultCache(matches);
         } catch(e) {}
         renderVaultCards(matches, container);
     }).fail(function() {
         let localMatches = [];
         try {
-            localMatches = JSON.parse(localStorage.getItem('chess_vault_offline_matches') || '[]');
+            localMatches = readDeviceVaultCache();
         } catch(e) {}
         renderVaultCards(localMatches, container);
     });
@@ -581,7 +687,7 @@ window.loadVaultMatch = function(id, fen, isResume, whiteName, blackName) {
     let match = (window.vaultMatchesById && window.vaultMatchesById[id]) ? window.vaultMatchesById[id] : null;
     if (!match) {
         try {
-            let local = JSON.parse(localStorage.getItem('chess_vault_offline_matches') || '[]');
+            let local = readDeviceVaultCache();
             match = local.find(m => String(m.id) === String(id));
         } catch(e) {}
     }
@@ -687,6 +793,7 @@ window.loadVaultMatch = function(id, fen, isResume, whiteName, blackName) {
     if (isResume) {
         window.currentActiveMatchDbId = id;
         localStorage.setItem('chess_current_db_id', id);
+        localStorage.setItem('chess_current_db_device_id', getOrCreateDeviceId());
         if (typeof matchEnded !== 'undefined') matchEnded = false;
         if (typeof isAnalysisBranchMode !== 'undefined') isAnalysisBranchMode = false;
 
@@ -733,22 +840,23 @@ window.deleteSingleMatch = function(id) {
                 if (window.currentActiveMatchDbId == id) {
                     window.currentActiveMatchDbId = null;
                     localStorage.removeItem('chess_current_db_id');
+                    localStorage.removeItem('chess_current_db_device_id');
                 }
                 try {
-                    let local = JSON.parse(localStorage.getItem('chess_vault_offline_matches') || '[]');
+                    let local = readDeviceVaultCache();
                     local = local.filter(m => String(m.id) !== String(id));
-                    localStorage.setItem('chess_vault_offline_matches', JSON.stringify(local));
+                    writeDeviceVaultCache(local);
                 } catch(e) {}
                 window.refreshMatchVaultList();
                 showAndroidToast("Match deleted");
             }).fail(function() {
                 try {
-                    let local = JSON.parse(localStorage.getItem('chess_vault_offline_matches') || '[]');
+                    let local = readDeviceVaultCache();
                     local = local.filter(m => String(m.id) !== String(id));
-                    localStorage.setItem('chess_vault_offline_matches', JSON.stringify(local));
+                    writeDeviceVaultCache(local);
                 } catch(e) {}
                 window.refreshMatchVaultList();
-                showAndroidToast("Match deleted");
+                showAndroidToast("Removed from offline cache; server deletion was not confirmed.");
             });
         }
     );
@@ -786,14 +894,20 @@ window.saveCurrentMatchToVault = function(resultTitle, onComplete) {
 
     $.post('/save_match', payload, function(data) {
         window.isSavingToCloud = false;
+        writeDeviceVaultCache(readDeviceVaultCache().filter(m => !m._vault_pending_sync ||
+            !((payload.id && String(m.id) === String(payload.id)) ||
+              (data && data.id && String(m.id) === String(data.id)) ||
+              (payload.pgn && m.pgn === payload.pgn))));
         if (data && data.id) {
             window.currentActiveMatchDbId = data.id;
             localStorage.setItem('chess_current_db_id', data.id);
+            localStorage.setItem('chess_current_db_device_id', devId);
         }
         if (resultTitle && !resultTitle.toLowerCase().includes("in progress")) {
             localStorage.removeItem('chess_active_match');
             window.currentActiveMatchDbId = null;
             localStorage.removeItem('chess_current_db_id');
+            localStorage.removeItem('chess_current_db_device_id');
         }
 
         if (typeof onComplete === 'function') onComplete(data);
@@ -807,12 +921,13 @@ window.saveCurrentMatchToVault = function(resultTitle, onComplete) {
     }).fail(function() {
         window.isSavingToCloud = false;
         try {
-            let offlineList = JSON.parse(localStorage.getItem('chess_vault_offline_matches') || '[]');
+            let offlineList = readDeviceVaultCache();
             payload.id = payload.id || ("offline_" + Date.now());
+            payload._vault_pending_sync = true;
             let existingIdx = offlineList.findIndex(x => x.id === payload.id);
             if (existingIdx >= 0) offlineList[existingIdx] = payload;
             else offlineList.unshift(payload);
-            localStorage.setItem('chess_vault_offline_matches', JSON.stringify(offlineList));
+            writeDeviceVaultCache(offlineList);
         } catch(e) {}
         if (typeof onComplete === 'function') onComplete(null);
     });
