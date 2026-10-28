@@ -1,6 +1,6 @@
 /* ============================================================================
-   static/mod_core.js (v130 - Real FIDE/Chess.com Elo Engine & Full Integration)
-   - Real-time Elo Rating Engine: Standard FIDE formula based on dynamic opponent strength
+   static/mod_core.js (v130 - Local Elo Rating Calibration & Integration)
+   - Local Elo-style rating: logistic expected score and dynamic opponent strength
    - Interactive Rating Reset: Hooks into custom rating setup & picker modals
    - Real-time Time Control: Bullet (1m), Blitz (3m/5m), Rapid synced directly
    - Live Think Time & Depth: Sliders values passed dynamically to AI engine
@@ -1119,49 +1119,70 @@ function updateMaterial(fen) {
 }
 
 // ============================================================================
-// REAL FIDE / CHESS.COM ELO RATING CALCULATOR (ACCURATE MATH ENGINE)
+// LOCAL ELO-STYLE CALCULATOR: K * (SCORE - LOGISTIC EXPECTED SCORE)
 // ============================================================================
+// Per-page/session guard. No additional persistent storage keys are introduced.
+const appliedCareerRatingSessions = new Set();
+
 window.calculateEloChange = function(playerElo, opponentElo, score, kFactor = 32) {
-    let pElo = parseFloat(playerElo) || 1200;
-    let oElo = parseFloat(opponentElo) || 1500;
-    let expected = 1.0 / (1.0 + Math.pow(10, (oElo - pElo) / 400.0));
-    let diff = Math.round(kFactor * (score - expected));
-    if (score === 1 && diff < 1) diff = 1;
-    if (score === 0 && diff > -1) diff = -1;
-    return diff;
+    let pElo = Number(playerElo), oElo = Number(opponentElo);
+    if (!Number.isFinite(pElo)) pElo = 1200;
+    if (!Number.isFinite(oElo)) oElo = 1500;
+    let result = Number(score), k = Number(kFactor);
+    if (!Number.isFinite(result) || result < 0 || result > 1) throw new RangeError('Elo score must be between 0 and 1.');
+    if (!Number.isFinite(k) || k < 0) k = 32;
+    let expected = 1 / (1 + Math.pow(10, (oElo - pElo) / 400));
+    let delta = Math.round(k * (result - expected));
+    // A tiny expected change may legitimately round to zero; do not force +/-1.
+    return delta === 0 ? 0 : delta;
 };
 
 window.updateCareerRatingOnGameEnd = function(winnerColor) {
-    if (gameMode !== 'pvb') return; // Only rated in Player vs Bot
-    
-    let currentElo = parseInt(localStorage.getItem('chess_player_elo') || "1200");
-    let botElo = parseInt(window.currentBlackElo || (safeEl('setup-black-bot') ? safeEl('setup-black-bot').value : "2500")) || 2500;
-    
-    let score = 0.5; // Draw
-    if (winnerColor === 'draw') {
-        score = 0.5;
-    } else if (winnerColor === playerColor) {
-        score = 1.0; // Player Won
-    } else {
-        score = 0.0; // Player Lost
+    if (gameMode !== 'pvb' || isAnalysisBranchMode || (playerColor !== 'w' && playerColor !== 'b')) return null;
+    if (winnerColor !== 'w' && winnerColor !== 'b' && winnerColor !== 'draw') return null;
+    let sessionId = String(window.currentMatchSessionId || 'active_match');
+    if (appliedCareerRatingSessions.has(sessionId)) return null;
+
+    let currentElo;
+    try { currentElo = Number(localStorage.getItem('chess_player_elo') || '1200'); }
+    catch (e) { return null; }
+    if (!Number.isFinite(currentElo) || currentElo < 100 || currentElo > 3000) currentElo = 1200;
+    currentElo = Math.round(currentElo);
+
+    // In this app PvB's selected opponent strength is currentBlackElo,
+    // including when the human chooses Black. Do not read a stale setup selection first.
+    let botElo = Number(currentBlackElo);
+    if (!Number.isFinite(botElo) || botElo <= 0) botElo = Number((safeEl('setup-black-bot') || {}).value);
+    if (!Number.isFinite(botElo) || botElo <= 0) botElo = 2500;
+    let score = winnerColor === 'draw' ? 0.5 : winnerColor === playerColor ? 1 : 0;
+    let requestedDelta = window.calculateEloChange(currentElo, botElo, score, 32);
+    // Preserve the application's existing earned-rating bounds (picker remains 200-2800).
+    let newElo = Math.max(100, Math.min(3000, currentElo + requestedDelta));
+    let appliedDelta = newElo - currentElo;
+    try { localStorage.setItem('chess_player_elo', String(newElo)); }
+    catch (e) {
+        if (typeof showAndroidToast === 'function') showAndroidToast('The rating could not be saved on this device.');
+        return null;
     }
-    
-    let eloChange = window.calculateEloChange(currentElo, botElo, score, 32);
-    let newElo = Math.max(100, Math.min(3000, currentElo + eloChange));
-    
-    localStorage.setItem('chess_player_elo', newElo.toString());
-    
-    let sign = eloChange >= 0 ? "+" : "";
-    let changeText = `${newElo} ELO (${sign}${eloChange})`;
-    
+    appliedCareerRatingSessions.add(sessionId);
+    if (appliedCareerRatingSessions.size > 128) appliedCareerRatingSessions.delete(appliedCareerRatingSessions.values().next().value);
+    window.lastCareerRatingChange = { rating: newElo, delta: appliedDelta, sessionId: sessionId };
+    if (typeof window.syncAllEloDisplays === 'function') window.syncAllEloDisplays(newElo);
+    let sign = appliedDelta >= 0 ? '+' : '';
     safeText('sidebar-elo-val', `${newElo} ELO`);
     safeText('live-player-elo-pill', `${newElo} ELO`);
-    safeText('modal-elo-change-banner', `Rating: ${changeText}`);
-    
-    if (typeof showAndroidToast === 'function') {
-        showAndroidToast(`Rating: ${sign}${eloChange} → ${newElo} ELO`);
-    }
+    safeText('modal-elo-change-banner', `Rating: ${newElo} ELO (${sign}${appliedDelta})`);
+    if (typeof showAndroidToast === 'function') showAndroidToast(`Rating: ${sign}${appliedDelta} → ${newElo} ELO`);
+    return window.lastCareerRatingChange;
 };
+
+// Keep the canonical rating functions available when older mod_extras.js files
+// assign legacy career_elo handlers later in the existing script load order.
+window.chessCareerRatingEngine = Object.freeze({
+    calculateEloChange: window.calculateEloChange,
+    updateCareerRatingOnGameEnd: window.updateCareerRatingOnGameEnd
+});
+
 
 function finishMatchWithAnimation(winnerColor, reasonType, title, subtitle, alreadyPlayedGameEndSound = false) {
     if (matchEnded) return;
