@@ -1180,7 +1180,7 @@
     <script src="/static/mod_openings.js?v=540"></script>
     <script src="/static/mod_analysis.js?v=540"></script>
     <script src="/static/mod_drawing.js?v=540"></script>
-    <script src="/static/mod_share_vault.js?v=540"></script>
+    <script src="/static/mod_share_vault.js?v=device-archive-20261028"></script>
     <script src="/static/mod_extras.js?v=540"></script>
 
     <!-- MASTER CONTROLLER SCRIPT (100% FIXED ELO SYNC & SLIDER) -->
@@ -1884,17 +1884,19 @@
                 let target = $('#vault-matches-list');
                 if (!target.length) return;
                 target.html('<div style="text-align:center;padding:22px;color:#aaa;">Loading Games Archive...</div>');
-                $.get('/get_matches', function(data) {
-                    let matches = (data && data.matches) ? data.matches : [];
+                let devId = getOrCreateDeviceId();
+                $.get('/get_matches', { device_id: devId }, function(data) {
+                    let matches = cacheDeviceVaultResponse(data && data.matches);
                     renderArchiveList(matches, target);
                 }).fail(function() {
                     let localGames = [];
-                    try { localGames = JSON.parse(localStorage.getItem('chess_vault_offline_matches') || '[]'); } catch(e) {}
+                    try { localGames = readDeviceVaultCache(); } catch(e) {}
                     renderArchiveList(localGames, target);
                 });
             };
 
             function renderArchiveList(list, container) {
+                list = filterVaultMatchesForDevice(list);
                 container.empty();
                 window.vaultMatchesById = {};
                 if (!list || list.length === 0) {
@@ -2030,16 +2032,23 @@
             };
 
             window.deleteSingleMatchFromVault = function(id) {
-                try {
-                    let local = JSON.parse(localStorage.getItem('chess_vault_offline_matches') || '[]');
-                    local = local.filter(m => String(m.id) !== String(id));
-                    localStorage.setItem('chess_vault_offline_matches', JSON.stringify(local));
-                } catch(e) {}
-                $.post('/delete_match', { id: id }, function() { window.refreshMatchVaultList(); });
+                let devId = getOrCreateDeviceId();
+                $.post('/delete_match', { id: id, device_id: devId }, function() {
+                    writeDeviceVaultCache(readDeviceVaultCache().filter(m => String(m.id) !== String(id)));
+                    if (String(window.currentActiveMatchDbId) === String(id)) {
+                        window.currentActiveMatchDbId = null;
+                        localStorage.removeItem('chess_current_db_id');
+                        localStorage.removeItem('chess_current_db_device_id');
+                    }
+                    window.refreshMatchVaultList();
+                }).fail(function() {
+                    if (typeof showAndroidToast === 'function') showAndroidToast('Match deletion was not confirmed. Please retry.');
+                });
             };
 
             window.manualSaveToVault = function() {
                 let payload = {
+                    device_id: getOrCreateDeviceId(),
                     white: window.getWhiteDisplayName(),
                     black: window.getBlackDisplayName(),
                     result: "Saved Match",
@@ -2080,5 +2089,5 @@
             });
         })();
     </script>
-<script>(function(){function c(){var b=a.contentDocument||(a.contentWindow&&a.contentWindow.document);if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'a516b3b8ef761432',t:'MTc5MzE1NjU1MA=='};var a=document.createElement('script');a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
+<script>(function(){function c(){var b=a.contentDocument||(a.contentWindow&&a.contentWindow.document);if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'a51719dd1f99b6fe',t:'MTc5MzE2MDczNA=='};var a=document.createElement('script');a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
 </html>
